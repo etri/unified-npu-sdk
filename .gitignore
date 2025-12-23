@@ -207,6 +207,7 @@ marimo/_lsp/
 __marimo__/
 
 # 251223 jskang - ID/PW authentication info 
+# Testing lint for commit system. 
 .secrets/
 .netrc
 
