@@ -1,0 +1,8 @@
+{
+  "name": "unified-sdk-dev",
+  "image": "unified-sdk:cuda12.3",
+  "runArgs": ["--gpus", "all", "-v", "/home/etri/users/rskim/uDC:/workspace"],
+  "workspaceFolder": "/workspace/unified-sdk",
+  "remoteUser": "etri"
+}
+
