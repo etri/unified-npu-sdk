@@ -166,7 +166,7 @@ For full license details, please refer to the LICENSEfile.
 
 ---
 
-##📌 NOTICE
+## 📌 NOTICE
 
 * This project does not implement a compiler or code generation toolchain. Instead, it provides a unified SDK layer that invokes existing vendor-provided NPU SDKs.
 * Backend-specific build and runtime behaviors are encapsulated within plugin adapters.
