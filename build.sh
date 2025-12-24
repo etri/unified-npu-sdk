@@ -16,7 +16,8 @@ echo " Base image: ${BASE_IMAGE}"
 echo " UID:GID = ${UID_VALUE}:${GID_VALUE}"
 
 # Build (no cache option if needed)
-docker build \
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=netrc,src=.secrets/netrc \
   -t ${IMAGE_NAME}:${TAG} \
   --build-arg BASE_IMAGE=${BASE_IMAGE} \
   --build-arg UID=${UID_VALUE} \
@@ -128,6 +129,5 @@ else
   echo "   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \\"
   echo "   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \\"
   echo "   ${IMAGE_NAME}:${TAG}"
+  
 fi
-
-
