@@ -4,15 +4,17 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple
 
 # 빌드/런타임 이름을 분리해 둡니다 (필요 시 추가)
-BuildBackendName = Literal["tensorrt"]      # "rebellions", "furiosa", "onnxrt", ...
-RuntimeBackendName = Literal["tensorrt"]    # 이미 사용 중
+BuildBackendName = Literal["tensorrt", "rbln"]      # "rebellions", "furiosa", "onnxrt", ...
+RuntimeBackendName = Literal["tensorrt", "rbln"]    # 이미 사용 중
 
 Precision = Literal["fp32", "fp16", "int8"]  # int8은 추후 calibration 확장
 
 @dataclass
 class BuildConfig:
     backend: BuildBackendName
-    model_or_path: str | Path
+    # 251212 jsk : torch.nn.module 오브젝트 받기 위함. 
+    # model_or_path: str | Path
+    model_or_path: Any
     out_dir: str | Path = "build"
     model_name: str = "model"
     precision: Precision = "fp16"
@@ -26,7 +28,7 @@ class BuildConfig:
 @dataclass
 class BuildResult:
     backend: str
-    compiled_model_path: str
+    compiled_model_path: str 
     meta_data: Dict[str, Any]
 
 @dataclass
