@@ -39,24 +39,28 @@ unified-sdk/
 ├── Dockerfile
 ├── devcontainer.json
 ├── examples/                     # 예제 코드
-│   ├── test_tensorrt_build.py    # TensorRT 모델 빌드 예제
-│   └── run_tensorrt_infer.py     # TensorRT 엔진 실행 예제
+│   ├── run_tensorrt_build.py     # TensorRT 모델 빌드 예제
+│   ├── run_tensorrt_infer.py     # TensorRT 엔진 실행 예제
+│   ├── run_rbln_build.py         # Rbln 모델 빌드 예제
+│   └── run_rbln_infer.py         # Rbln 엔진 실행 예제
 └── src/
     └── unified_sdk/
         ├── __init__.py
         ├── types.py              # 공통 데이터 구조 정의
         │
-        ├── build/                # 모델 빌드(컴파일) 관련 모듈
+        ├── builder/                # 모델 빌드(컴파일) 관련 모듈
         │   ├── __init__.py
         │   ├── api.py            # 상위 진입점 (backend-agnostic)
         │   ├── registry.py       # 백엔드 빌더 등록/조회 관리
-        │   └── tensorrt_build.py # TensorRT 빌드 어댑터
+        │   ├── tensorrt_build.py # TensorRT 빌드 어댑터
+        │   └── rbln_build.py     # Rbln 빌드 어댑터
         │
         └── runtime/              # 모델 실행(추론) 관련 모듈
             ├── __init__.py
             ├── api.py            # 상위 진입점 (backend-agnostic)
             ├── registry.py       # 백엔드 런타임 등록/조회 관리
-            └── tensorrt_rt.py    # TensorRT 런타임 어댑터
+            ├── tensorrt_runtime.py  # TensorRT 런타임 어댑터
+            └── rbln_runtime.py   # rbln 런타임 어댑터
 ```
 ---
 
@@ -125,21 +129,25 @@ unified-sdk/
 ├── devcontainer.json
 ├── examples/                     # Example scripts
 │   ├── test_tensorrt_build.py    # TensorRT build example
-│   └── run_tensorrt_infer.py     # TensorRT inference example
+│   ├── run_tensorrt_infer.py     # TensorRT inference example
+│   ├── run_rbln_build.py         # Rbln build example
+│   └── run_rbln_infer.py         # Rbln inference example
 └── src/
     └── unified_sdk/
         ├── __init__.py
         ├── types.py              # Common data structures
         │
-        ├── build/                # Model build (compilation) modules
+        ├── builder/              # Model build (compilation) modules
         │   ├── api.py            # Unified entry point
         │   ├── registry.py       # Backend builder registry
-        │   └── tensorrt_build.py # TensorRT build adapter
+        │   ├── tensorrt_build.py # TensorRT build adapter
+        │   └── rbln_build.py     # Rbln build adapter
         │
         └── runtime/              # Model execution (inference) modules
             ├── api.py            # Unified entry point
             ├── registry.py       # Backend runtime registry
-            └── tensorrt_rt.py    # TensorRT runtime adapter
+            ├── tensorrt_runtime.py  # TensorRT runtime adapter
+            └── rbln_runtime.py   # rbln runtime adapter
 ```
 ---
 
