@@ -16,7 +16,9 @@ WORKDIR /workspace
 
 # 1) requirements 설치
 COPY requirements.txt /workspace/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=secret,id=netrc,target=/root/.netrc,mode=0600 \
+    pip3 install --no-cache-dir -r requirements.txt
 
 # 2) unified-sdk 소스 복사
 #   → 호스트에서 Docker build를 할 때, 현재 디렉토리(.) 안에 unified-sdk 폴더가 있어야 함
@@ -25,7 +27,9 @@ COPY . /workspace/unified-sdk
 
 # 3) unified-sdk 패키지 editable 설치
 WORKDIR /workspace/unified-sdk
-RUN pip install --no-cache-dir -e .
+# RUN pip install --no-cache-dir -e .
+RUN --mount=type=secret,id=netrc,target=/root/.netrc,mode=0600 \
+    pip install --no-cache-dir -e .
 
 # 4) workspace로 다시 돌아오기
 WORKDIR /workspace
