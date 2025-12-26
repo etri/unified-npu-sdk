@@ -39,5 +39,4 @@ if __name__ == "__main__":
     )
 
     result = build_unified(cfg)
-    print("✅", result.compiled_model_path)
-
+    print("Complete!", result.compiled_model_path)
