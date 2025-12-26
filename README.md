@@ -39,6 +39,7 @@ unified-sdk/
 ├── Dockerfile
 ├── devcontainer.json
 ├── examples/                     # 예제 코드
+│   ├── inspect_engine_io.py      # TensorRT 엔진의 입출력 레이어 정보 확인 도구
 │   ├── run_tensorrt_build.py     # TensorRT 모델 빌드 예제
 │   ├── run_tensorrt_infer.py     # TensorRT 엔진 실행 예제
 │   ├── run_rbln_build.py         # Rbln 모델 빌드 예제
