@@ -1,8 +1,20 @@
 # examples/inspect_engine_io.py
 from pathlib import Path
-import tensorrt as trt
+
+# TensorRT가 설치되지 않은 환경에서도 import 에러가 나지 않도록 처리
+try:
+    import tensorrt as trt
+except ImportError:
+    print("Error: 'tensorrt' module not found. Please install NVIDIA TensorRT.")
+    sys.exit(1)
+
 
 def inspect(engine_path: str):
+    
+    if not Path(engine_path).exists():
+        print(f"Error: File not found - {engine_path}")
+        return
+
     TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
     runtime = trt.Runtime(TRT_LOGGER)
     with open(engine_path, "rb") as f:
@@ -33,7 +45,7 @@ def inspect(engine_path: str):
             dtype = engine.get_binding_dtype(i)
             print(f"  - {i}: name={name!r}, {'INPUT' if is_input else 'OUTPUT'}, dtype={dtype}")
 
+
 if __name__ == "__main__":
     # YOLOv7로 빌드한 엔진 경로로 바꿔서 실행하세요.
     inspect("build_output/yolov7_FP32.engine")
-
