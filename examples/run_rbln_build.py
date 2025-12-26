@@ -5,8 +5,12 @@ import os
 import torch
 from torchvision.models import resnet50
 
-from unified_sdk.types import BuildConfig
-from unified_sdk.build.api import build_unified
+try:
+    from unified_sdk.types import BuildConfig
+    from unified_sdk.build.api import build_unified
+except ImportError:
+    print("Error: 'unified_sdk' package not found. Please install it first.")
+    sys.exit(1)
 
 
 def _resolve_repo_root() -> Path:
