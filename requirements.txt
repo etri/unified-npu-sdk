@@ -1,9 +1,19 @@
+# ==========================================
+# 1. Package Repositories (패키지 저장소 설정)
+# ==========================================
+# 기본 PyPI 저장소
 --index-url https://pypi.org/simple
 --extra-index-url https://pypi.rbln.ai/simple
 
+# ==========================================
+# 2. Core Deep Learning Framework
+# ==========================================
+# 버전 고정 필요
 torch
 torchvision
+
+# ==========================================
+# 3. NPU Compiler & SDK
+# ==========================================
+# Rebellions NPU 컴파일러
 rebel-compiler
-
-
-
