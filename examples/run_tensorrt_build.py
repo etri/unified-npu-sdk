@@ -8,11 +8,14 @@
 # if SRC not in sys.path:
 #     sys.path.insert(0, SRC)
 
-
-
 # examples/test_tensorrt_build.py
-from unified_sdk.types import BuildConfig
-from unified_sdk.build.api import build_unified
+try:
+    from unified_sdk.types import BuildConfig
+    from unified_sdk.build.api import build_unified
+except ImportError:
+    print("Error: 'unified_sdk' package not found. Please install it first.")
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     #cfg = BuildConfig(
