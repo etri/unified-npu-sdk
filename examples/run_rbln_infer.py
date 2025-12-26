@@ -51,11 +51,11 @@ if __name__ == "__main__":
     labels = _load_labels()
 
     img = read_image(str(IMG_PATH))                 # [C,H,W], uint8
-    batch = preprocess(img).unsqueeze(0).numpy()    # ✅ weights.transforms() 대신 preprocess 사용
+    batch = preprocess(img).unsqueeze(0).numpy()    # weights.transforms() 대신 preprocess 사용
 
     cfg = RuntimeConfig(
         backend="rbln",
-        engine_path=str(ENGINE_PATH),   # ✅ builds/resnet50.rbln
+        engine_path=str(ENGINE_PATH),   # builds/resnet50.rbln
         input_name="input",
         output_name="output",
         input_shape=(1, 3, 224, 224),

@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     weights_path = _find_weights(MODELS_DIR)
 
-    # ✅ 다운로드 트리거 제거 (로컬 state_dict만 사용)
+    # 다운로드 트리거 제거 (로컬 state_dict만 사용)
     model = resnet50(weights=None)
     sd = _load_state_dict(weights_path)
     model.load_state_dict(sd, strict=False)
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     cfg = BuildConfig(
         backend="rbln",
         model_or_path=model,
-        out_dir=str(BUILDS_DIR),   # ✅ /workspace/unified-sdk/builds
+        out_dir=str(BUILDS_DIR),   # /workspace/unified-sdk/builds
         model_name="resnet50",
         precision="fp32",
         input_name="input",
@@ -102,6 +102,6 @@ if __name__ == "__main__":
     )
 
     result = build_unified(cfg)
-    print("✅", result.compiled_model_path)
+    print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
 
