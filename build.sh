@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+
 # =============================
 # unified-sdk build script
 # =============================
@@ -29,7 +30,6 @@ echo " Build complete!"
 
 # echo " Run container with:"
 # echo " docker run --gpus all -it --security-opt seccomp=unconfined --name ${IMAGE_NAME}_dev -v /home/etri/users/rskim/uDC:/workspace ${IMAGE_NAME}:${TAG}"
-
 
 
 ########################################
@@ -69,6 +69,7 @@ case "${MODE}" in
     GPU_FLAG=""
     ;;
 esac
+
 
 ########################################
 # 실행 예시 출력
