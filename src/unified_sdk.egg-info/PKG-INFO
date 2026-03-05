@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: unified-sdk
+Version: 0.0.1
+Summary: Unified SDK for model build/runtime (TensorRT first)
+Requires-Python: >=3.9

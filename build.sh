@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-
 # =============================
 # unified-sdk build script
 # =============================
@@ -17,8 +16,7 @@ echo " Base image: ${BASE_IMAGE}"
 echo " UID:GID = ${UID_VALUE}:${GID_VALUE}"
 
 # Build (no cache option if needed)
-DOCKER_BUILDKIT=1 docker build \
-  --secret id=netrc,src=.secrets/netrc \
+docker build \
   -t ${IMAGE_NAME}:${TAG} \
   --build-arg BASE_IMAGE=${BASE_IMAGE} \
   --build-arg UID=${UID_VALUE} \
@@ -30,7 +28,6 @@ echo " Build complete!"
 
 # echo " Run container with:"
 # echo " docker run --gpus all -it --security-opt seccomp=unconfined --name ${IMAGE_NAME}_dev -v /home/etri/users/rskim/uDC:/workspace ${IMAGE_NAME}:${TAG}"
-
 
 ########################################
 # NVIDIA Docker 모드 자동 감지
@@ -70,7 +67,6 @@ case "${MODE}" in
     ;;
 esac
 
-
 ########################################
 # 실행 예시 출력
 ########################################
@@ -92,19 +88,6 @@ if [ "${MODE}" = "none" ]; then
   echo "   --name ${IMAGE_NAME}_dev \\"
   echo "   -v ${PARENT_DIR}:/workspace"
   echo "   ${IMAGE_NAME}:${TAG}"
-  echo ""
-  echo " Run container (WITH RB/ARIES devices) with:"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   --device /dev/rsd0:/dev/rsd0 \\"
-  echo "   --device /dev/rbln0:/dev/rbln0 \\"
-  echo "   --device /dev/rbln1:/dev/rbln1 \\"
-  echo "   --device /dev/rbln2:/dev/rbln2 \\"
-  echo "   --device /dev/aries0:/dev/aries0 \\"
-  echo "   -v ${PARENT_DIR}:/workspace \\"
-  echo "   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \\"
-  echo "   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
 
 else
   echo " Run container with:"
@@ -117,18 +100,4 @@ else
   echo "   --name ${IMAGE_NAME}_dev \\"
   echo "   -v ${PARENT_DIR}:/workspace \\"
   echo "   ${IMAGE_NAME}:${TAG}"
-  echo ""
-  echo " Run container (WITH RB/ARIES devices) with:"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   --device /dev/rsd0:/dev/rsd0 \\"
-  echo "   --device /dev/rbln0:/dev/rbln0 \\"
-  echo "   --device /dev/rbln1:/dev/rbln1 \\"
-  echo "   --device /dev/rbln2:/dev/rbln2 \\"
-  echo "   --device /dev/aries0:/dev/aries0 \\"
-  echo "   -v ${PARENT_DIR}:/workspace \\"
-  echo "   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \\"
-  echo "   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
-  
 fi
