@@ -1,62 +1,166 @@
 #!/bin/bash
 set -e
 
-
-# =============================
-# unified-sdk build script
-# =============================
-
 IMAGE_NAME="unified-sdk"
-TAG="cuda12.3"
-BASE_IMAGE="nvcr.io/nvidia/tensorrt:23.10-py3"
+TARGET="tensorrt"
+CONTAINER_NAME=""
+WORKSPACE_DIR=""
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 
-echo " Building Docker image: ${IMAGE_NAME}:${TAG}"
-echo " Base image: ${BASE_IMAGE}"
-echo " UID:GID = ${UID_VALUE}:${GID_VALUE}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
 
-# Build (no cache option if needed)
+print_usage() {
+  echo "Usage: $0 [--target <target>] [--name <container_name>] [--workspace <repo_path>]"
+  echo ""
+  echo "Options:"
+  echo "  --target      Build target (default: tensorrt)"
+  echo "                Supported: tensorrt, rebellions, furiosa"
+  echo "  --name        Container name (default: unified-sdk_<target>_dev)"
+  echo "  --workspace   Host repository path to mount into /workspace/unified-sdk"
+  echo "                (default: current project root)"
+  echo "  -h, --help    Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  $0"
+  echo "  $0 --target tensorrt"
+  echo "  $0 --target tensorrt --name rskim_unified-npu-sdk"
+  echo "  $0 --target tensorrt --workspace /home/etri/users/rskim/uDC/unified-npu-sdk"
+  echo "  $0 --target tensorrt --name rskim_unified-npu-sdk --workspace /home/etri/users/rskim/uDC/unified-npu-sdk"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target)
+      if [ -z "$2" ]; then
+        echo "[ERROR] --target requires a value"
+        exit 1
+      fi
+      TARGET="$2"
+      shift 2
+      ;;
+    --name)
+      if [ -z "$2" ]; then
+        echo "[ERROR] --name requires a value"
+        exit 1
+      fi
+      CONTAINER_NAME="$2"
+      shift 2
+      ;;
+    --workspace)
+      if [ -z "$2" ]; then
+        echo "[ERROR] --workspace requires a value"
+        exit 1
+      fi
+      WORKSPACE_DIR="$2"
+      shift 2
+      ;;
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    *)
+      echo "[ERROR] Unknown option: $1"
+      echo ""
+      print_usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ -z "${CONTAINER_NAME}" ]; then
+  CONTAINER_NAME="${IMAGE_NAME}_${TARGET}_dev"
+fi
+
+if [ -z "${WORKSPACE_DIR}" ]; then
+  WORKSPACE_DIR="${PROJECT_ROOT}"
+fi
+
+if [ ! -d "${WORKSPACE_DIR}" ]; then
+  echo "[ERROR] Workspace directory not found: ${WORKSPACE_DIR}"
+  exit 1
+fi
+
+WORKSPACE_DIR="$(cd "${WORKSPACE_DIR}" && pwd)"
+
+SECRET_ARGS=()
+if [ -f "${PROJECT_ROOT}/.secrets/netrc" ]; then
+  SECRET_ARGS=(--secret "id=netrc,src=${PROJECT_ROOT}/.secrets/netrc")
+fi
+
+case "${TARGET}" in
+  tensorrt)
+    TAG="tensorrt"
+    BASE_IMAGE="nvcr.io/nvidia/tensorrt:23.10-py3"
+    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/tensorrt/Dockerfile"
+    NEED_GPU="yes"
+    ;;
+  rebellions)
+    TAG="rebellions"
+    BASE_IMAGE="ubuntu:24.04"
+    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/rebellions/Dockerfile"
+    NEED_GPU="no"
+    ;;
+  furiosa)
+    TAG="furiosa"
+    BASE_IMAGE="ubuntu:24.04"
+    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/furiosa/Dockerfile"
+    NEED_GPU="no"
+    ;;
+  *)
+    echo "[ERROR] Unsupported target: ${TARGET}"
+    echo "Supported targets: tensorrt, rebellions, furiosa"
+    exit 1
+    ;;
+esac
+
+if [ ! -f "${DOCKERFILE_PATH}" ]; then
+  echo "[ERROR] Dockerfile not found: ${DOCKERFILE_PATH}"
+  exit 1
+fi
+
+echo "Building Docker image: ${IMAGE_NAME}:${TAG}"
+echo "Target: ${TARGET}"
+echo "Dockerfile: ${DOCKERFILE_PATH}"
+echo "Base image: ${BASE_IMAGE}"
+echo "Container name: ${CONTAINER_NAME}"
+echo "Workspace(repo): ${WORKSPACE_DIR}"
+echo "UID:GID = ${UID_VALUE}:${GID_VALUE}"
+
+cd "${PROJECT_ROOT}"
+
 DOCKER_BUILDKIT=1 docker build \
-  --secret id=netrc,src=.secrets/netrc \
-  -t ${IMAGE_NAME}:${TAG} \
-  --build-arg BASE_IMAGE=${BASE_IMAGE} \
-  --build-arg UID=${UID_VALUE} \
-  --build-arg GID=${GID_VALUE} \
+  "${SECRET_ARGS[@]}" \
+  -f "${DOCKERFILE_PATH}" \
+  -t "${IMAGE_NAME}:${TAG}" \
+  --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+  --build-arg UID="${UID_VALUE}" \
+  --build-arg GID="${GID_VALUE}" \
   .
 
-echo " Build complete!"
-
-
-# echo " Run container with:"
-# echo " docker run --gpus all -it --security-opt seccomp=unconfined --name ${IMAGE_NAME}_dev -v /home/etri/users/rskim/uDC:/workspace ${IMAGE_NAME}:${TAG}"
-
+echo "Build complete!"
 
 ########################################
-# NVIDIA Docker 모드 자동 감지
+# NVIDIA Docker mode auto detect
 ########################################
 
 detect_nvidia_mode() {
-  # 1) --gpus all 테스트
   if docker run --rm --gpus all hello-world >/dev/null 2>&1; then
     echo "gpus"
     return 0
   fi
 
-  # 2) --runtime=nvidia 테스트
   if docker run --rm --runtime=nvidia hello-world >/dev/null 2>&1; then
     echo "runtime"
     return 0
   fi
 
-  # 3) 둘 다 안 되면
   echo "none"
   return 0
 }
 
 MODE=$(detect_nvidia_mode)
-
-echo " Detected NVIDIA Docker mode: ${MODE}"
 
 case "${MODE}" in
   gpus)
@@ -70,65 +174,40 @@ case "${MODE}" in
     ;;
 esac
 
+echo ""
+echo "Detected NVIDIA Docker mode: ${MODE}"
+echo ""
 
 ########################################
-# 실행 예시 출력
+# Run command output
 ########################################
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "$SCRIPT_DIR")"
-
-if [ "${MODE}" = "none" ]; then
-  echo " [WARN] --gpus all / --runtime=nvidia 둘 다 동작하지 않습니다."
-  echo "        GPU 설정이 다른 환경일 수 있으니, 필요시 직접 옵션을 추가하세요."
-  echo ""
-  echo " Run container (WITHOUT explicit GPU option) with:"
-  echo " docker run -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   -v /path/to/parent_folder:/workspace \\"
-  echo "   ${IMAGE_NAME}:${TAG} \\"
-  echo "   # e.g. \\"
-  echo "   docker run -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   -v ${PARENT_DIR}:/workspace"
-  echo "   ${IMAGE_NAME}:${TAG}"
-  echo ""
-  echo " Run container (WITH RB/ARIES devices) with:"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   --device /dev/rsd0:/dev/rsd0 \\"
-  echo "   --device /dev/rbln0:/dev/rbln0 \\"
-  echo "   --device /dev/rbln1:/dev/rbln1 \\"
-  echo "   --device /dev/rbln2:/dev/rbln2 \\"
-  echo "   --device /dev/aries0:/dev/aries0 \\"
-  echo "   -v ${PARENT_DIR}:/workspace \\"
-  echo "   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \\"
-  echo "   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
-
+if [ "${NEED_GPU}" = "yes" ]; then
+  if [ "${MODE}" = "none" ]; then
+    echo "[WARN] GPU runtime was not detected automatically."
+    echo "       Please check NVIDIA Container Toolkit installation."
+    echo ""
+    echo "Run container with:"
+    echo "docker run -it --security-opt seccomp=unconfined \\"
+    echo "  --name ${CONTAINER_NAME} \\"
+    echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
+    echo "  ${IMAGE_NAME}:${TAG}"
+  else
+    echo "Run container with:"
+    echo "docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
+    echo "  --name ${CONTAINER_NAME} \\"
+    echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
+    echo "  ${IMAGE_NAME}:${TAG}"
+  fi
 else
-  echo " Run container with:"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   -v /path/to/parent_folder:/workspace \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
-  echo "   # e.g.\\"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   -v ${PARENT_DIR}:/workspace \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
-  echo ""
-  echo " Run container (WITH RB/ARIES devices) with:"
-  echo " docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-  echo "   --name ${IMAGE_NAME}_dev \\"
-  echo "   --device /dev/rsd0:/dev/rsd0 \\"
-  echo "   --device /dev/rbln0:/dev/rbln0 \\"
-  echo "   --device /dev/rbln1:/dev/rbln1 \\"
-  echo "   --device /dev/rbln2:/dev/rbln2 \\"
-  echo "   --device /dev/aries0:/dev/aries0 \\"
-  echo "   -v ${PARENT_DIR}:/workspace \\"
-  echo "   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \\"
-  echo "   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \\"
-  echo "   ${IMAGE_NAME}:${TAG}"
-  
+  echo "Run container with:"
+  echo "docker run -it --security-opt seccomp=unconfined \\"
+  echo "  --name ${CONTAINER_NAME} \\"
+  echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
+  echo "  ${IMAGE_NAME}:${TAG}"
 fi
+
+echo ""
+echo "After entering the container, test with:"
+echo "  python -m pip show unified-sdk"
+echo "  python -c \"import unified_sdk; print('unified_sdk import ok')\""
