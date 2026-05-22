@@ -67,11 +67,58 @@ unified-sdk/
 
 ## 💾 설치 방법
 
-아래 명령어로 프로젝트를 로컬 개발 모드로 설치할 수 있습니다:
+### 1-1. 깃허브 레포 클론 및 환경 빌드
 
-```bash
-pip install -e .
-```
+- 레포 클론:
+  ```bash
+  git clone https://github.com/etri/unified-npu-sdk.git
+  cd unified-npu-sdk
+  ```
+- (선택) Rebellions NPU를 사용할 경우, Rebellions SDK 접근을 위한 인증 파일 생성 필요(`.secrets/netrc`):
+  ```bash
+  mkdir -p .secrets
+  cat > .secrets/netrc <<'EOF'
+  machine pypi.rbln.ai
+  login YOUR_RBLN_USERNAME
+  password YOUR_RBLN_PASSWORD
+  EOF
+  ```
+- 개발 모드 설치:
+  ```bash
+  pip install -e .
+  ```
+- 도커 이미지 빌드:
+  ```bash
+  ./build.sh
+  ```
+  - 도커 이미지 빌드에는 시간이 다소 소요될 수 있습니다.
+
+### 1-2. 도커 컨테이너 실행
+
+- 기존 컨테이너 확인:
+  ```bash
+  docker ps -a
+  ```
+- 컨테이너 생성 및 실행(예시):
+  ```bash
+  docker run --gpus all -it --security-opt seccomp=unconfined \
+    --name unified-sdk_dev \
+    --device /dev/rsdo:/dev/rsdo \
+    --device /dev/rbln0:/dev/rbln0 \
+    --device /dev/rbln1:/dev/rbln1 \
+    --device /dev/rbln2:/dev/rbln2 \
+    --device /dev/aries0:/dev/aries0 \
+    -v /home/{PATH}/uDC:/workspace \
+    -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \
+    -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \
+    unified-sdk:cuda12.3
+  ```
+- 컨테이너 내부 장치 인식 확인:
+  ```bash
+  nvidia-smi
+  rbln-smi
+  ```
+  - `rbln-smi`는 Rebellions NPU를 사용하는 환경에서 확인합니다.
 
 ---
 
@@ -154,11 +201,58 @@ unified-sdk/
 
 ## 💾 Installation
 
-Install the project in editable (development) mode:
+### 1-1. Clone the repository and build environment
 
-```bash
-pip install -e .
-```
+- Clone repository:
+  ```bash
+  git clone https://github.com/etri/unified-npu-sdk.git
+  cd unified-npu-sdk
+  ```
+- (Optional) If you use Rebellions NPU, create an authentication file for Rebellions SDK access (`.secrets/netrc`):
+  ```bash
+  mkdir -p .secrets
+  cat > .secrets/netrc <<'EOF'
+  machine pypi.rbln.ai
+  login YOUR_RBLN_USERNAME
+  password YOUR_RBLN_PASSWORD
+  EOF
+  ```
+- Install in editable mode:
+  ```bash
+  pip install -e .
+  ```
+- Build Docker image:
+  ```bash
+  ./build.sh
+  ```
+  - Docker image build may take some time.
+
+### 1-2. Run Docker container
+
+- Check existing containers:
+  ```bash
+  docker ps -a
+  ```
+- Create and run container (example):
+  ```bash
+  docker run --gpus all -it --security-opt seccomp=unconfined \
+    --name unified-sdk_dev \
+    --device /dev/rsdo:/dev/rsdo \
+    --device /dev/rbln0:/dev/rbln0 \
+    --device /dev/rbln1:/dev/rbln1 \
+    --device /dev/rbln2:/dev/rbln2 \
+    --device /dev/aries0:/dev/aries0 \
+    -v /home/{PATH}/uDC:/workspace \
+    -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \
+    -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \
+    unified-sdk:cuda12.3
+  ```
+- Verify devices inside the container:
+  ```bash
+  nvidia-smi
+  rbln-smi
+  ```
+  - Check `rbln-smi` only in environments using Rebellions NPU.
 
 ---
 
