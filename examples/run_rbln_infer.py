@@ -1,17 +1,34 @@
 import timeit
 from pathlib import Path
+import sys
 
-import numpy as np
-import torch
-from torchvision.io.image import read_image
-from torchvision import transforms
+def _resolve_repo_root() -> Path:
+    ws_root = Path("/workspace/unified-sdk")
+    if ws_root.is_dir():
+        return ws_root
+    return Path(__file__).resolve().parents[1]
+
+
+REPO_ROOT = _resolve_repo_root()
+SRC_DIR = REPO_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+try:
+    import numpy as np
+    import torch
+    from torchvision.io.image import read_image
+    from torchvision import transforms
+except ImportError:
+    print("Error: 'numpy', 'torch', and 'torchvision' are required for the RBLN inference example.")
+    sys.exit(1)
 
 from unified_sdk.types import RuntimeConfig
 from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
 
 # ====== 경로 설정 (요청한 기준) ======
-REPO_ROOT = Path("/workspace/unified-sdk")
 ENGINE_PATH = REPO_ROOT / "builds" / "resnet50.rbln"   # <- builds 기준
 IMG_PATH = REPO_ROOT / "tests" / "input.jpg"
 LABELS_PATH = REPO_ROOT / "tests" / "imagenet_classes.txt"  # 있으면 사용, 없으면 cls_id만 출력
@@ -88,5 +105,3 @@ if __name__ == "__main__":
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
 
     destroy_runtime(rh)
-
-
