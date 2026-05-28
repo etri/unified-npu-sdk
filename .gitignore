@@ -1,6 +1,8 @@
 # Models and build output
 models/
 build_output/
+builds/
+tests/imagenet_classes.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -213,4 +215,3 @@ __marimo__/
 # Testing lint for commit system. 
 .secrets/
 .netrc
-
