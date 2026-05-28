@@ -5,8 +5,8 @@ import sys
 def _resolve_repo_root() -> Path:
     """
     기준:
-      1) /workspace/unified-sdk 가 있으면 그걸 사용
-      2) 없으면 현재 파일 위치(.../examples/run_rbln_build.py) 기준으로 repo root 추론
+      1) 컨테이너 내부 기본 마운트 경로(/workspace/unified-sdk)가 있으면 그걸 사용
+      2) 없으면 현재 파일 위치(.../examples/run_rbln_build.py) 기준으로 checkout root 추론
     """
     ws_root = Path("/workspace/unified-sdk")
     if ws_root.is_dir():
@@ -101,11 +101,12 @@ if __name__ == "__main__":
     cfg = BuildConfig(
         backend="rbln",
         model_or_path=model,
-        out_dir=str(BUILDS_DIR),   # /workspace/unified-sdk/builds
+        out_dir=str(BUILDS_DIR),   # container path: /workspace/unified-sdk/builds
         model_name="resnet50",
         precision="fp32",
         input_name="input",
         input_shape=(1, 3, 224, 224),
+        extra={"npu": "RBLN-CA22"},
         # 여러 입력 shape를 동시에 컴파일하려면:
         # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],
     )
