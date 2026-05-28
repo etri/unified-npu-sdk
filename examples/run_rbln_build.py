@@ -1,17 +1,6 @@
 # examples/run_rbln_build.py
 from pathlib import Path
-import os
-
-import torch
-from torchvision.models import resnet50
-
-try:
-    from unified_sdk.types import BuildConfig
-    from unified_sdk.build.api import build_unified
-except ImportError:
-    print("Error: 'unified_sdk' package not found. Please install it first.")
-    sys.exit(1)
-
+import sys
 
 def _resolve_repo_root() -> Path:
     """
@@ -22,12 +11,28 @@ def _resolve_repo_root() -> Path:
     ws_root = Path("/workspace/unified-sdk")
     if ws_root.is_dir():
         return ws_root
-
-    # examples/ 아래에 이 파일이 있다는 가정
     return Path(__file__).resolve().parents[1]
 
 
 REPO_ROOT = _resolve_repo_root()
+SRC_DIR = REPO_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+try:
+    import torch
+    from torchvision.models import resnet50
+except ImportError:
+    print("Error: 'torch' and 'torchvision' are required for the RBLN build example.")
+    sys.exit(1)
+
+try:
+    from unified_sdk.types import BuildConfig
+    from unified_sdk.build.api import build_unified
+except ImportError:
+    print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
+    sys.exit(1)
 EXAMPLES_DIR = REPO_ROOT / "examples"
 MODELS_DIR = REPO_ROOT / "models"
 BUILDS_DIR = REPO_ROOT / "builds"
@@ -108,4 +113,3 @@ if __name__ == "__main__":
     result = build_unified(cfg)
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
-

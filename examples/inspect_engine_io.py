@@ -1,5 +1,16 @@
 # examples/inspect_engine_io.py
 from pathlib import Path
+import sys
+
+
+def _resolve_repo_root() -> Path:
+    ws_root = Path("/workspace/unified-sdk")
+    if ws_root.is_dir():
+        return ws_root
+    return Path(__file__).resolve().parents[1]
+
+
+REPO_ROOT = _resolve_repo_root()
 
 # TensorRT가 설치되지 않은 환경에서도 import 에러가 나지 않도록 처리
 try:
@@ -48,4 +59,4 @@ def inspect(engine_path: str):
 
 if __name__ == "__main__":
     # YOLOv7로 빌드한 엔진 경로로 바꿔서 실행하세요.
-    inspect("build_output/yolov7_FP32.engine")
+    inspect(str(REPO_ROOT / "build_output" / "yolov7_FP32.engine"))
