@@ -1,0 +1,11 @@
+{
+  "name": "unified-sdk-rbln-dev",
+  "image": "unified-sdk:rbln",
+  "runArgs": [
+    "--device", "/dev/rsdo:/dev/rsdo",
+    "--device", "/dev/rbln0:/dev/rbln0",
+    "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
+  ],
+  "workspaceFolder": "/workspace/unified-sdk",
+  "remoteUser": "etri"
+}
