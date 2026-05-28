@@ -2,8 +2,8 @@
   "name": "unified-sdk-rbln-dev",
   "image": "unified-sdk:rbln",
   "runArgs": [
-    "--device", "/dev/rsdo:/dev/rsdo",
     "--device", "/dev/rbln0:/dev/rbln0",
+    "--device", "/dev/rbln1:/dev/rbln1",
     "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
   ],
   "workspaceFolder": "/workspace/unified-sdk",

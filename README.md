@@ -83,15 +83,21 @@ chmod 600 .secrets/netrc
 - **RBLN 드라이버**가 호스트에 설치되어 있어야 합니다 (`rbln-smi`로 확인).
   대부분의 클라우드 서버는 사전 설치되어 있습니다. 자세한 절차는
   <https://docs.rbln.ai/latest/getting_started/installation_guide.html> 참조.
-- 컨테이너 실행 시 `/dev/rsdo`, `/dev/rbln*` 디바이스를 `--device`로 전달해야 합니다.
+- 컨테이너 실행 시 실제로 존재하는 RBLN 장치만 `--device`로 전달하면 됩니다.
+  일부 서버는 `/dev/rbln0`, `/dev/rbln1`만 있고 `/dev/rsdo`는 없을 수 있습니다.
+  `./build.sh`는 현재 호스트에서 보이는 `/dev/rbln*`와 선택적 `/dev/rsdo`를 자동 감지해
+  `docker run` 예시를 출력합니다.
+- NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
+  예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
 ### 3. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
 
 ```bash
 # RBLN Portal 계정 필요. ~/.netrc에 pypi.rbln.ai 자격이 있어야 함.
 pip install -e .
-pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler
-# 특정 버전을 고정하려면: rebel-compiler==0.10.3
+pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.9.4
+# host driver 버전에 따라 맞는 버전으로 바꿔야 합니다.
+# 예: driver 2.0.1 -> rebel-compiler==0.9.4
 ```
 
 ### 4. Docker 빌드 & 실행
@@ -101,14 +107,14 @@ pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-컨테이너 실행 예시 (RBLN 디바이스 마운트):
+컨테이너 실행 예시 (현재 호스트에 `/dev/rbln0`, `/dev/rbln1`만 있는 경우):
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
   --name unified-sdk_rbln_dev \
-  --device /dev/rsdo:/dev/rsdo \
   --device /dev/rbln0:/dev/rbln0 \
   --device /dev/rbln1:/dev/rbln1 \
+  -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
   -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \
   -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \
@@ -118,8 +124,15 @@ docker run -it --security-opt seccomp=unconfined \
 컨테이너 내부 점검:
 
 ```bash
+# repo를 /workspace/unified-sdk 로 직접 마운트한 경우
+cd /workspace/unified-sdk
+
+# 부모 디렉터리(uDC)를 /workspace 로 마운트했다면:
+# cd /workspace/unified-npu-sdk
+
 rbln-smi
-python -c "import unified_sdk, rebel; print('OK')"
+python3 -c "import unified_sdk, rebel; print('OK')"
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py
 ```
 
 ---
@@ -146,7 +159,7 @@ cfg = BuildConfig(
     precision="fp32",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    extra={"npu": "RBLN-CA22"},  # 일부 서버는 명시적 NPU 지정 필요
+    extra={"npu": "RBLN-CA22"},  # 또는 os.environ["RBLN_NPU_NAME"]
     # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],  # 옵션
 )
 result = build_unified(cfg)
@@ -186,5 +199,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 RBLN 어댑터만 노출합니다. 다중 백엔드(TRT+RBLN)는 `main` 브랜치에서 사용하세요.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
-- 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다.
+- 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
+- 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
+- `Dockerfile` 기본 `rebel-compiler` 버전은 `0.9.4`입니다. 현재 호스트 driver가 다르면 `./build.sh --compiler-version <version>`으로 맞춰 빌드하세요.
+- 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.
 - 새 백엔드 추가가 필요하면 해당 vendor 브랜치(예: `qb-only`, `furiosa-only`)에서 작업하세요.
