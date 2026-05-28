@@ -67,7 +67,7 @@ unified-sdk/
 
 ## 💾 설치 방법
 
-### 1-1. 깃허브 레포 클론 및 환경 빌드
+### 1-1. 깃허브 레포 클론 및 도커 이미지 빌드
 
 - 레포 클론:
   ```bash
@@ -82,10 +82,6 @@ unified-sdk/
   login YOUR_RBLN_USERNAME
   password YOUR_RBLN_PASSWORD
   EOF
-  ```
-- 개발 모드 설치:
-  ```bash
-  pip install -e .
   ```
 - 도커 이미지 빌드:
   ```bash
@@ -119,6 +115,10 @@ unified-sdk/
   rbln-smi
   ```
   - `rbln-smi`는 Rebellions NPU를 사용하는 환경에서 확인합니다.
+- 개발 모드 설치(컨테이너 내부):
+  ```bash
+  pip install -e .
+  ```
 
 ---
 
@@ -201,7 +201,7 @@ unified-sdk/
 
 ## 💾 Installation
 
-### 1-1. Clone the repository and build environment
+### 1-1. Clone the repository and build Docker image
 
 - Clone repository:
   ```bash
@@ -216,10 +216,6 @@ unified-sdk/
   login YOUR_RBLN_USERNAME
   password YOUR_RBLN_PASSWORD
   EOF
-  ```
-- Install in editable mode:
-  ```bash
-  pip install -e .
   ```
 - Build Docker image:
   ```bash
@@ -253,6 +249,10 @@ unified-sdk/
   rbln-smi
   ```
   - Check `rbln-smi` only in environments using Rebellions NPU.
+- Install in editable mode (inside the container):
+  ```bash
+  pip install -e .
+  ```
 
 ---
 
