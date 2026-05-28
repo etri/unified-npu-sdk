@@ -49,7 +49,7 @@ unified-sdk/
         ├── __init__.py
         ├── types.py              # 공통 데이터 구조 정의
         │
-        ├── builder/                # 모델 빌드(컴파일) 관련 모듈
+        ├── build/                  # 모델 빌드(컴파일) 관련 모듈
         │   ├── __init__.py
         │   ├── api.py            # 상위 진입점 (backend-agnostic)
         │   ├── registry.py       # 백엔드 빌더 등록/조회 관리
@@ -185,7 +185,7 @@ unified-sdk/
         ├── __init__.py
         ├── types.py              # Common data structures
         │
-        ├── builder/              # Model build (compilation) modules
+        ├── build/              # Model build (compilation) modules
         │   ├── api.py            # Unified entry point
         │   ├── registry.py       # Backend builder registry
         │   ├── tensorrt_build.py # TensorRT build adapter
