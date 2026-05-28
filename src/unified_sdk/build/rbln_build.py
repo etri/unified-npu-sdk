@@ -21,6 +21,8 @@ class _RBLNBuildAdapter:
 
         dtype = torch.float16 if cfg.precision == "fp16" else torch.float32
         name = cfg.input_name or "input"
+        extra = cfg.extra or {}
+        npu = extra.get("npu")
 
         if cfg.bucketing_shapes:
             # bucketing: 여러 입력 shape를 리스트의 리스트 형태로
@@ -30,7 +32,11 @@ class _RBLNBuildAdapter:
         else:
             input_info = [(name, list(cfg.input_shape), dtype)]
 
-        compiled = rebel.compile_from_torch(model, input_info=input_info)
+        compile_kwargs: Dict[str, Any] = {"input_info": input_info}
+        if npu:
+            compile_kwargs["npu"] = npu
+
+        compiled = rebel.compile_from_torch(model, **compile_kwargs)
 
         out_dir = Path(cfg.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -41,8 +47,9 @@ class _RBLNBuildAdapter:
             "backend": self.name,
             "rbln_path": str(rbln_path),
             "input_info": input_info,
+            "npu": npu,
             "precision": cfg.precision,
-            "extra": cfg.extra or {},
+            "extra": extra,
         }
         return BuildResult(
             backend=self.name,
