@@ -1,17 +1,39 @@
 # examples/run_rbln_build.py
 from pathlib import Path
 import sys
+import os
+
+def _is_repo_root(path: Path) -> bool:
+    return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
+
 
 def _resolve_repo_root() -> Path:
     """
     기준:
-      1) 컨테이너 내부 기본 마운트 경로(/workspace/unified-sdk)가 있으면 그걸 사용
-      2) 없으면 현재 파일 위치(.../examples/run_rbln_build.py) 기준으로 checkout root 추론
+      1) 환경 변수 UNIFIED_SDK_REPO_ROOT 가 있으면 우선 사용
+      2) 현재 작업 디렉터리가 repo root 구조면 그걸 사용
+      3) 현재 파일 위치(.../examples/run_rbln_build.py) 기준으로 checkout root 추론
+      4) 마지막 fallback 으로 알려진 컨테이너 경로를 확인
     """
-    ws_root = Path("/workspace/unified-sdk")
-    if ws_root.is_dir():
-        return ws_root
-    return Path(__file__).resolve().parents[1]
+    env_root = os.getenv("UNIFIED_SDK_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if _is_repo_root(candidate):
+            return candidate
+
+    cwd = Path.cwd().resolve()
+    if _is_repo_root(cwd):
+        return cwd
+
+    file_root = Path(__file__).resolve().parents[1]
+    if _is_repo_root(file_root):
+        return file_root
+
+    for candidate in (Path("/workspace/unified-sdk"), Path("/workspace/unified-npu-sdk")):
+        if _is_repo_root(candidate):
+            return candidate
+
+    return file_root
 
 
 REPO_ROOT = _resolve_repo_root()
@@ -101,12 +123,12 @@ if __name__ == "__main__":
     cfg = BuildConfig(
         backend="rbln",
         model_or_path=model,
-        out_dir=str(BUILDS_DIR),   # container path: /workspace/unified-sdk/builds
+        out_dir=str(BUILDS_DIR),   # container path: <mounted-repo>/builds
         model_name="resnet50",
         precision="fp32",
         input_name="input",
         input_shape=(1, 3, 224, 224),
-        extra={"npu": "RBLN-CA22"},
+        extra={"npu": os.getenv("RBLN_NPU_NAME", "RBLN-CA22")},
         # 여러 입력 shape를 동시에 컴파일하려면:
         # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],
     )
