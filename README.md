@@ -137,6 +137,44 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py
 
 ---
 
+## 🚀 Backend Docker smoke
+
+아래 흐름은 **RBLN 장치가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `rbln-only`
+백엔드를 검증하는 표준 smoke 절차입니다. 추가 wrapper 계층 없이 Unified SDK의
+RBLN adapter가 vendor SDK(`rebel`)를 직접 호출합니다.
+
+```bash
+# 1) 이미지 빌드
+./build.sh
+
+# 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
+
+# 3) 컨테이너 내부에서 editable 설치 확인
+python3 -c "import unified_sdk, rebel; print('OK')"
+
+# 4) ResNet50 -> .rbln 컴파일
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --model-name resnet50 \
+  --precision fp32 \
+  --input-shape 1,3,224,224 \
+  --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
+
+# 5) .rbln 추론
+RBLN_DEVICES=0 python3 examples/run_rbln_infer.py \
+  --engine-path builds/resnet50.rbln \
+  --device 0 \
+  --tensor-type np \
+  --iters 50
+
+# 6) 모델 메타 best-effort 확인
+python3 examples/inspect_rbln_model.py builds/resnet50.rbln --device 0
+```
+
+예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
+`/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
+
+---
+
 ## 🚀 사용 예시
 
 ### 컴파일 (.rbln 생성)
@@ -203,4 +241,6 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
 - `Dockerfile` 기본 `rebel-compiler` 버전은 `0.9.4`입니다. 현재 호스트 driver가 다르면 `./build.sh --compiler-version <version>`으로 맞춰 빌드하세요.
 - 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.
+- 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_rbln_build.py --help`,
+  `python3 examples/run_rbln_infer.py --help`, `python3 examples/inspect_rbln_model.py --help`로 확인하세요.
 - 새 백엔드 추가가 필요하면 해당 vendor 브랜치(예: `qb-only`, `furiosa-only`)에서 작업하세요.
