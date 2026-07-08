@@ -69,12 +69,10 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _check_files(engine_path: Path, image_path: Path):
+def _check_files(engine_path: Path):
     missing = []
     if not engine_path.is_file():
         missing.append(f"- engine: {engine_path}")
-    if not image_path.is_file():
-        missing.append(f"- image : {image_path}")
     if missing:
         raise FileNotFoundError("필요한 파일이 없습니다:\n" + "\n".join(missing))
 
@@ -113,18 +111,23 @@ if __name__ == "__main__":
     if args.iters <= 0:
         raise ValueError("--iters must be > 0")
 
-    _check_files(engine_path, image_path)
+    _check_files(engine_path)
     labels = _load_labels(labels_path)
 
-    preprocess = transforms.Compose([
-        transforms.Resize(256, antialias=True),
-        transforms.CenterCrop(224),
-        transforms.ConvertImageDtype(torch.float32),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    if image_path.is_file():
+        preprocess = transforms.Compose([
+            transforms.Resize(256, antialias=True),
+            transforms.CenterCrop(224),
+            transforms.ConvertImageDtype(torch.float32),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+        img = read_image(str(image_path))                 # [C,H,W], uint8
+        batch_t = preprocess(img).unsqueeze(0)
+        input_source = str(image_path)
+    else:
+        batch_t = torch.zeros(args.input_shape, dtype=torch.float32)
+        input_source = f"synthetic zeros {args.input_shape}"
 
-    img = read_image(str(image_path))                 # [C,H,W], uint8
-    batch_t = preprocess(img).unsqueeze(0)
     batch = batch_t if args.tensor_type == "pt" else batch_t.numpy()
 
     cfg = RuntimeConfig(
@@ -163,6 +166,6 @@ if __name__ == "__main__":
         print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
-    print(f"(engine={engine_path}, tensor_type={args.tensor_type}, device={args.device})")
+    print(f"(engine={engine_path}, input={input_source}, tensor_type={args.tensor_type}, device={args.device})")
 
     destroy_runtime(rh)

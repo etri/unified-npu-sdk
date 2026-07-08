@@ -77,6 +77,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="Directory for compiled .rbln output.")
     parser.add_argument("--model-name", default="resnet50", help="Output model name without extension.")
+    parser.add_argument(
+        "--require-weights",
+        action="store_true",
+        help="Fail if no local ResNet50 weights are found. Default smoke mode uses random weights.",
+    )
     parser.add_argument("--precision", choices=("fp32", "fp16"), default="fp32")
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
@@ -84,6 +89,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--bucketing-shapes",
         default=None,
         help="Semicolon-separated input shapes, e.g. '1,3,224,224;4,3,224,224'.",
+    )
+    parser.add_argument(
+        "--model-trace-method",
+        choices=("export", "export_strict", "jittrace"),
+        default=None,
+        help="Optional RBLN trace method passed to compile_from_torch.",
     )
     parser.add_argument("--npu", default=os.getenv("RBLN_NPU_NAME", "RBLN-CA22"))
     return parser
@@ -93,9 +104,8 @@ def _check_repo_layout(models_dir: Path, out_dir: Path):
     missing = []
     if not EXAMPLES_DIR.is_dir():
         missing.append(str(EXAMPLES_DIR))
-    if not models_dir.is_dir():
-        missing.append(str(models_dir))
 
+    models_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if missing:
@@ -106,13 +116,10 @@ def _check_repo_layout(models_dir: Path, out_dir: Path):
         )
 
 
-def _find_weights(models_dir: Path) -> Path:
+def _find_weights(models_dir: Path) -> Path | None:
     candidates = sorted(models_dir.glob("resnet50*.pth")) + sorted(models_dir.glob("resnet50*.pt"))
     if not candidates:
-        raise FileNotFoundError(
-            f"{models_dir} 에서 resnet50 가중치 파일을 찾지 못했습니다.\n"
-            f"예) {models_dir/'resnet50.pth'} 또는 {models_dir/'resnet50_state_dict.pth'}"
-        )
+        return None
     return candidates[0]
 
 
@@ -153,13 +160,19 @@ if __name__ == "__main__":
     _check_repo_layout(models_dir, out_dir)
 
     weights_path = args.weights.expanduser().resolve() if args.weights else _find_weights(models_dir)
-    if not weights_path.is_file():
+    if args.require_weights and weights_path is None:
+        raise FileNotFoundError(
+            f"{models_dir} 에서 resnet50 가중치 파일을 찾지 못했습니다.\n"
+            f"예) {models_dir/'resnet50.pth'} 또는 {models_dir/'resnet50_state_dict.pth'}"
+        )
+    if weights_path is not None and not weights_path.is_file():
         raise FileNotFoundError(f"weights file not found: {weights_path}")
 
-    # 다운로드 트리거 제거 (로컬 state_dict만 사용)
+    # 기본 smoke는 외부 다운로드 없이 ResNet50 random weight 모델로 컴파일 경로를 검증합니다.
     model = resnet50(weights=None)
-    sd = _load_state_dict(weights_path, torch)
-    model.load_state_dict(sd, strict=False)
+    if weights_path is not None:
+        sd = _load_state_dict(weights_path, torch)
+        model.load_state_dict(sd, strict=False)
     model.eval()
 
     cfg = BuildConfig(
@@ -171,10 +184,17 @@ if __name__ == "__main__":
         input_name=args.input_name,
         input_shape=args.input_shape,
         bucketing_shapes=_parse_bucketing_shapes(args.bucketing_shapes),
-        extra={"npu": args.npu} if args.npu else {},
+        extra={
+            key: value
+            for key, value in {
+                "npu": args.npu,
+                "model_trace_method": args.model_trace_method,
+            }.items()
+            if value
+        },
     )
 
     result = build_unified(cfg)
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
-    print(f"(weights={weights_path})")
+    print(f"(weights={weights_path if weights_path else 'random-init smoke'})")

@@ -66,7 +66,7 @@
 # cd ~/Codings/Micro_DC/rbln-only
 #
 # 예시 2) 일반 저장소 루트에서 rbln-only 브랜치 체크아웃
-# cd ~/users/jskang/uDC/unified-npu-sdk
+# cd ~/work/unified-npu-sdk
 
 # Rebellions SDK 사설 인덱스(pypi.rbln.ai) 접근용 자격 파일
 mkdir -p .secrets
@@ -84,9 +84,10 @@ chmod 600 .secrets/netrc
   대부분의 클라우드 서버는 사전 설치되어 있습니다. 자세한 절차는
   <https://docs.rbln.ai/latest/getting_started/installation_guide.html> 참조.
 - 컨테이너 실행 시 실제로 존재하는 RBLN 장치만 `--device`로 전달하면 됩니다.
-  일부 서버는 `/dev/rbln0`, `/dev/rbln1`만 있고 `/dev/rsdo`는 없을 수 있습니다.
-  `./build.sh`는 현재 호스트에서 보이는 `/dev/rbln*`와 선택적 `/dev/rsdo`를 자동 감지해
-  `docker run` 예시를 출력합니다.
+  공식 권장 경로는 RBLN Container Toolkit의 CDI handle(`rebellions.ai/npu=all`)입니다.
+  `./build.sh`는 `/var/run/cdi/rbln.yaml`이 있으면 CDI를 우선 사용하고, 없으면 현재 호스트에서
+  보이는 `/dev/rbln*`와 `rbln-smi`/`rbln-stat` 실행 파일을 fallback으로 감지해 `docker run`
+  예시를 출력합니다.
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
   예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
@@ -94,10 +95,11 @@ chmod 600 .secrets/netrc
 
 ```bash
 # RBLN Portal 계정 필요. ~/.netrc에 pypi.rbln.ai 자격이 있어야 함.
+pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
 pip install -e .
-pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.9.4
-# host driver 버전에 따라 맞는 버전으로 바꿔야 합니다.
-# 예: driver 2.0.1 -> rebel-compiler==0.9.4
+pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.11.0
+# host driver/SDK 기준에 따라 맞는 버전으로 바꿔야 합니다.
+# 예: RBLN SDK 0.11.0 검증 환경 -> rebel-compiler==0.11.0
 ```
 
 ### 4. Docker 빌드 & 실행
@@ -107,19 +109,25 @@ pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.9.4
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-컨테이너 실행 예시 (현재 호스트에 `/dev/rbln0`, `/dev/rbln1`만 있는 경우):
+`./build.sh`는 기본적으로 `torch`/`torchvision`을 CPU wheel index
+(`<https://download.pytorch.org/whl/cpu>`)에서 먼저 설치합니다. RBLN 컴파일 경로에는
+CUDA wheel이 필요 없고, CUDA wheel 조합은 compiler frontend 진단을 어렵게 만들 수 있습니다.
+다른 PyTorch index를 써야 하면 `PYTORCH_INDEX_URL=... ./build.sh` 또는
+`./build.sh --pytorch-index-url <url>`로 바꿀 수 있습니다.
+
+컨테이너 실행 예시 (RBLN Container Toolkit CDI 설정이 완료된 경우):
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
   --name unified-sdk_rbln_dev \
-  --device /dev/rbln0:/dev/rbln0 \
-  --device /dev/rbln1:/dev/rbln1 \
+  --device rebellions.ai/npu=all \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
-  -v /usr/local/bin/rbln-smi:/usr/local/bin/rbln-smi \
-  -v /usr/local/bin/rbln-stat:/usr/local/bin/rbln-stat \
   unified-sdk:rbln
 ```
+
+CDI가 없는 호스트에서는 `./build.sh`가 감지한 `/dev/rbln*` 기반 fallback 실행 예시를
+출력합니다.
 
 컨테이너 내부 점검:
 
@@ -149,10 +157,14 @@ RBLN adapter가 vendor SDK(`rebel`)를 직접 호출합니다.
 
 # 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
 
-# 3) 컨테이너 내부에서 editable 설치 확인
+# 3) 컨테이너 내부에서 장치/패키지 확인
+command -v rbln-smi && rbln-smi || true
 python3 -c "import unified_sdk, rebel; print('OK')"
+python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
+python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
 # 4) ResNet50 -> .rbln 컴파일
+#    기본 smoke는 외부 weight 없이 ResNet50 random-init 모델로 컴파일 경로를 검증합니다.
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --model-name resnet50 \
   --precision fp32 \
@@ -160,10 +172,11 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
 # 5) .rbln 추론
+#    tests/input.jpg가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
 RBLN_DEVICES=0 python3 examples/run_rbln_infer.py \
   --engine-path builds/resnet50.rbln \
   --device 0 \
-  --tensor-type np \
+  --tensor-type pt \
   --iters 50
 
 # 6) 모델 메타 best-effort 확인
@@ -239,7 +252,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
 - 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
-- `Dockerfile` 기본 `rebel-compiler` 버전은 `0.9.4`입니다. 현재 호스트 driver가 다르면 `./build.sh --compiler-version <version>`으로 맞춰 빌드하세요.
+- `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
 - 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.
 - 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_rbln_build.py --help`,
   `python3 examples/run_rbln_infer.py --help`, `python3 examples/inspect_rbln_model.py --help`로 확인하세요.
