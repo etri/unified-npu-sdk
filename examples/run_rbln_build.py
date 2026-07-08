@@ -1,4 +1,5 @@
 # examples/run_rbln_build.py
+import argparse
 from pathlib import Path
 import sys
 import os
@@ -43,13 +44,6 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
-    import torch
-    from torchvision.models import resnet50
-except ImportError:
-    print("Error: 'torch' and 'torchvision' are required for the RBLN build example.")
-    sys.exit(1)
-
-try:
     from unified_sdk.types import BuildConfig
     from unified_sdk.build.api import build_unified
 except ImportError:
@@ -60,15 +54,49 @@ MODELS_DIR = REPO_ROOT / "models"
 BUILDS_DIR = REPO_ROOT / "builds"
 
 
-def _check_repo_layout():
+def _parse_shape(value: str) -> tuple[int, ...]:
+    parts = value.replace("x", ",").split(",")
+    try:
+        shape = tuple(int(part.strip()) for part in parts if part.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid shape: {value!r}") from exc
+    if not shape or any(dim <= 0 for dim in shape):
+        raise argparse.ArgumentTypeError(f"shape must contain positive integers: {value!r}")
+    return shape
+
+
+def _parse_bucketing_shapes(value: str | None) -> list[tuple[int, ...]] | None:
+    if not value:
+        return None
+    return [_parse_shape(item) for item in value.split(";") if item.strip()]
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Compile torchvision ResNet50 to an RBLN model.")
+    parser.add_argument("--weights", type=Path, default=None, help="Path to resnet50 .pth/.pt weights.")
+    parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights.")
+    parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="Directory for compiled .rbln output.")
+    parser.add_argument("--model-name", default="resnet50", help="Output model name without extension.")
+    parser.add_argument("--precision", choices=("fp32", "fp16"), default="fp32")
+    parser.add_argument("--input-name", default="input")
+    parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
+    parser.add_argument(
+        "--bucketing-shapes",
+        default=None,
+        help="Semicolon-separated input shapes, e.g. '1,3,224,224;4,3,224,224'.",
+    )
+    parser.add_argument("--npu", default=os.getenv("RBLN_NPU_NAME", "RBLN-CA22"))
+    return parser
+
+
+def _check_repo_layout(models_dir: Path, out_dir: Path):
     missing = []
     if not EXAMPLES_DIR.is_dir():
         missing.append(str(EXAMPLES_DIR))
-    if not MODELS_DIR.is_dir():
-        missing.append(str(MODELS_DIR))
+    if not models_dir.is_dir():
+        missing.append(str(models_dir))
 
-    # builds는 없으면 만들어줌 (완화)
-    BUILDS_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if missing:
         raise FileNotFoundError(
@@ -88,8 +116,8 @@ def _find_weights(models_dir: Path) -> Path:
     return candidates[0]
 
 
-def _load_state_dict(path: Path) -> dict:
-    obj = torch.load(path, map_location="cpu")
+def _load_state_dict(path: Path, torch_module) -> dict:
+    obj = torch_module.load(path, map_location="cpu")
     if isinstance(obj, dict):
         if "state_dict" in obj and isinstance(obj["state_dict"], dict):
             obj = obj["state_dict"]
@@ -110,29 +138,43 @@ def _load_state_dict(path: Path) -> dict:
 
 
 if __name__ == "__main__":
-    _check_repo_layout()
+    args = _build_parser().parse_args()
 
-    weights_path = _find_weights(MODELS_DIR)
+    try:
+        import torch
+        from torchvision.models import resnet50
+    except ImportError:
+        print("Error: 'torch' and 'torchvision' are required for the RBLN build example.")
+        sys.exit(1)
+
+    models_dir = args.models_dir.expanduser().resolve()
+    out_dir = args.out_dir.expanduser().resolve()
+
+    _check_repo_layout(models_dir, out_dir)
+
+    weights_path = args.weights.expanduser().resolve() if args.weights else _find_weights(models_dir)
+    if not weights_path.is_file():
+        raise FileNotFoundError(f"weights file not found: {weights_path}")
 
     # 다운로드 트리거 제거 (로컬 state_dict만 사용)
     model = resnet50(weights=None)
-    sd = _load_state_dict(weights_path)
+    sd = _load_state_dict(weights_path, torch)
     model.load_state_dict(sd, strict=False)
     model.eval()
 
     cfg = BuildConfig(
         backend="rbln",
         model_or_path=model,
-        out_dir=str(BUILDS_DIR),   # container path: <mounted-repo>/builds
-        model_name="resnet50",
-        precision="fp32",
-        input_name="input",
-        input_shape=(1, 3, 224, 224),
-        extra={"npu": os.getenv("RBLN_NPU_NAME", "RBLN-CA22")},
-        # 여러 입력 shape를 동시에 컴파일하려면:
-        # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],
+        out_dir=str(out_dir),
+        model_name=args.model_name,
+        precision=args.precision,
+        input_name=args.input_name,
+        input_shape=args.input_shape,
+        bucketing_shapes=_parse_bucketing_shapes(args.bucketing_shapes),
+        extra={"npu": args.npu} if args.npu else {},
     )
 
     result = build_unified(cfg)
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
+    print(f"(weights={weights_path})")
