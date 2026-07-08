@@ -25,6 +25,16 @@ def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
     npu = extra.get("npu")
     if npu is not None and (not isinstance(npu, str) or not npu.strip()):
         raise ValueError("BuildConfig.extra['npu'] must be a non-empty string when provided")
+    model_trace_method = extra.get("model_trace_method")
+    if model_trace_method is not None and model_trace_method not in (
+        "export",
+        "export_strict",
+        "jittrace",
+    ):
+        raise ValueError(
+            "BuildConfig.extra['model_trace_method'] must be one of: "
+            "'export', 'export_strict', 'jittrace'"
+        )
     return extra
 
 
@@ -71,12 +81,15 @@ class _RBLNBuildAdapter:
             input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
             input_info = [(name, list(input_shape), dtype)]
 
-        compile_kwargs: Dict[str, Any] = {"input_info": input_info}
+        compile_kwargs: Dict[str, Any] = {}
         if npu:
             compile_kwargs["npu"] = npu
+        model_trace_method = extra.get("model_trace_method")
+        if model_trace_method:
+            compile_kwargs["model_trace_method"] = model_trace_method
 
         try:
-            compiled = rebel.compile_from_torch(model, **compile_kwargs)
+            compiled = rebel.compile_from_torch(model, input_info, **compile_kwargs)
         except Exception as exc:
             raise RuntimeError(f"RBLN compile_from_torch failed: {exc}") from exc
 
