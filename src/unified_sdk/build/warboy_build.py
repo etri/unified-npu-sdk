@@ -24,6 +24,12 @@ _VENDOR_API_MAP = {
     "pre_quantization": "furiosa.quantizer (not wrapped here; quantized ONNX is expected)",
     "artifact": ".enf",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "shutil.copyfile(src_enf, enf_path)": "build_unified(cfg) for provided .enf",
+    "furiosa-compiler <quantized_onnx> -o <enf_path> ...": "build_unified(cfg) for quantized ONNX compile",
+    "furiosa.quantizer": "not wrapped; prepare quantized ONNX before build_unified(cfg)",
+    ".enf artifact": "BuildResult.compiled_model_path",
+}
 
 
 # furiosa-compiler 타깃 (Warboy 는 2 PE. 참조 가이드 기준 warboy-2pe 사용)
@@ -79,6 +85,18 @@ def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
             "target_ir": extra.get("target_ir", "enf"),
             "compiler_config": extra.get("compiler_config"),
         },
+    }
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": "build_unified(cfg)",
+        "backend": "warboy",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
     }
 
 
