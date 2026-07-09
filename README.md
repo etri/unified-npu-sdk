@@ -60,55 +60,26 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 ### 1. 호스트 사전 요구사항
 
 - **NVIDIA GPU 드라이버**가 호스트에 정상 설치되어 있어야 합니다.
-- **Docker Engine** 과 **NVIDIA Container Toolkit**이 함께 설치되어 있어야 Docker 컨테이너에서 GPU를 사용할 수 있습니다.
+- **Docker Engine**, **docker buildx 플러그인**, **NVIDIA Container Toolkit**이 준비되어 있어야 합니다.
 - `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
-기본 확인:
+최소 확인 항목:
 
 ```bash
 nvidia-smi
 docker --version
-docker run --rm hello-world
+docker buildx version
 ```
 
-`docker run --rm --gpus all ...` 에서 아래와 같은 에러가 뜨면:
-
-```text
-could not select device driver "" with capabilities: [[gpu]]
-```
-
-대개 **NVIDIA Container Toolkit 미설치/미설정** 상태입니다. Ubuntu 예시:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg2 docker.io
-
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-```
-
-GPU 컨테이너 검증:
-
-```bash
-docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
-```
+아래가 모두 통과해야 `./build.sh` 까지 무리 없이 진행됩니다.
 
 ### 2. Docker 사전 준비
 
 - `trt-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 권장하지 않습니다.
-- `docker` 명령이 없으면 먼저 Docker Engine 을 설치해야 합니다.
-- `./build.sh`는 **BuildKit + buildx** 를 사용하므로 `docker buildx` 플러그인도 함께 준비되어 있어야 합니다.
-- GPU 컨테이너 실행은 위 1번의 Toolkit 설정까지 끝난 뒤 확인합니다.
+- Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `buildx`가 없을 수 있습니다.
+- 설치 후에는 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인해야 합니다.
+- GPU 컨테이너 실행은 `nvidia-ctk runtime configure --runtime=docker` 이후 다시 확인합니다.
 
 Ubuntu 예시:
 
@@ -131,22 +102,58 @@ sudo usermod -aG docker $USER
 newgrp docker
 docker --version
 docker buildx version
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
 docker run --rm hello-world
 ```
 
-GPU 컨테이너 사전 확인:
+NVIDIA Container Toolkit 설정:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg2
+
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+최종 검증:
 
 ```bash
 nvidia-smi
+docker --version
+docker buildx version
+docker run --rm hello-world
 docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
 ```
 
-> Ubuntu 기본 저장소의 `docker.io` 패키지만 설치한 경우 `docker buildx` 플러그인이 없을 수 있습니다.
-> 이 경우 위 예시처럼 **Docker 공식 apt 저장소** 기준으로 `docker-buildx-plugin`까지 함께 설치하세요.
+문제 해결 힌트:
+
 > `docker: command not found` 가 뜨면 Docker Engine 이 아직 설치되지 않은 상태입니다.
 > `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
-> 가 뜨면 `docker-buildx-plugin` 설치가 필요합니다.
-> `--gpus all` 이 동작하지 않으면 NVIDIA Container Toolkit 설정을 먼저 완료해야 합니다.
+> 가 뜨면 `docker-buildx-plugin`이 없는 상태입니다. `docker.io` 대신 Docker 공식 apt 저장소 기준 설치를 권장합니다.
+> `could not select device driver "" with capabilities: [[gpu]]` 가 뜨면 NVIDIA Container Toolkit 미설치/미설정 상태일 가능성이 큽니다.
+> `Cannot connect to the Docker daemon at unix:///var/run/docker.sock` 가 뜨면 daemon/socket 상태를 먼저 확인하세요:
+
+```bash
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
+sudo systemctl daemon-reload
+sudo systemctl reset-failed docker.service docker.socket
+sudo systemctl enable docker.socket
+sudo systemctl start docker.socket
+sudo systemctl restart docker.service
+docker version
+```
 
 ### 3. Docker 빌드 & 실행
 
