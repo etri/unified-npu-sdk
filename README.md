@@ -63,17 +63,33 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
-### 2. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
+### 2. Docker 사전 준비
+
+- `trt-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 권장하지 않습니다.
+- `docker` 명령이 없으면 먼저 Docker Engine 을 설치해야 합니다.
+- GPU 컨테이너 실행을 위해 **NVIDIA Container Toolkit**도 함께 준비되어 있어야 합니다.
+
+Ubuntu 예시:
 
 ```bash
-pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision  # ONNX 내보내기용
-pip install -e .
-pip install numpy onnx pycuda
-# tensorrt 는 NVIDIA 공식 wheel 또는 컨테이너 기준으로 맞추세요.
+sudo apt update
+sudo apt install -y docker.io
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+docker --version
+docker run --rm hello-world
 ```
 
-> `unified_sdk`는 `tensorrt`/`pycuda`를 **어댑터 메서드 내부에서 lazy import** 하므로,
-> GPU 가 없는 환경에서도 `import unified_sdk` 자체는 성공합니다(실제 build/infer 시점에만 필요).
+GPU 컨테이너 사전 확인:
+
+```bash
+nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
+```
+
+> `docker: command not found` 가 뜨면 Docker Engine 이 아직 설치되지 않은 상태입니다.
+> `--gpus all` 이 동작하지 않으면 NVIDIA Container Toolkit 설정을 먼저 완료해야 합니다.
 
 ### 3. Docker 빌드 & 실행
 
