@@ -8,6 +8,26 @@ from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 
+_CAPABILITY_FAMILY = "vision.low-level-engine-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "deserialize_engine",
+    "create_execution_context",
+    "allocate_host_and_device_buffers",
+    "bind_tensor_addresses",
+    "copy_h2d_execute_copy_d2h",
+    "free_device_buffers",
+)
+_VENDOR_API_MAP = {
+    "deserialize_engine": "trt.Runtime(logger).deserialize_cuda_engine(engine_bytes)",
+    "create_context": "engine.create_execution_context()",
+    "allocate_buffers": "pycuda.driver.pagelocked_empty / mem_alloc / Stream",
+    "bind_tensors": "context.set_tensor_address(...) or v2 bindings",
+    "infer": "context.execute_async_v3(stream_handle=...) or context.execute_v2(bindings)",
+    "destroy": "device_buffer.free() best-effort",
+}
+
+
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"RuntimeConfig.{field_name} must be a non-empty string")
@@ -163,6 +183,9 @@ class _TensorRTRuntime:
             "use_v3": use_v3,
             "out_shape": out_shape,
             "extra": extra,
+            "capability_family": _CAPABILITY_FAMILY,
+            "runtime_pipeline": _RUNTIME_PIPELINE,
+            "vendor_api_map": _VENDOR_API_MAP,
         }
 
         return RuntimeHandle(
