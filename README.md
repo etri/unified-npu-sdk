@@ -59,15 +59,55 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 
 ### 1. 호스트 사전 요구사항
 
-- **NVIDIA GPU 드라이버**와 **NVIDIA Container Toolkit**이 설치되어 있어야 합니다 (`nvidia-smi`로 확인).
+- **NVIDIA GPU 드라이버**가 호스트에 정상 설치되어 있어야 합니다.
+- **Docker Engine** 과 **NVIDIA Container Toolkit**이 함께 설치되어 있어야 Docker 컨테이너에서 GPU를 사용할 수 있습니다.
 - `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
+
+기본 확인:
+
+```bash
+nvidia-smi
+docker --version
+docker run --rm hello-world
+```
+
+`docker run --rm --gpus all ...` 에서 아래와 같은 에러가 뜨면:
+
+```text
+could not select device driver "" with capabilities: [[gpu]]
+```
+
+대개 **NVIDIA Container Toolkit 미설치/미설정** 상태입니다. Ubuntu 예시:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg2 docker.io
+
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+GPU 컨테이너 검증:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
+```
 
 ### 2. Docker 사전 준비
 
 - `trt-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 권장하지 않습니다.
 - `docker` 명령이 없으면 먼저 Docker Engine 을 설치해야 합니다.
-- GPU 컨테이너 실행을 위해 **NVIDIA Container Toolkit**도 함께 준비되어 있어야 합니다.
+- GPU 컨테이너 실행은 위 1번의 Toolkit 설정까지 끝난 뒤 확인합니다.
 
 Ubuntu 예시:
 
