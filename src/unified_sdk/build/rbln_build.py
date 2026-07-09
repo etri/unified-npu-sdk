@@ -7,6 +7,23 @@ from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
+_CAPABILITY_FAMILY = "vision.direct-python-compiler"
+_BUILD_PIPELINE = (
+    "validate_config",
+    "resolve_input_info",
+    "resolve_compile_options",
+    "run_vendor_compile",
+    "save_artifact",
+    "emit_metadata",
+)
+_VENDOR_API_MAP = {
+    "source_model": "torch.nn.Module-like object",
+    "compile": "rebel.compile_from_torch(model, input_info, **compile_kwargs)",
+    "save_artifact": "compiled.save(str(rbln_path))",
+    "artifact": ".rbln",
+}
+
+
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"BuildConfig.{field_name} must be a non-empty string")
@@ -44,6 +61,18 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     if path.suffix != ".rbln":
         path = path.with_suffix(".rbln")
     return path
+
+
+def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "capability_family": _CAPABILITY_FAMILY,
+        "build_pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "compile_options": {
+            "npu": extra.get("npu"),
+            "model_trace_method": extra.get("model_trace_method"),
+        },
+    }
 
 
 class _RBLNBuildAdapter:
@@ -107,6 +136,7 @@ class _RBLNBuildAdapter:
             "npu": npu,
             "precision": cfg.precision,
             "extra": extra,
+            **_capability_metadata(extra),
         }
         return BuildResult(
             backend=self.name,
