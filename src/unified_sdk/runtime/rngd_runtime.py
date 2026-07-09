@@ -7,6 +7,23 @@ from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 
+_CAPABILITY_FAMILY = "llm.artifact-and-generation-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "load_llm_or_artifact",
+    "resolve_sampling_params",
+    "run_text_generation",
+    "extract_text",
+    "destroy_runtime",
+)
+_VENDOR_API_MAP = {
+    "create_runtime": "furiosa_llm.LLM(model_id) or furiosa_llm.LLM.from_artifacts(artifact_dir)",
+    "sampling": "furiosa_llm.SamplingParams(**params)",
+    "generate": "llm.generate(prompts, sampling)",
+    "destroy": "llm.shutdown/close/dispose best-effort",
+}
+
+
 _SAMPLING_KEYS = ("max_tokens", "temperature", "top_p", "top_k", "min_tokens")
 
 
@@ -76,6 +93,9 @@ class _RNGDRuntime:
                 "devices": cfg.devices,
                 "sampling_defaults": sampling_defaults,
                 "extra": dict(cfg.extra or {}),
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 

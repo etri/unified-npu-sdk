@@ -7,10 +7,41 @@ from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
+_CAPABILITY_FAMILY = "llm.artifact-and-generation"
+_BUILD_PIPELINE = (
+    "validate_config",
+    "resolve_model_ref_or_artifact",
+    "resolve_parallel_and_model_options",
+    "run_artifact_builder_or_return_model_ref",
+    "verify_artifact",
+    "emit_metadata",
+)
+_VENDOR_API_MAP = {
+    "provided_model_ref": "HF model id or existing artifact directory",
+    "compile": "furiosa_llm.ArtifactBuilder(...).build(str(out_dir))",
+    "parallel_config": "furiosa_llm.ParallelConfig(tensor_parallel_size=..., pipeline_parallel_size=...)",
+    "model_config": "furiosa_llm.ModelConfig(max_model_len=...)",
+    "artifact": "artifact directory or HF model id",
+}
+
+
 def _require_positive_int(value: Any, field_name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError(f"BuildConfig.{field_name} must be a positive integer, got {value!r}")
     return value
+
+
+def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+    return {
+        "capability_family": _CAPABILITY_FAMILY,
+        "build_pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "selected_path": source,
+        "compile_options": {
+            "compile": bool(extra.get("compile", False)),
+            "bucket_config": extra.get("bucket_config"),
+        },
+    }
 
 
 class _RNGDBuildAdapter:
@@ -44,6 +75,7 @@ class _RNGDBuildAdapter:
                 "model_ref": model_ref,
                 "note": "HF model id or existing artifact dir; loaded by furiosa_llm.LLM at runtime",
                 "extra": extra,
+                **_capability_metadata(extra, "model_ref"),
             }
             return BuildResult(
                 backend=self.name,
@@ -108,6 +140,7 @@ class _RNGDBuildAdapter:
             "pipeline_parallel_size": pp,
             "max_model_len": cfg.max_model_len,
             "extra": extra,
+            **_capability_metadata(extra, "artifact_builder"),
         }
         return BuildResult(
             backend=self.name,
