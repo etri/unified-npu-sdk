@@ -1,47 +1,45 @@
+# syntax=docker/dockerfile:1.7
 # =========================
-# unified-sdk (TensorRT base)
+# unified-sdk (NVIDIA TensorRT base)
 # =========================
+# tensorrt 는 베이스 이미지에 포함되어 있다. GPU 는 런타임에 --gpus all 로 전달한다.
 ARG BASE_IMAGE=nvcr.io/nvidia/tensorrt:24.03-py3
 FROM ${BASE_IMAGE}
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=Asia/Seoul \
-    LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
-    
-    
-
-# 기본 작업 디렉토리
-WORKDIR /workspace
-
-# 1) requirements 설치
-COPY requirements.txt /workspace/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 2) unified-sdk 소스 복사
-#   → 호스트에서 Docker build를 할 때, 현재 디렉토리(.) 안에 unified-sdk 폴더가 있어야 함
-COPY . /workspace/unified-sdk
-
-
-# 3) unified-sdk 패키지 editable 설치
-WORKDIR /workspace/unified-sdk
-RUN pip install --no-cache-dir -e .
-
-# 4) workspace로 다시 돌아오기
-WORKDIR /workspace
-
-
-RUN mkdir -p /workspace
 
 ARG USERNAME=etri
 ARG UID=1000
 ARG GID=1000
-RUN groupadd -g ${GID} ${USERNAME} \
- && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME}
-RUN mkdir -p /workspace && chown -R ${UID}:${GID} /workspace
+# TensorRT 엔진 빌드에는 CUDA torch 가 필요 없다 (ONNX 내보내기 용도).
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Seoul \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PIP_NO_INPUT=1 \
+    PYTHONPATH=/workspace/unified-sdk/src
+
+# 1) 사용자 생성
+RUN groupadd -g ${GID} ${USERNAME} 2>/dev/null || true \
+ && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} 2>/dev/null || true
+
+WORKDIR /workspace/unified-sdk
+RUN mkdir -p /workspace/unified-sdk \
+ && chown -R ${UID}:${GID} /workspace
+
+# 2) Python 의존성 (numpy / onnx / pycuda + ONNX 내보내기용 CPU torch)
+COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir \
+        --index-url ${PYTORCH_INDEX_URL} \
+        torch torchvision \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
+# 3) unified-sdk 소스 복사 및 설치
+COPY --chown=${UID}:${GID} . /workspace/unified-sdk
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir . \
+    && rm -f /tmp/requirements.txt
 
 ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.sh"]
 CMD ["/bin/bash"]
-
-
-

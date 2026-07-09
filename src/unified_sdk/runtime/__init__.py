@@ -2,8 +2,11 @@
 unified_sdk.runtime
 -------------------
 Module responsible for creating runtime instances and performing inference
-with compiled model.
+with a compiled model.
+
+This TensorRT-only worktree exposes only the TensorRT adapter.
 """
 from .api import create_runtime, infer, destroy_runtime  # re-export
-# 내부 어댑터 자동 등록
+
+# Adapter auto-registration
 from . import tensorrt_runtime as _tensorrt  # noqa: F401

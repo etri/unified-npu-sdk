@@ -1,27 +1,27 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple
 
-# 빌드/런타임 이름을 분리해 둡니다 (필요 시 추가)
-BuildBackendName = Literal["tensorrt"]      # "rebellions", "furiosa", "onnxrt", ...
-RuntimeBackendName = Literal["tensorrt"]    # 이미 사용 중
+BuildBackendName = Literal["tensorrt"]
+RuntimeBackendName = Literal["tensorrt"]
 
-Precision = Literal["fp32", "fp16", "int8"]  # int8은 추후 calibration 확장
+# int8 은 calibrator 가 필요하다 (extra["int8_calibrator"]). 없으면 build 어댑터가 명시적으로 거부한다.
+Precision = Literal["fp32", "fp16", "int8"]
 
 @dataclass
 class BuildConfig:
     backend: BuildBackendName
-    model_or_path: str | Path
-    out_dir: str | Path = "build"
+    model_or_path: str | Path                # ONNX 경로
+    out_dir: str | Path = "build_output"
     model_name: str = "model"
     precision: Precision = "fp16"
-    # TensorRT 전용(다른 백엔드는 무시/자체 해석):
-    input_name: str = "input.1"
-    min_input_shape: Tuple[int, ...] = (1, 3, 256, 192)
-    opt_input_shape: Tuple[int, ...] = (4, 3, 256, 192)
-    max_input_shape: Tuple[int, ...] = (30, 3, 256, 192)
-    extra: Dict[str, Any] = None
+    # TensorRT dynamic shape optimization profile
+    input_name: str = "input"
+    min_input_shape: Tuple[int, ...] = (1, 3, 224, 224)
+    opt_input_shape: Tuple[int, ...] = (1, 3, 224, 224)
+    max_input_shape: Tuple[int, ...] = (1, 3, 224, 224)
+    extra: Optional[Dict[str, Any]] = None   # workspace_mib, int8_calibrator, strict_types 등
 
 @dataclass
 class BuildResult:
@@ -36,8 +36,8 @@ class RuntimeConfig:
     input_name: str
     output_name: str
     input_shape: Tuple[int, ...]
-    use_execute_v3: bool = True  # TensorRT에만 의미 있음(다른 백엔드는 무시)
-    extra: Dict[str, Any] = None
+    use_execute_v3: bool = True              # TRT 8.5+/10 의 권장 실행 경로
+    extra: Optional[Dict[str, Any]] = None   # device, allow_dynamic_shape 등
 
 @dataclass
 class RuntimeHandle:
@@ -46,5 +46,5 @@ class RuntimeHandle:
     input_name: str
     output_name: str
     input_shape: Tuple[int, ...]
-    # 아래는 백엔드 전용 객체/버퍼를 담는 캐리어
-    ctx: Dict[str, Any]
+    # 백엔드 전용 객체/버퍼 캐리어 (engine, context, stream, device buffers ...)
+    ctx: Dict[str, Any] = field(default_factory=dict)

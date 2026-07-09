@@ -1,188 +1,216 @@
-# Unified SDK
+# Unified SDK — TRT-only (NVIDIA TensorRT)
 
-**Unified SDK**는 PyTorch, TensorFlow 등의 AI 모델을 다양한 국산 AI 반도체(NPU) 환경에서 손쉽게 **컴파일 및 추론(런타임 실행)** 할 수 있도록 지원하는 통합 개발 도구입니다.
+이 체크아웃(`trt-only` 브랜치)은 **NVIDIA TensorRT 전용**으로 단일 백엔드만 노출합니다.
+공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 TensorRT 1종으로 좁힌 버전입니다.
 
-Unified SDK is an integrated development toolkit that enables seamless model compilation (build) and inference (runtime execution) of AI models such as PyTorch and TensorFlow across heterogeneous Korean AI accelerators (NPUs).
-
-> This README is provided in both **Korean and English**.  
-> 본 문서는 **한국어와 영어**로 제공됩니다.
+`rbln-only`·`qb-only`·`furiosa-only`와 동일한 단일-백엔드 패턴을 따릅니다.
+컴파일은 **ONNX → `.engine`**(`Builder` + `OnnxParser` + `build_serialized_network`),
+추론은 **TensorRT + PyCUDA**(`execute_async_v3` / `execute_v2`)를 사용합니다.
 
 ---
 
 ## 📘 프로젝트 개요
 
-
 본 프로젝트는 **「국산 AI 반도체 기반 마이크로 데이터센터 확산 사업」** 내
-**(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**에서 수행한
-**이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물입니다.
-
-이 SDK는 다양한 AI 반도체(TensorRT, 리벨리온, 퓨리오사 등) 간의 **추론 환경 통합**을 목표로 하며,
-AI 모델의 빌드(컴파일) 및 런타임 생성 기능을 제공합니다.
-
----
-
-## 🚀 주요 기능
-
-| 구분                 | 설명                                        |
-| ------------------ | ----------------------------------------- |
-| 🧩 모델 컴파일(Build)   | PyTorch, TensorFlow 모델을 각 백엔드용 실행 파일로 컴파일 |
-| ⚙️ 런타임 생성(Runtime) | 컴파일된 모델 파일을 로드하여 추론 엔진 실행                 |
-| 🔌 백엔드 확장          | TensorRT, 리벨리온, 퓨리오사 등 국산 NPU 지원 예정       |
+**(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**의
+**이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 TensorRT 단일 백엔드 분기입니다.
+TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역할을 합니다.
 
 ---
 
 ## 🏗️ 프로젝트 구조
+
 ```
-unified-sdk/
+<repo-root>/
 ├── README.md
+├── LICENSE
+├── pyproject.toml
+├── pyrightconfig.json
 ├── requirements.txt
-├── Dockerfile
 ├── devcontainer.json
-├── examples/                     # 예제 코드
-│   ├── inspect_engine_io.py      # TensorRT 엔진의 입출력 레이어 정보 확인 도구
-│   ├── run_tensorrt_build.py     # TensorRT 모델 빌드 예제
-│   ├── run_tensorrt_infer.py     # TensorRT 엔진 실행 예제
-│   ├── run_rbln_build.py         # Rbln 모델 빌드 예제
-│   └── run_rbln_infer.py         # Rbln 엔진 실행 예제
-└── src/
-    └── unified_sdk/
+├── Dockerfile
+├── build.sh
+├── examples/
+│   ├── run_tensorrt_build.py       # ONNX → .engine 컴파일
+│   ├── run_tensorrt_infer.py       # .engine 추론 + latency 측정
+│   └── inspect_engine_io.py        # .engine 입출력 텐서 메타 확인
+└── src/unified_sdk/
+    ├── __init__.py
+    ├── types.py                    # 공통 데이터 구조 (TensorRT 슬림화)
+    ├── build/
+    │   ├── __init__.py
+    │   ├── api.py                  # build_unified
+    │   ├── registry.py
+    │   └── tensorrt_build.py       # TensorRT 빌드 어댑터
+    └── runtime/
         ├── __init__.py
-        ├── types.py              # 공통 데이터 구조 정의
-        │
-        ├── builder/                # 모델 빌드(컴파일) 관련 모듈
-        │   ├── __init__.py
-        │   ├── api.py            # 상위 진입점 (backend-agnostic)
-        │   ├── registry.py       # 백엔드 빌더 등록/조회 관리
-        │   ├── tensorrt_build.py # TensorRT 빌드 어댑터
-        │   └── rbln_build.py     # Rbln 빌드 어댑터
-        │
-        └── runtime/              # 모델 실행(추론) 관련 모듈
-            ├── __init__.py
-            ├── api.py            # 상위 진입점 (backend-agnostic)
-            ├── registry.py       # 백엔드 런타임 등록/조회 관리
-            ├── tensorrt_runtime.py  # TensorRT 런타임 어댑터
-            └── rbln_runtime.py   # rbln 런타임 어댑터
+        ├── api.py                  # create_runtime / infer / destroy_runtime
+        ├── registry.py
+        └── tensorrt_runtime.py     # TensorRT 런타임 어댑터 (PyCUDA)
 ```
+
+> `builds/host_validation_tools/`는 벤더 에스컬레이션용 로컬 재현 팩입니다. `builds/`는 gitignore
+> 대상이라 저장소에는 포함되지 않습니다. `rbln-only`와 동일한 흐름(env → smoke → resnet50
+> compile → infer)을 TensorRT 기준으로 구성했습니다.
+
 ---
 
 ## 💾 설치 방법
 
-아래 명령어로 프로젝트를 로컬 개발 모드로 설치할 수 있습니다:
+### 1. 호스트 사전 요구사항
+
+- **NVIDIA GPU 드라이버**와 **NVIDIA Container Toolkit**이 설치되어 있어야 합니다 (`nvidia-smi`로 확인).
+- `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
+- 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
+
+### 2. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
 
 ```bash
+pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision  # ONNX 내보내기용
 pip install -e .
+pip install numpy onnx pycuda
+# tensorrt 는 NVIDIA 공식 wheel 또는 컨테이너 기준으로 맞추세요.
+```
+
+> `unified_sdk`는 `tensorrt`/`pycuda`를 **어댑터 메서드 내부에서 lazy import** 하므로,
+> GPU 가 없는 환경에서도 `import unified_sdk` 자체는 성공합니다(실제 build/infer 시점에만 필요).
+
+### 3. Docker 빌드 & 실행
+
+```bash
+./build.sh
+# 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
+```
+
+`./build.sh`는 `nvcr.io/nvidia/tensorrt` 베이스로 이미지를 만들고, `--gpus all` / `--runtime=nvidia`
+중 동작하는 모드를 자동 감지해 실행 예시를 출력합니다. 베이스 이미지는
+`./build.sh --base-image <image>` 또는 `TRT_BASE_IMAGE=... ./build.sh`로 바꿀 수 있습니다.
+
+컨테이너 실행 예시:
+
+```bash
+docker run --gpus all -it --security-opt seccomp=unconfined \
+  --name unified-sdk_trt_dev \
+  -w /workspace/unified-sdk \
+  -v $(pwd):/workspace/unified-sdk \
+  unified-sdk:trt
+```
+
+컨테이너 내부 점검:
+
+```bash
+cd /workspace/unified-sdk
+nvidia-smi || true
+python3 -c "import unified_sdk; print('OK')"
+python3 -c "import tensorrt; print('tensorrt=', tensorrt.__version__)"
+```
+
+---
+
+## 🚀 Backend Docker smoke
+
+아래 흐름은 **NVIDIA GPU 가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `trt-only`
+백엔드를 검증하는 표준 smoke 절차입니다.
+
+```bash
+# 1) 이미지 빌드
+./build.sh
+
+# 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
+
+# 3) 컨테이너 내부에서 장치/패키지 확인
+nvidia-smi || true
+python3 -c "import tensorrt, pycuda; print('OK')"
+
+# 4) ONNX → .engine 컴파일 (models/ 에서 자동 탐색)
+python3 examples/run_tensorrt_build.py \
+  --model-name yolov7 \
+  --precision fp32 \
+  --input-name images \
+  --input-shape 1,3,640,640
+
+# 5) .engine 추론
+python3 examples/run_tensorrt_infer.py \
+  --engine-path build_output/yolov7_FP32.engine \
+  --input-name images \
+  --output-name output \
+  --input-shape 1,3,640,640 \
+  --iters 50
+
+# 6) 엔진 입출력 메타 확인
+python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
+```
+
+예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
+`/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
+
+---
+
+## 🚀 사용 예시
+
+### 컴파일 (.engine 생성)
+
+```python
+from unified_sdk.types import BuildConfig
+from unified_sdk.build.api import build_unified
+
+cfg = BuildConfig(
+    backend="tensorrt",
+    model_or_path="models/yolov7.onnx",
+    out_dir="build_output",
+    model_name="yolov7",
+    precision="fp32",                     # fp32 | fp16 | int8(calibrator 필요)
+    input_name="images",
+    min_input_shape=(1, 3, 640, 640),     # dynamic shape optimization profile
+    opt_input_shape=(1, 3, 640, 640),
+    max_input_shape=(1, 3, 640, 640),
+    extra={"workspace_mib": 1024},
+)
+result = build_unified(cfg)
+print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
+```
+
+### 추론
+
+```python
+import numpy as np
+from unified_sdk.types import RuntimeConfig
+from unified_sdk.runtime import create_runtime, infer, destroy_runtime
+
+cfg = RuntimeConfig(
+    backend="tensorrt",
+    engine_path="build_output/yolov7_FP32.engine",
+    input_name="images",
+    output_name="output",
+    input_shape=(1, 3, 640, 640),
+    use_execute_v3=True,                  # TRT 8.5+/10 권장 경로
+)
+rh = create_runtime(cfg)
+y = infer(rh, np.zeros((1, 3, 640, 640), dtype=np.float32))
+destroy_runtime(rh)
 ```
 
 ---
 
 ## 📜 라이선스
 
-본 프로젝트는 Apache License 2.0 하에 배포됩니다.
-
-* 상업적 사용, 수정 및 재배포가 허용됩니다.
-* 본 SDK는 기존 NPU 벤더 SDK 위에서 동작하는 통합 추상화 계층을 제공합니다.
-* 각 백엔드 플러그인은 해당 NPU 벤더 SDK에 의존하며, 해당 SDK의 라이선스 및 지식재산권(IP) 정책을 따릅니다.
-
-자세한 내용은 LICENSE 파일을 참고하십시오.
+Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
+본 SDK는 NVIDIA TensorRT 위에서 동작하는 통합 추상화 계층이며, TensorRT/CUDA 의 라이선스 정책을 따릅니다.
 
 ---
 
-## 📌 참고사항
+## 📌 참고
 
-* 본 프로젝트는 컴파일러 자체를 구현하지 않으며, 기존 NPU 벤더에서 제공하는 SDK를 호출하는 상위 통합 SDK입니다.
-* NPU별 모델 빌드 및 런타임 동작의 차이는 플러그인(어댑터) 내부에 캡슐화되어 있습니다.
-* 새로운 NPU는 레지스트리 기반 플러그인 구조를 통해 상위 Unified API 수정 없이 확장 가능합니다.
-* 향후 다양한 국산 NPU 백엔드가 추가될 예정입니다.
-
----
-
-
-## 📘 Project Overview
-
-This project is an outcome of the
-“Micro Data Center (μDC) Expansion Project Based on Korean AI Accelerators”,
-specifically under
-(Subtask 3) Development of Operation and Deployment Technologies for Micro Data Centers.
-
-The Unified SDK abstracts vendor-specific NPU SDKs and APIs through a
-Unified API and plugin-based backend architecture,
-allowing AI services to be developed and deployed using a single, backend-agnostic API,
-regardless of the underlying NPU hardware.
-
----
-
-## 🚀 Key Features
-
-| Category                 | Description                                        |
-| --------------------- | ----------------------------------------- |
-|🧩 Model Build	        | Compile PyTorch and TensorFlow models into executable formats for each backend
-|⚙️ Runtime Execution	| Load compiled models and execute inference via a unified runtime API
-|🔌 Backend Extension	| Designed to support multiple NPUs such as TensorRT, Rebellions, and Furiosa
-
----
-
-## 🏗️ Project Structure
-```
-unified-sdk/
-├── README.md
-├── requirements.txt
-├── Dockerfile
-├── devcontainer.json
-├── examples/                     # Example scripts
-│   ├── test_tensorrt_build.py    # TensorRT build example
-│   ├── run_tensorrt_infer.py     # TensorRT inference example
-│   ├── run_rbln_build.py         # Rbln build example
-│   └── run_rbln_infer.py         # Rbln inference example
-└── src/
-    └── unified_sdk/
-        ├── __init__.py
-        ├── types.py              # Common data structures
-        │
-        ├── builder/              # Model build (compilation) modules
-        │   ├── api.py            # Unified entry point
-        │   ├── registry.py       # Backend builder registry
-        │   ├── tensorrt_build.py # TensorRT build adapter
-        │   └── rbln_build.py     # Rbln build adapter
-        │
-        └── runtime/              # Model execution (inference) modules
-            ├── api.py            # Unified entry point
-            ├── registry.py       # Backend runtime registry
-            ├── tensorrt_runtime.py  # TensorRT runtime adapter
-            └── rbln_runtime.py   # rbln runtime adapter
-```
----
-
-## 💾 Installation
-
-Install the project in editable (development) mode:
-
-```bash
-pip install -e .
-```
-
----
-
-
-## 📜 LICENSE
-
-This project is released under the Apache License 2.0.
-
-* Commercial use, modification, and redistribution are permitted.
-* This SDK provides a unified abstraction layer over existing vendor-specific NPU SDKs.
-* Each backend plugin depends on the corresponding vendor SDK and is subject to the vendor’s own license terms and intellectual property rights.
-
-For full license details, please refer to the LICENSEfile.
-
----
-
-## 📌 NOTICE
-
-* This project does not implement a compiler or code generation toolchain. Instead, it provides a unified SDK layer that invokes existing vendor-provided NPU SDKs.
-* Backend-specific build and runtime behaviors are encapsulated within plugin adapters.
-* New NPU backends can be integrated via a registry-based plugin mechanism without modifying the upper-level Unified API.
-* Additional Korean NPU backends will be integrated in future releases.
-
----
-
-
-
+- 본 체크아웃은 TensorRT 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
+- **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
+  셋을 같은 값으로 주면 static shape 엔진이 됩니다.
+- **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
+  `BuildConfig.extra["int8_calibrator"]` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
+- **실행 경로**: TRT 8.5+/10 은 `execute_async_v3` + `set_tensor_address`, 구버전은 `execute_v2` + bindings.
+  `RuntimeConfig.use_execute_v3` 로 강제할 수 있고, 런타임이 지원 여부를 자동 감지합니다.
+- **메모리**: device 버퍼(`cuda.mem_alloc`)는 `destroy_runtime()` 에서 명시적으로 `free()` 합니다.
+- **lazy import**: `tensorrt`/`pycuda` 는 어댑터 내부에서만 import 하므로, GPU 없는 개발 환경에서도
+  패키지 import 와 `--help` 가 동작합니다.
+- 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_tensorrt_build.py --help`,
+  `python3 examples/run_tensorrt_infer.py --help`, `python3 examples/inspect_engine_io.py --help`로 확인하세요.
+- 다른 백엔드는 각 vendor 브랜치(`rbln-only`, `qb-only`, `furiosa-only`, `furiosa-llm-only`)에서 작업하세요.
