@@ -22,6 +22,31 @@ _VENDOR_API_MAP = {
     "generate": "llm.generate(prompts, sampling)",
     "destroy": "llm.shutdown/close/dispose best-effort",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "furiosa_llm.LLM(model_id)": "create_runtime(cfg)",
+    "furiosa_llm.LLM.from_artifacts(artifact_dir)": "create_runtime(cfg)",
+    "furiosa_llm.SamplingParams(**params)": "infer(rh, prompt, **overrides) / generate(...)",
+    "llm.generate(prompts, sampling)": "infer(rh, prompt, **overrides) / generate(...)",
+    "RequestOutput.outputs[0].text": "infer(...) return str or list[str]",
+    "llm.shutdown/close/dispose": "destroy_runtime(rh)",
+}
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": {
+            "create": "create_runtime(cfg)",
+            "infer": "infer(rh, prompt, **overrides)",
+            "generate": "generate(rh, prompt, **overrides)",
+            "destroy": "destroy_runtime(rh)",
+        },
+        "backend": "rngd",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _RUNTIME_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
+    }
 
 
 _SAMPLING_KEYS = ("max_tokens", "temperature", "top_p", "top_k", "min_tokens")
