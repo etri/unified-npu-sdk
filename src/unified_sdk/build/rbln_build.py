@@ -22,6 +22,11 @@ _VENDOR_API_MAP = {
     "save_artifact": "compiled.save(str(rbln_path))",
     "artifact": ".rbln",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "rebel.compile_from_torch(model, input_info, **compile_kwargs)": "build_unified(cfg)",
+    "compiled.save(str(rbln_path))": "BuildResult.compiled_model_path",
+    ".rbln artifact": "BuildResult.meta_data['rbln_path']",
+}
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
@@ -72,6 +77,18 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
             "npu": extra.get("npu"),
             "model_trace_method": extra.get("model_trace_method"),
         },
+    }
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": "build_unified(cfg)",
+        "backend": "rbln",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
     }
 
 
