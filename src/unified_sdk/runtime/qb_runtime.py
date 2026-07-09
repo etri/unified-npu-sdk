@@ -8,6 +8,24 @@ from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 
+_CAPABILITY_FAMILY = "vision.direct-python-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "resolve_model_config",
+    "load_vendor_model",
+    "validate_input",
+    "run_vendor_inference",
+    "normalize_output",
+    "destroy_runtime",
+)
+_VENDOR_API_MAP = {
+    "model_config": "qbruntime.type.ModelConfig / qbruntime.type.CoreMode",
+    "create_runtime": "qbruntime.model.load(str(mxq_path), model_config)",
+    "infer": "model.infer([input_array])",
+    "destroy": "model.dispose/release/unload/close best-effort",
+}
+
+
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"RuntimeConfig.{field_name} must be a non-empty string")
@@ -156,6 +174,9 @@ class _QBRuntime:
                 "device": device,
                 "core_mode": core_mode,
                 "extra": extra,
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 
