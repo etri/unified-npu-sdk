@@ -8,6 +8,22 @@ from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 
+_CAPABILITY_FAMILY = "vision.cli-compiled-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "load_vendor_runner",
+    "validate_input",
+    "run_vendor_inference",
+    "normalize_output",
+    "destroy_runtime",
+)
+_VENDOR_API_MAP = {
+    "create_runtime": "furiosa.runtime.sync.create_runner(str(enf_path), device=...)",
+    "infer": "runner.run([input_array])",
+    "destroy": "runner.close() or runner.__exit__(...) best-effort",
+}
+
+
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"RuntimeConfig.{field_name} must be a non-empty string")
@@ -116,6 +132,9 @@ class _WarboyRuntime:
                 "runner": runner,
                 "device": device,
                 "extra": extra,
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 
