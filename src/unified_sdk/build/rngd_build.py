@@ -23,6 +23,13 @@ _VENDOR_API_MAP = {
     "model_config": "furiosa_llm.ModelConfig(max_model_len=...)",
     "artifact": "artifact directory or HF model id",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "HF model id or existing artifact directory": "build_unified(cfg) when extra['compile'] is false",
+    "furiosa_llm.ArtifactBuilder(...).build(str(out_dir))": "build_unified(cfg) when extra['compile'] is true",
+    "furiosa_llm.ParallelConfig(...)": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
+    "furiosa_llm.ModelConfig(max_model_len=...)": "BuildConfig.max_model_len",
+    "artifact directory or HF model id": "BuildResult.compiled_model_path",
+}
 
 
 def _require_positive_int(value: Any, field_name: str) -> int:
@@ -41,6 +48,18 @@ def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
             "compile": bool(extra.get("compile", False)),
             "bucket_config": extra.get("bucket_config"),
         },
+    }
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": "build_unified(cfg)",
+        "backend": "rngd",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
     }
 
 
