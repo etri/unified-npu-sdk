@@ -26,6 +26,31 @@ _VENDOR_API_MAP = {
     "infer": "context.execute_async_v3(stream_handle=...) or context.execute_v2(bindings)",
     "destroy": "device_buffer.free() best-effort",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "trt.Runtime(...).deserialize_cuda_engine(engine_bytes)": "create_runtime(cfg)",
+    "engine.create_execution_context()": "create_runtime(cfg)",
+    "pycuda.pagelocked_empty / mem_alloc / Stream": "create_runtime(cfg)",
+    "context.set_tensor_address(...) or v2 bindings": "create_runtime(cfg)",
+    "context.execute_async_v3(...) / execute_v2(...)": "infer(rh, input_array)",
+    "cuda.memcpy_htod_async / memcpy_dtoh_async": "infer(rh, input_array)",
+    "device_buffer.free()": "destroy_runtime(rh)",
+}
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": {
+            "create": "create_runtime(cfg)",
+            "infer": "infer(rh, input_array)",
+            "destroy": "destroy_runtime(rh)",
+        },
+        "backend": "tensorrt",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _RUNTIME_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
+    }
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:

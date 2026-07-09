@@ -25,6 +25,14 @@ _VENDOR_API_MAP = {
     "compile": "builder.build_serialized_network(network, config)",
     "artifact": ".engine",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "trt.OnnxParser(...).parse_from_file(...)": "build_unified(cfg)",
+    "builder.create_builder_config()": "build_unified(cfg)",
+    "builder.create_optimization_profile(); profile.set_shape(...)": "BuildConfig.min/opt/max_input_shape",
+    "config.set_flag(trt.BuilderFlag.FP16/INT8)": "BuildConfig.precision",
+    "builder.build_serialized_network(network, config)": "build_unified(cfg)",
+    ".engine artifact": "BuildResult.compiled_model_path",
+}
 
 
 _PRECISIONS = ("fp32", "fp16", "int8")
@@ -88,6 +96,18 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
             "strict_types": extra.get("strict_types"),
             "int8_calibrator": "<provided>" if extra.get("int8_calibrator") is not None else None,
         },
+    }
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": "build_unified(cfg)",
+        "backend": "tensorrt",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
     }
 
 
