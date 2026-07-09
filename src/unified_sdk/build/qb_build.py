@@ -23,6 +23,12 @@ _VENDOR_API_MAP = {
     "calibration": "calib_data_path or use_random_calib",
     "artifact": ".mxq",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "shutil.copyfile(src_mxq, mxq_path)": "build_unified(cfg) for provided .mxq",
+    "qubee.mxq_compile(**compile_kwargs)": "build_unified(cfg) for ONNX/torch compile",
+    "calib_data_path or use_random_calib": "BuildConfig.calib_data_path / BuildConfig.extra",
+    ".mxq artifact": "BuildResult.compiled_model_path",
+}
 
 
 # qubee mxq_compile 이 지원하는 양자화 방법 (docs.mobilint.com / qubee 참고)
@@ -82,6 +88,18 @@ def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
             "singlecore_compile": extra.get("singlecore_compile"),
             "save_sample": extra.get("save_sample"),
         },
+    }
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": "build_unified(cfg)",
+        "backend": "qb",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
     }
 
 
