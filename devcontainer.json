@@ -1,0 +1,10 @@
+{
+  "name": "unified-sdk-rngd-dev",
+  "image": "unified-sdk:rngd",
+  "runArgs": [
+    "--device", "/dev/rngd0:/dev/rngd0",
+    "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
+  ],
+  "workspaceFolder": "/workspace/unified-sdk",
+  "remoteUser": "etri"
+}
