@@ -1,0 +1,10 @@
+{
+  "name": "unified-sdk-qb-dev",
+  "image": "unified-sdk:qb",
+  "runArgs": [
+    "--device", "/dev/aries0:/dev/aries0",
+    "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
+  ],
+  "workspaceFolder": "/workspace/unified-sdk",
+  "remoteUser": "etri"
+}
