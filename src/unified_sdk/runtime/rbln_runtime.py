@@ -22,6 +22,29 @@ _VENDOR_API_MAP = {
     "infer": "runtime(input_array)",
     "destroy": "clear RuntimeHandle.ctx",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "rebel.Runtime(str(path), ...)": "create_runtime(cfg)",
+    "runtime(input_array)": "infer(rh, input_array)",
+    "runtime output tensor/list": "infer(...) return np.ndarray",
+    "RuntimeHandle.ctx.clear()": "destroy_runtime(rh)",
+}
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": {
+            "create": "create_runtime(cfg)",
+            "infer": "infer(rh, input_array)",
+            "destroy": "destroy_runtime(rh)",
+        },
+        "backend": "rbln",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _RUNTIME_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
+    }
+
 
 _TENSOR_TYPES = {"np", "pt"}
 
