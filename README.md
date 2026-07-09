@@ -107,17 +107,19 @@ docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
 
 - `trt-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 권장하지 않습니다.
 - `docker` 명령이 없으면 먼저 Docker Engine 을 설치해야 합니다.
+- `./build.sh`는 **BuildKit + buildx** 를 사용하므로 `docker buildx` 플러그인도 함께 준비되어 있어야 합니다.
 - GPU 컨테이너 실행은 위 1번의 Toolkit 설정까지 끝난 뒤 확인합니다.
 
 Ubuntu 예시:
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io
+sudo apt install -y docker.io docker-buildx-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
 newgrp docker
 docker --version
+docker buildx version
 docker run --rm hello-world
 ```
 
@@ -129,6 +131,8 @@ docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
 ```
 
 > `docker: command not found` 가 뜨면 Docker Engine 이 아직 설치되지 않은 상태입니다.
+> `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
+> 가 뜨면 `docker-buildx-plugin` 설치가 필요합니다.
 > `--gpus all` 이 동작하지 않으면 NVIDIA Container Toolkit 설정을 먼저 완료해야 합니다.
 
 ### 3. Docker 빌드 & 실행
