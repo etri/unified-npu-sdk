@@ -8,6 +8,23 @@ from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
+_CAPABILITY_FAMILY = "vision.direct-python-compiler"
+_BUILD_PIPELINE = (
+    "validate_config",
+    "resolve_artifact_or_source",
+    "resolve_compile_options",
+    "run_vendor_compile_or_place_artifact",
+    "verify_artifact",
+    "emit_metadata",
+)
+_VENDOR_API_MAP = {
+    "provided_artifact": "shutil.copyfile(src_mxq, mxq_path)",
+    "compile": "qubee.mxq_compile(**compile_kwargs)",
+    "calibration": "calib_data_path or use_random_calib",
+    "artifact": ".mxq",
+}
+
+
 # qubee mxq_compile 이 지원하는 양자화 방법 (docs.mobilint.com / qubee 참고)
 _QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
 
@@ -51,6 +68,23 @@ def _looks_like_mxq(model_or_path: Any) -> bool:
     return isinstance(model_or_path, (str, Path)) and str(model_or_path).endswith(".mxq")
 
 
+def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+    return {
+        "capability_family": _CAPABILITY_FAMILY,
+        "build_pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "selected_path": source,
+        "compile_options": {
+            "quantize_method": extra.get("quantize_method", "percentile"),
+            "use_random_calib": extra.get("use_random_calib"),
+            "model_nickname": extra.get("model_nickname"),
+            "optimize_option": extra.get("optimize_option"),
+            "singlecore_compile": extra.get("singlecore_compile"),
+            "save_sample": extra.get("save_sample"),
+        },
+    }
+
+
 class _QBBuildAdapter:
     """Mobilint ARISE(QB) build adapter.
 
@@ -86,6 +120,7 @@ class _QBBuildAdapter:
                 "origin": str(src),
                 "precision": cfg.precision,
                 "extra": extra,
+                **_capability_metadata(extra, "provided"),
             }
             return BuildResult(
                 backend=self.name,
@@ -147,6 +182,7 @@ class _QBBuildAdapter:
             "input_shape": tuple(cfg.input_shape),
             "precision": cfg.precision,
             "extra": extra,
+            **_capability_metadata(extra, "qubee_compile"),
         }
         return BuildResult(
             backend=self.name,
