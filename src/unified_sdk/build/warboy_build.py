@@ -9,6 +9,23 @@ from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
+_CAPABILITY_FAMILY = "vision.cli-compiler"
+_BUILD_PIPELINE = (
+    "validate_config",
+    "resolve_artifact_or_quantized_onnx",
+    "resolve_compiler_options",
+    "run_vendor_compiler_cli_or_place_artifact",
+    "verify_artifact",
+    "emit_metadata",
+)
+_VENDOR_API_MAP = {
+    "provided_artifact": "shutil.copyfile(src_enf, enf_path)",
+    "compile": "furiosa-compiler <quantized_onnx> -o <enf_path> --target-npu <target_npu> --target-ir enf",
+    "pre_quantization": "furiosa.quantizer (not wrapped here; quantized ONNX is expected)",
+    "artifact": ".enf",
+}
+
+
 # furiosa-compiler 타깃 (Warboy 는 2 PE. 참조 가이드 기준 warboy-2pe 사용)
 _TARGET_NPUS = ("warboy", "warboy-2pe")
 
@@ -51,6 +68,20 @@ def _looks_like_enf(model_or_path: Any) -> bool:
     return isinstance(model_or_path, (str, Path)) and str(model_or_path).endswith(".enf")
 
 
+def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+    return {
+        "capability_family": _CAPABILITY_FAMILY,
+        "build_pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "selected_path": source,
+        "compile_options": {
+            "target_npu": extra.get("target_npu", "warboy-2pe"),
+            "target_ir": extra.get("target_ir", "enf"),
+            "compiler_config": extra.get("compiler_config"),
+        },
+    }
+
+
 class _WarboyBuildAdapter:
     """FuriosaAI Warboy build adapter.
 
@@ -89,6 +120,7 @@ class _WarboyBuildAdapter:
                 "origin": str(src),
                 "precision": cfg.precision,
                 "extra": extra,
+                **_capability_metadata(extra, "provided"),
             }
             return BuildResult(
                 backend=self.name,
@@ -149,6 +181,7 @@ class _WarboyBuildAdapter:
             "input_shape": tuple(cfg.input_shape),
             "precision": cfg.precision,
             "extra": extra,
+            **_capability_metadata(extra, "furiosa_compiler"),
         }
         return BuildResult(
             backend=self.name,
