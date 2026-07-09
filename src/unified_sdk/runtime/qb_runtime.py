@@ -24,6 +24,29 @@ _VENDOR_API_MAP = {
     "infer": "model.infer([input_array])",
     "destroy": "model.dispose/release/unload/close best-effort",
 }
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "qbruntime.type.ModelConfig / CoreMode": "RuntimeConfig.extra['core_mode']",
+    "qbruntime.model.load(str(mxq_path), model_config)": "create_runtime(cfg)",
+    "model.infer([input_array])": "infer(rh, input_array)",
+    "qbruntime output tensor/list": "infer(...) return np.ndarray",
+    "model.dispose/release/unload/close": "destroy_runtime(rh)",
+}
+
+
+def describe_api_mapping() -> dict[str, Any]:
+    return {
+        "unified_api": {
+            "create": "create_runtime(cfg)",
+            "infer": "infer(rh, input_array)",
+            "destroy": "destroy_runtime(rh)",
+        },
+        "backend": "qb",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _RUNTIME_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
+    }
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
