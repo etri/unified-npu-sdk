@@ -75,14 +75,63 @@ cp /path/to/qubee-*.whl     vendor/
 cp /path/to/qbruntime-*.whl vendor/
 ```
 
-### 2. 호스트 사전 요구사항
+### 2. Docker 사전 준비
+
+- `qb-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 선택 사항입니다.
+- Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
+- `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
+
+Ubuntu 예시:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+docker --version
+docker buildx version
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
+docker run --rm hello-world
+```
+
+문제 해결 힌트:
+
+> `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
+> 가 뜨면 `docker-buildx-plugin`이 없는 상태입니다.
+> `Cannot connect to the Docker daemon at unix:///var/run/docker.sock` 가 뜨면 daemon/socket 상태를 먼저 확인하세요:
+
+```bash
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
+sudo systemctl daemon-reload
+sudo systemctl reset-failed docker.service docker.socket
+sudo systemctl enable docker.socket
+sudo systemctl start docker.socket
+sudo systemctl restart docker.service
+docker version
+```
+
+### 3. 호스트 사전 요구사항
 
 - **Mobilint ARISE 드라이버**가 호스트에 설치되어 있어야 합니다 (`mobilint-cli status`로 확인).
   자세한 절차는 <https://docs.mobilint.com/v1.2/en/introduction.html> 참조.
 - 컨테이너 실행 시 실제로 존재하는 장치 노드(`/dev/aries*` 또는 `/dev/arise*`)만 `--device`로 전달합니다.
 - 코어 모드는 참조 검증 기준 `global8`을 기본값으로 사용하며, `MBLT_CORE_MODE`로 바꿀 수 있습니다.
 
-### 3. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
+### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
 
 ```bash
 pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
@@ -92,7 +141,7 @@ pip install -e .
 pip install vendor/qubee-*.whl vendor/qbruntime-*.whl
 ```
 
-### 4. Docker 빌드 & 실행
+### 5. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
