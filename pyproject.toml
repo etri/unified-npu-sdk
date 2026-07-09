@@ -5,9 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "unified-sdk"
 version = "0.0.1"
-description = "Unified SDK for model build/runtime (TensorRT first)"
+description = "Unified SDK for model build/runtime (NVIDIA TensorRT only)"
 requires-python = ">=3.9"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
