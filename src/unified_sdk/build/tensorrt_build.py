@@ -7,6 +7,26 @@ from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
+_CAPABILITY_FAMILY = "vision.low-level-engine-builder"
+_BUILD_PIPELINE = (
+    "validate_config",
+    "parse_onnx_network",
+    "configure_builder",
+    "configure_optimization_profile",
+    "run_serialized_engine_build",
+    "save_artifact",
+    "emit_metadata",
+)
+_VENDOR_API_MAP = {
+    "parse_network": "trt.OnnxParser(network, logger).parse_from_file(str(onnx_path))",
+    "builder_config": "builder.create_builder_config()",
+    "optimization_profile": "builder.create_optimization_profile(); profile.set_shape(...)",
+    "precision_flags": "config.set_flag(trt.BuilderFlag.FP16/INT8)",
+    "compile": "builder.build_serialized_network(network, config)",
+    "artifact": ".engine",
+}
+
+
 _PRECISIONS = ("fp32", "fp16", "int8")
 
 
@@ -56,6 +76,19 @@ def _ensure_onnx_path(model_or_path: str | Path) -> Path:
 def _build_output_path(out_dir: str | Path, model_name: str, precision: str) -> Path:
     name = _require_non_empty_string(model_name, "model_name")
     return Path(out_dir) / f"{name}_{precision.upper()}.engine"
+
+
+def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "capability_family": _CAPABILITY_FAMILY,
+        "build_pipeline": _BUILD_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "compile_options": {
+            "workspace_mib": extra.get("workspace_mib"),
+            "strict_types": extra.get("strict_types"),
+            "int8_calibrator": "<provided>" if extra.get("int8_calibrator") is not None else None,
+        },
+    }
 
 
 def _create_network(builder, trt):
@@ -211,6 +244,7 @@ class _TensorRTBuildAdapter:
                 "max": hi,
             },
             "extra": {k: v for k, v in extra.items() if k != "int8_calibrator"},
+            **_capability_metadata(extra),
         }
         return BuildResult(
             backend=self.name,
