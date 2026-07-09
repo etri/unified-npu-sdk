@@ -114,7 +114,18 @@ Ubuntu 예시:
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io docker-buildx-plugin
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
 newgrp docker
@@ -130,6 +141,8 @@ nvidia-smi
 docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
 ```
 
+> Ubuntu 기본 저장소의 `docker.io` 패키지만 설치한 경우 `docker buildx` 플러그인이 없을 수 있습니다.
+> 이 경우 위 예시처럼 **Docker 공식 apt 저장소** 기준으로 `docker-buildx-plugin`까지 함께 설치하세요.
 > `docker: command not found` 가 뜨면 Docker Engine 이 아직 설치되지 않은 상태입니다.
 > `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
 > 가 뜨면 `docker-buildx-plugin` 설치가 필요합니다.
