@@ -1,0 +1,10 @@
+{
+  "name": "unified-sdk-warboy-dev",
+  "image": "unified-sdk:warboy",
+  "runArgs": [
+    "--device", "/dev/npu0:/dev/npu0",
+    "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
+  ],
+  "workspaceFolder": "/workspace/unified-sdk",
+  "remoteUser": "etri"
+}
