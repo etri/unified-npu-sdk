@@ -78,7 +78,56 @@ EOF
 chmod 600 .secrets/netrc
 ```
 
-### 2. 호스트 사전 요구사항
+### 2. Docker 사전 준비
+
+- `rbln-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 선택 사항입니다.
+- Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
+- `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
+
+Ubuntu 예시:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+docker --version
+docker buildx version
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
+docker run --rm hello-world
+```
+
+문제 해결 힌트:
+
+> `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
+> 가 뜨면 `docker-buildx-plugin`이 없는 상태입니다.
+> `Cannot connect to the Docker daemon at unix:///var/run/docker.sock` 가 뜨면 daemon/socket 상태를 먼저 확인하세요:
+
+```bash
+sudo systemctl status docker.socket --no-pager -l
+sudo systemctl status docker.service --no-pager -l
+sudo systemctl daemon-reload
+sudo systemctl reset-failed docker.service docker.socket
+sudo systemctl enable docker.socket
+sudo systemctl start docker.socket
+sudo systemctl restart docker.service
+docker version
+```
+
+### 3. 호스트 사전 요구사항
 
 - **RBLN 드라이버**가 호스트에 설치되어 있어야 합니다 (`rbln-smi`로 확인).
   대부분의 클라우드 서버는 사전 설치되어 있습니다. 자세한 절차는
@@ -91,7 +140,7 @@ chmod 600 .secrets/netrc
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
   예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
-### 3. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
+### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
 
 ```bash
 # RBLN Portal 계정 필요. ~/.netrc에 pypi.rbln.ai 자격이 있어야 함.
@@ -102,7 +151,7 @@ pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.11.0
 # 예: RBLN SDK 0.11.0 검증 환경 -> rebel-compiler==0.11.0
 ```
 
-### 4. Docker 빌드 & 실행
+### 5. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
