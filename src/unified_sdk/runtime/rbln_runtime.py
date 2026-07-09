@@ -8,6 +8,21 @@ from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 
+_CAPABILITY_FAMILY = "vision.direct-python-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "load_vendor_runtime",
+    "validate_input",
+    "run_vendor_inference",
+    "normalize_output",
+    "destroy_runtime",
+)
+_VENDOR_API_MAP = {
+    "create_runtime": "rebel.Runtime(str(path), device=..., tensor_type=..., activate_profiler=..., timeout=...)",
+    "infer": "runtime(input_array)",
+    "destroy": "clear RuntimeHandle.ctx",
+}
+
 _TENSOR_TYPES = {"np", "pt"}
 
 
@@ -131,6 +146,9 @@ class _RBLNRuntime:
                 "tensor_type": tensor_type,
                 "device": device,
                 "extra": extra,
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 
