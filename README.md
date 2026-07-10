@@ -132,11 +132,22 @@ docker version
 - **RBLN 드라이버**가 호스트에 설치되어 있어야 합니다 (`rbln-smi`로 확인).
   대부분의 클라우드 서버는 사전 설치되어 있습니다. 자세한 절차는
   <https://docs.rbln.ai/latest/getting_started/installation_guide.html> 참조.
-- 컨테이너 실행 시 실제로 존재하는 RBLN 장치만 `--device`로 전달하면 됩니다.
-  공식 권장 경로는 RBLN Container Toolkit의 CDI handle(`rebellions.ai/npu=all`)입니다.
-  `./build.sh`는 `/var/run/cdi/rbln.yaml`이 있으면 CDI를 우선 사용하고, 없으면 현재 호스트에서
-  보이는 `/dev/rbln*`와 `rbln-smi`/`rbln-stat` 실행 파일을 fallback으로 감지해 `docker run`
-  예시를 출력합니다.
+- **RBLN Container Toolkit**(`rbln-container-toolkit`)을 설치하는 것을 권장합니다.
+  공식 Docker/NPU 연동 경로는 CDI handle(`rebellions.ai/npu=all`) 기반입니다. 자세한 내용은
+  <https://docs.rbln.ai/latest/software/system_management/container_toolkit.html> 참조.
+- Container Toolkit 설치 후에는 아래 순서로 CDI/runtime 구성을 완료합니다.
+
+```bash
+sudo rbln-ctk cdi generate
+sudo rbln-ctk runtime configure
+rbln-ctk cdi list
+rbln-ctk info
+docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
+```
+
+- `./build.sh`는 `/var/run/cdi/rbln.yaml`이 있으면 위 CDI 경로를 우선 사용합니다.
+- CDI가 없는 호스트에서는 현재 보이는 `/dev/rbln*`와 `rbln-smi`/`rbln-stat` 실행 파일을
+  감지해 fallback `docker run` 예시를 출력합니다. 다만 기본 권장 경로는 Container Toolkit + CDI입니다.
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
   예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
