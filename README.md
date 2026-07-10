@@ -134,7 +134,7 @@ docker version
 ```
 
 `./build.sh`는 `torch`를 CPU wheel index에서 설치하고, `warboy-jammy` APT suite와
-`furiosa-sdk[quantizer]==0.10.2`(+`furiosa-models`)를 이미지에 설치합니다. Furiosa pip 인덱스가
+`furiosa-sdk[quantizer]==0.10.2`, `furiosa-models==0.10.2`를 이미지에 설치합니다. Furiosa pip 인덱스가
 따로 필요하면 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
 
 이 브랜치의 build 입력은 아래 둘만 지원합니다.
@@ -184,6 +184,9 @@ cd /workspace/unified-sdk
 furiosactl list && furiosactl info || true
 furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
+
+# (선택) model-zoo API 확인
+python3 -c "from furiosa.models import vision; print(hasattr(vision, 'ResNet50'))"
 ```
 
 ---
