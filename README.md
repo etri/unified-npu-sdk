@@ -147,7 +147,7 @@ pip install 'furiosa-sdk[quantizer]==0.10.2' furiosa-models
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
-  --name unified-sdk_warboy_dev \
+  --name furiosa-only \
   --device /dev/npu0:/dev/npu0 \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
