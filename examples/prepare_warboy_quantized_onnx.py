@@ -106,7 +106,14 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prepare a quantized ONNX for FuriosaAI Warboy from ResNet50 .pth/.pt weights."
+        description="Prepare a quantized ONNX for FuriosaAI Warboy."
+    )
+    parser.add_argument(
+        "--source",
+        choices=("model-zoo", "pth"),
+        default="model-zoo",
+        help="model-zoo: use furiosa.models.vision.ResNet50() quantized ONNX (recommended), "
+        "pth: export local .pth/.pt and calibrate it.",
     )
     parser.add_argument("--weights", type=Path, default=None, help="Path to resnet50 .pth/.pt weights.")
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights and write ONNX outputs.")
@@ -301,66 +308,96 @@ if __name__ == "__main__":
     print(f"(models_dir={models_dir})")
 
     model = _make_resnet50(torch)
-    if weights_path is not None:
-        state_dict = _load_state_dict(weights_path, torch)
-        load_result = model.load_state_dict(state_dict, strict=False)
-        print(f"(weights={weights_path})")
-        print(
-            f"(load_state_dict: missing={len(load_result.missing_keys)}, "
-            f"unexpected={len(load_result.unexpected_keys)})"
-        )
-        if load_result.missing_keys:
-            print(f"[WARN] missing keys sample: {load_result.missing_keys[:5]}")
-        if load_result.unexpected_keys:
-            print(f"[WARN] unexpected keys sample: {load_result.unexpected_keys[:5]}")
+    if args.source == "model-zoo":
+        try:
+            from furiosa.models import vision
+        except ImportError as exc:
+            raise ImportError(
+                "furiosa-models is required for --source model-zoo"
+            ) from exc
+
+        if args.model_name != "resnet50":
+            raise ValueError("--source model-zoo currently supports only --model-name resnet50")
+        if weights_path is not None:
+            print(f"[WARN] --source model-zoo ignores local weights: {weights_path}")
+        if args.calib_dir or args.calib_image != TESTS_DIR / "input.jpg":
+            print("[WARN] --source model-zoo ignores calibration image arguments.")
+
+        zoo_model = vision.ResNet50()
+        origin = getattr(zoo_model, "origin")
+        if isinstance(origin, (bytes, bytearray)):
+            f32 = onnx.load_from_string(origin)
+            onnx.save(f32, str(f32_onnx))
+        else:
+            origin_path = Path(str(origin))
+            f32 = onnx.load(str(origin_path))
+            f32_onnx.write_bytes(origin_path.read_bytes())
+        print("onnx(f32) =", f32_onnx)
+
+        ranges = getattr(zoo_model, "tensor_name_to_range")
+        quantized = quantize(f32, ranges)
+        print("(source=model-zoo: vision.ResNet50 tensor_name_to_range)")
     else:
-        print("(weights=random-init smoke)")
-    model.eval()
-
-    dummy = torch.zeros(args.input_shape, dtype=torch.float32)
-    f32_onnx.parent.mkdir(parents=True, exist_ok=True)
-    torch.onnx.export(
-        model,
-        dummy,
-        str(f32_onnx),
-        input_names=[args.input_name],
-        output_names=[args.output_name],
-        opset_version=13,
-    )
-    print("onnx(f32) =", f32_onnx)
-
-    calib_dir = args.calib_dir.expanduser().resolve() if args.calib_dir else None
-    calib_image = args.calib_image.expanduser().resolve()
-    image_candidates = _collect_image_candidates(calib_dir, calib_image)
-
-    f32 = _load_and_infer_onnx(onnx, f32_onnx)
-    method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
-    calibrator = Calibrator(f32, method)
-
-    if not image_candidates:
-        raise FileNotFoundError(
-            "Calibration image not found.\n"
-            "Use --calib-dir <dir> or --calib-image <path> with real image files.\n"
-            f"Default fallback path also does not exist: {calib_image}\n"
-            "Synthetic random calibration was removed because Furiosa quantizer may panic on non-representative inputs."
-        )
-
-    print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
-    for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-        sample = _load_calibration_sample(image_path, args.input_shape, np)
-        print(
-            f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
-            f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
-        )
-        if float(np.max(np.abs(sample))) == 0.0:
-            raise ValueError(
-                f"Calibration sample is all zeros after preprocessing: {image_path}. "
-                "Use a normal RGB photo for calibration."
+        if weights_path is not None:
+            state_dict = _load_state_dict(weights_path, torch)
+            load_result = model.load_state_dict(state_dict, strict=False)
+            print(f"(weights={weights_path})")
+            print(
+                f"(load_state_dict: missing={len(load_result.missing_keys)}, "
+                f"unexpected={len(load_result.unexpected_keys)})"
             )
-        calibrator.collect_data([[sample]])
+            if load_result.missing_keys:
+                print(f"[WARN] missing keys sample: {load_result.missing_keys[:5]}")
+            if load_result.unexpected_keys:
+                print(f"[WARN] unexpected keys sample: {load_result.unexpected_keys[:5]}")
+        else:
+            print("(weights=random-init smoke)")
+        model.eval()
 
-    ranges = calibrator.compute_range()
-    quantized = quantize(f32, ranges)
+        dummy = torch.zeros(args.input_shape, dtype=torch.float32)
+        f32_onnx.parent.mkdir(parents=True, exist_ok=True)
+        torch.onnx.export(
+            model,
+            dummy,
+            str(f32_onnx),
+            input_names=[args.input_name],
+            output_names=[args.output_name],
+            opset_version=13,
+        )
+        print("onnx(f32) =", f32_onnx)
+
+        calib_dir = args.calib_dir.expanduser().resolve() if args.calib_dir else None
+        calib_image = args.calib_image.expanduser().resolve()
+        image_candidates = _collect_image_candidates(calib_dir, calib_image)
+
+        f32 = _load_and_infer_onnx(onnx, f32_onnx)
+        method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
+        calibrator = Calibrator(f32, method)
+
+        if not image_candidates:
+            raise FileNotFoundError(
+                "Calibration image not found.\n"
+                "Use --calib-dir <dir> or --calib-image <path> with real image files.\n"
+                f"Default fallback path also does not exist: {calib_image}\n"
+                "Synthetic random calibration was removed because Furiosa quantizer may panic on non-representative inputs."
+            )
+
+        print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
+        for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
+            sample = _load_calibration_sample(image_path, args.input_shape, np)
+            print(
+                f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
+                f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
+            )
+            if float(np.max(np.abs(sample))) == 0.0:
+                raise ValueError(
+                    f"Calibration sample is all zeros after preprocessing: {image_path}. "
+                    "Use a normal RGB photo for calibration."
+                )
+            calibrator.collect_data([[sample]])
+
+        ranges = calibrator.compute_range()
+        quantized = quantize(f32, ranges)
     quant_onnx.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(quantized, (bytes, bytearray)):
         quant_onnx.write_bytes(quantized)

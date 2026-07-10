@@ -142,17 +142,19 @@ docker version
 - 사전 컴파일된 `.enf`
 - `furiosa-compiler`로 컴파일할 **quantized ONNX**
 
-`resnet50.pth` 같은 PyTorch weight 파일은 이 브랜치에서 직접 컴파일 입력으로 쓰지 않습니다.
-필요하면 `examples/prepare_warboy_quantized_onnx.py` 로 `quantized ONNX`를 먼저 만든 뒤 `--from-onnx`로 넘겨야 합니다.
-이유는 이 브랜치가 `furiosa-compiler` 호출만 감싸고 있으며, `f32 ONNX` 또는 `.pth`에서
-`quantized ONNX`를 만드는 `export + quantization + calibration` 단계는 현재 범위에 포함하지 않기 때문입니다.
+기본 권장 경로는 `furiosa-models`의 `vision.ResNet50()`가 제공하는 quantized ONNX를 사용하는 것입니다.
+즉 `examples/prepare_warboy_quantized_onnx.py`를 기본값(`--source model-zoo`)으로 실행해
+`quantized ONNX`를 만든 뒤 `--from-onnx`로 넘기는 흐름이 가장 안정적입니다.
+
+`resnet50.pth` 같은 PyTorch weight 파일을 직접 쓰는 경로는 `--source pth`로 남겨두었지만,
+이 경우 `f32 ONNX export + calibration + quantization`을 직접 수행하므로 vendor package 조합에 따라
+추가 튜닝이 필요할 수 있습니다.
 
 예:
 
 ```bash
 python3 examples/prepare_warboy_quantized_onnx.py \
-  --weights models/resnet50.pth \
-  --calib-image /workspace/unified-sdk/models/input.jpg
+  --source model-zoo
 
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
@@ -203,11 +205,15 @@ furiosactl list && furiosactl info || true
 furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
-# 4) .pth/.pt 가 있다면 quantized ONNX 준비
-#    주의: quantization calibration 용 실제 이미지가 필요합니다.
-#    tests/input.jpg는 저장소에 항상 포함되는 자산이 아니므로, 보통 models/input.jpg 또는 별도 calib 디렉터리를 직접 준비합니다.
-#    (a) ResNet50 weight -> quantized ONNX:
+# 4) quantized ONNX 준비
+#    기본 권장 경로: furiosa-models 의 vision.ResNet50() + tensor_name_to_range 사용
 python3 examples/prepare_warboy_quantized_onnx.py \
+  --source model-zoo
+
+#    (선택) 로컬 ResNet50 weight(.pth/.pt)에서 직접 만들려면 calibration 이미지가 필요합니다.
+#    tests/input.jpg는 저장소에 항상 포함되는 자산이 아니므로, 보통 models/input.jpg 또는 별도 calib 디렉터리를 직접 준비합니다.
+python3 examples/prepare_warboy_quantized_onnx.py \
+  --source pth \
   --weights models/resnet50.pth \
   --calib-image models/input.jpg
 
