@@ -157,11 +157,15 @@ sudo apt-get install -y rbln-container-toolkit
 
 ```bash
 sudo rbln-ctk cdi generate
-sudo rbln-ctk runtime configure
+sudo rbln-ctk runtime configure --runtime docker
+sudo systemctl restart docker
 rbln-ctk cdi list
 rbln-ctk info
 docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
 ```
+
+- 호스트에 `containerd`와 `docker`가 함께 있으면 `multiple runtimes detected`가 나올 수 있습니다.
+  이 경우 위 예시처럼 `--runtime docker`를 명시하면 됩니다.
 
 - `./build.sh`는 `/var/run/cdi/rbln.yaml`이 있으면 위 CDI 경로를 우선 사용합니다.
 - CDI가 없는 호스트에서는 현재 보이는 `/dev/rbln*`와 `rbln-smi`/`rbln-stat` 실행 파일을
