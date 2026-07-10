@@ -30,7 +30,7 @@
 ├── Dockerfile
 ├── build.sh
 ├── examples/
-│   ├── prepare_warboy_quantized_onnx.py  # ResNet50 .pth/.pt -> f32 ONNX -> quantized ONNX 준비
+│   ├── prepare_warboy_quantized_onnx.py  # 기본: model-zoo ResNet50 quantized ONNX 준비, 선택: .pth/.pt -> quantized ONNX
 │   ├── run_warboy_build.py         # .enf 확보(fetch) 또는 quantized ONNX→.enf 컴파일(furiosa-compiler)
 │   ├── run_warboy_infer.py         # .enf 모델 추론 (furiosa.runtime)
 │   └── inspect_warboy_model.py     # .enf 입출력 메타 확인
@@ -237,6 +237,7 @@ python3 examples/run_warboy_build.py \
   --model-name resnet50
 
 # 6) .enf 추론
+#    resnet50.enf 이고 furiosa-models 가 있으면 model-zoo preprocess/postprocess 를 우선 사용합니다.
 #    tests/input.jpg가 없으면 synthetic 입력으로 런타임 경로를 검증합니다.
 python3 examples/run_warboy_infer.py \
   --engine-path builds/resnet50.enf \
@@ -302,7 +303,8 @@ destroy_runtime(rh)
 
 참고:
 - `model-zoo` 경로의 `ResNet50` quantized ONNX 는 현재 확인 기준 ONNX output 이 `ArgMax:0 [1]` 형태입니다.
-- 따라서 `run_warboy_infer.py` 는 `(1,)` scalar-like 출력을 logits 벡터가 아니라 top-1 class id 로 해석합니다.
+- 따라서 `run_warboy_infer.py` 는 `vision.ResNet50().postprocess(...)`를 우선 시도하고,
+  그게 불가능할 때만 `(1,)` scalar-like 출력을 top-1 class id 로 해석합니다.
 
 ---
 
@@ -319,9 +321,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 컴파일러 `furiosa-compiler`는 **quantized ONNX**를 입력으로 받아 `.enf`(int8)를 생성합니다.
   f32 ONNX 는 `furiosa.quantizer`(calibration)로 먼저 양자화해야 합니다 (host validation 참고).
 - `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
-- `.pth`/`.pt` 가중치 파일은 이 브랜치의 build 입력으로 직접 지원하지 않습니다.
-- 즉 현재 구현 범위는 `quantized ONNX -> .enf` 또는 `provided .enf -> runtime` 이며,
-  `.pth -> ONNX export -> quantization -> .enf` 전체 파이프라인은 아직 래핑하지 않습니다.
+- `.pth`/`.pt` 가중치 파일은 build 입력으로 직접 쓰지 않고, 필요하면 `prepare_warboy_quantized_onnx.py --source pth`
+  로 quantized ONNX 를 먼저 준비한 뒤 `--from-onnx`로 넘깁니다.
 - `.enf`의 입력 dtype/layout은 quantized ONNX 스펙에 따라 고정(보통 int8/uint8)되므로, 추론 입력을 이에 맞춰야 합니다.
 - 다중 장치 서버에서는 `FURIOSA_DEVICES`/`--device`(예: `warboy(0)*2`)로 장치를 고정하세요.
 - 장치/모델 점검용 CLI: `furiosactl list`, `furiosactl info`, `furiosa-smi info`.
