@@ -157,7 +157,7 @@ pip install vendor/qubee-*.whl vendor/qbruntime-*.whl
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
-  --name unified-sdk_qb_dev \
+  --name qb-only \
   --device /dev/aries0:/dev/aries0 \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
