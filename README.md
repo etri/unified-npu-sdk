@@ -140,18 +140,7 @@ docker version
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
   예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
-### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
-
-```bash
-# RBLN Portal 계정 필요. ~/.netrc에 pypi.rbln.ai 자격이 있어야 함.
-pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
-pip install -e .
-pip install --extra-index-url https://pypi.rbln.ai/simple rebel-compiler==0.11.0
-# host driver/SDK 기준에 따라 맞는 버전으로 바꿔야 합니다.
-# 예: RBLN SDK 0.11.0 검증 환경 -> rebel-compiler==0.11.0
-```
-
-### 5. Docker 빌드 & 실행
+### 4. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
