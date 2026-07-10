@@ -190,7 +190,7 @@ CUDA wheel이 필요 없고, CUDA wheel 조합은 compiler frontend 진단을 �
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
-  --name unified-sdk_rbln_dev \
+  --name rbln-only \
   --device rebellions.ai/npu=all \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \

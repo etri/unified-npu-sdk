@@ -23,10 +23,10 @@ DOCKER_DEVICE_ARGS=()
 DOCKER_TOOL_MOUNTS=()
 
 print_usage() {
-  echo "Usage: $0 [--name <container_name>] [--workspace <repo_path>] [--base-image <image>] [--compiler-version <version>] [--pytorch-index-url <url>]"
+  echo "Usage: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--compiler-version <version>] [--pytorch-index-url <url>]"
   echo ""
   echo "Options:"
-  echo "  --name        Container name (default: ${IMAGE_NAME}_${TAG}_dev)"
+  echo "  -n, --name    Container name (default: rbln-only)"
   echo "  --workspace   Host repo path to mount into /workspace/unified-sdk"
   echo "                (default: current project root)"
   echo "  --base-image  Docker base image used for build"
@@ -93,7 +93,7 @@ print_run_hint() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --name)
+    -n|--name)
       [ -z "$2" ] && { echo "[ERROR] --name requires a value"; exit 1; }
       CONTAINER_NAME="$2"; shift 2 ;;
     --workspace)
@@ -118,7 +118,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="${IMAGE_NAME}_${TAG}_dev"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="rbln-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
