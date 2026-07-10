@@ -4,6 +4,28 @@ from pathlib import Path
 import sys
 import os
 
+
+def _center_crop_resize_pil(image, size: int):
+    width, height = image.size
+    scale = 256 / min(width, height)
+    resized = image.resize((round(width * scale), round(height * scale)))
+    left = max((resized.width - size) // 2, 0)
+    top = max((resized.height - size) // 2, 0)
+    return resized.crop((left, top, left + size, top + size))
+
+
+def _load_image_batch(image_path: Path, input_shape: tuple[int, ...], np_module):
+    from PIL import Image
+
+    image = Image.open(image_path).convert("RGB")
+    cropped = _center_crop_resize_pil(image, input_shape[-1])
+    array = np_module.asarray(cropped, dtype=np_module.float32) / 255.0
+    array = array.transpose(2, 0, 1)
+    mean = np_module.asarray(IMAGENET_MEAN, dtype=np_module.float32)[:, None, None]
+    std = np_module.asarray(IMAGENET_STD, dtype=np_module.float32)[:, None, None]
+    normalized = (array - mean) / std
+    return normalized[None, ...].astype(np_module.float32)
+
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
 
@@ -95,10 +117,9 @@ if __name__ == "__main__":
     try:
         import numpy as np
         import torch
-        from torchvision.io.image import read_image
-        from torchvision import transforms
+        from PIL import Image  # noqa: F401
     except ImportError:
-        print("Error: 'numpy', 'torch', and 'torchvision' are required for the Warboy inference example.")
+        print("Error: 'numpy', 'torch', and 'pillow' are required for the Warboy inference example.")
         sys.exit(1)
 
     from unified_sdk.types import RuntimeConfig
@@ -115,23 +136,15 @@ if __name__ == "__main__":
     labels = _load_labels(labels_path)
 
     if image_path.is_file():
-        preprocess = transforms.Compose([
-            transforms.Resize(256, antialias=True),
-            transforms.CenterCrop(224),
-            transforms.ConvertImageDtype(torch.float32),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ])
-        img = read_image(str(image_path))                 # [C,H,W], uint8
-        batch_t = preprocess(img).unsqueeze(0)
+        batch = _load_image_batch(image_path, args.input_shape, np)
         input_source = str(image_path)
     else:
-        batch_t = torch.zeros(args.input_shape, dtype=torch.float32)
+        batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
         input_source = f"synthetic zeros {args.input_shape}"
 
     # NOTE: quantized ENF 의 입력 dtype/layout 은 컴파일 시 고정된다(int8/uint8 인 경우가 많음).
     # 정확한 정합이 필요하면 Furiosa Model Zoo 의 preprocess 를 쓰거나 ONNX 입력 스펙에 맞춰야 한다.
     # 아래는 구조 검증용 float32 NCHW 입력이다.
-    batch = batch_t.numpy()
 
     cfg = RuntimeConfig(
         backend="warboy",

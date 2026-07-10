@@ -30,7 +30,7 @@
 ├── Dockerfile
 ├── build.sh
 ├── examples/
-│   ├── prepare_warboy_quantized_onnx.py  # torchvision ResNet50 .pth/.pt -> f32 ONNX -> quantized ONNX 준비
+│   ├── prepare_warboy_quantized_onnx.py  # ResNet50 .pth/.pt -> f32 ONNX -> quantized ONNX 준비
 │   ├── run_warboy_build.py         # .enf 확보(fetch) 또는 quantized ONNX→.enf 컴파일(furiosa-compiler)
 │   ├── run_warboy_infer.py         # .enf 모델 추론 (furiosa.runtime)
 │   └── inspect_warboy_model.py     # .enf 입출력 메타 확인
@@ -133,7 +133,7 @@ docker version
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-`./build.sh`는 `torch`/`torchvision`을 CPU wheel index에서 설치하고, `warboy-jammy` APT suite와
+`./build.sh`는 `torch`를 CPU wheel index에서 설치하고, `warboy-jammy` APT suite와
 `furiosa-sdk[quantizer]==0.10.2`(+`furiosa-models`)를 이미지에 설치합니다. Furiosa pip 인덱스가
 따로 필요하면 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
 
@@ -204,7 +204,7 @@ python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
 # 4) .pth/.pt 가 있다면 quantized ONNX 준비
 #    tests/input.jpg 또는 --calib-dir 이미지로 calibration 하고, 없으면 synthetic random 으로 smoke 용 quantize 를 진행합니다.
-#    (a) torchvision ResNet50 weight -> quantized ONNX:
+#    (a) ResNet50 weight -> quantized ONNX:
 python3 examples/prepare_warboy_quantized_onnx.py \
   --weights models/resnet50.pth
 
