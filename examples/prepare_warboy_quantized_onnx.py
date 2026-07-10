@@ -117,7 +117,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-name", default="output")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
     parser.add_argument("--calib-dir", type=Path, default=None, help="Directory of calibration images.")
-    parser.add_argument("--calib-image", type=Path, default=TESTS_DIR / "input.jpg", help="Single fallback calibration image.")
+    parser.add_argument("--calib-image", type=Path, default=TESTS_DIR / "input.jpg", help="Single calibration image.")
     parser.add_argument("--calib-iters", type=int, default=8, help="Number of calibration samples to collect.")
     parser.add_argument(
         "--allow-random-init",
@@ -329,16 +329,18 @@ if __name__ == "__main__":
     method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
     calibrator = Calibrator(f32, method)
 
-    if image_candidates:
-        print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
-        for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-            sample = _load_calibration_sample(image_path, args.input_shape, np)
-            calibrator.collect_data([[sample]])
-    else:
-        print(f"(calibration=synthetic random x{args.calib_iters})")
-        for _ in range(args.calib_iters):
-            sample = np.random.rand(*args.input_shape).astype(np.float32)
-            calibrator.collect_data([[sample]])
+    if not image_candidates:
+        raise FileNotFoundError(
+            "Calibration image not found.\n"
+            "Use --calib-dir <dir> or --calib-image <path> with real image files.\n"
+            f"Default fallback path also does not exist: {calib_image}\n"
+            "Synthetic random calibration was removed because Furiosa quantizer may panic on non-representative inputs."
+        )
+
+    print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
+    for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
+        sample = _load_calibration_sample(image_path, args.input_shape, np)
+        calibrator.collect_data([[sample]])
 
     ranges = calibrator.compute_range()
     quantized = quantize(f32, ranges)
