@@ -138,6 +138,14 @@ docker version
 - Ubuntu/Debian 예시:
 
 ```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://nexus.rebellions.ai/repository/apt-public/public.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/rebellions.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/rebellions.asc] https://nexus.rebellions.ai/repository/apt-public/ stable main" | \
+  sudo tee /etc/apt/sources.list.d/rebellions-apt-public.list > /dev/null
+
 sudo apt-get update
 sudo apt-get install -y rbln-container-toolkit
 ```
