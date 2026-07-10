@@ -303,8 +303,16 @@ if __name__ == "__main__":
     model = _make_resnet50(torch)
     if weights_path is not None:
         state_dict = _load_state_dict(weights_path, torch)
-        model.load_state_dict(state_dict, strict=False)
+        load_result = model.load_state_dict(state_dict, strict=False)
         print(f"(weights={weights_path})")
+        print(
+            f"(load_state_dict: missing={len(load_result.missing_keys)}, "
+            f"unexpected={len(load_result.unexpected_keys)})"
+        )
+        if load_result.missing_keys:
+            print(f"[WARN] missing keys sample: {load_result.missing_keys[:5]}")
+        if load_result.unexpected_keys:
+            print(f"[WARN] unexpected keys sample: {load_result.unexpected_keys[:5]}")
     else:
         print("(weights=random-init smoke)")
     model.eval()
@@ -340,7 +348,16 @@ if __name__ == "__main__":
     print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
     for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
         sample = _load_calibration_sample(image_path, args.input_shape, np)
-        calibrator.collect_data([sample])
+        print(
+            f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
+            f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
+        )
+        if float(np.max(np.abs(sample))) == 0.0:
+            raise ValueError(
+                f"Calibration sample is all zeros after preprocessing: {image_path}. "
+                "Use a normal RGB photo for calibration."
+            )
+        calibrator.collect_data([[sample]])
 
     ranges = calibrator.compute_range()
     quantized = quantize(f32, ranges)
