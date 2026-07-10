@@ -144,6 +144,11 @@ docker run -it --security-opt seccomp=unconfined \
   unified-sdk:warboy
 ```
 
+> 위 명령은 **최소 예시**입니다.
+> 실제 호스트에서는 `/dev/npu0_bar*`, `/dev/npu0ch*`, `/dev/npu0pe*`, `/dev/npu0_mgmt` 같은
+> 추가 장치 노드와 `furiosactl` 마운트가 더 필요할 수 있습니다.
+> 따라서 실제 실행 시에는 README 예시보다 `./build.sh`가 출력한 `docker run ...` 명령을 **우선 사용**하세요.
+
 컨테이너 내부 점검:
 
 ```bash
@@ -165,7 +170,7 @@ vendor SDK(`furiosa-compiler`/`furiosa.runtime`)를 직접 호출합니다.
 # 1) 이미지 빌드
 ./build.sh
 
-# 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
+# 2) README 예시가 아니라 build.sh가 출력한 docker run 명령으로 컨테이너 진입
 
 # 3) 컨테이너 내부에서 장치/패키지 확인
 furiosactl list && furiosactl info || true
