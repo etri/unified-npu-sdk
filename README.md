@@ -170,7 +170,7 @@ docker version
 
 ```bash
 docker run --gpus all -it --security-opt seccomp=unconfined \
-  --name unified-sdk_trt_dev \
+  --name trt-only \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
   unified-sdk:trt
