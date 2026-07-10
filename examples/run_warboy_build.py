@@ -68,7 +68,8 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a FuriosaAI Warboy .enf model. "
-        "기본은 사전 컴파일된 .enf 확보(fetch), --from-onnx(quantized ONNX) 지정 시 furiosa-compiler 컴파일(compile hook)."
+        "기본은 사전 컴파일된 .enf 확보(fetch), --from-onnx(quantized ONNX) 지정 시 furiosa-compiler 컴파일(compile hook). "
+        ".pth/.pt 가중치 파일은 직접 입력으로 지원하지 않습니다."
     )
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 .enf 를 찾을 디렉터리.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="결과 .enf 출력 디렉터리.")
@@ -109,7 +110,8 @@ if __name__ == "__main__":
         if enf is None:
             msg = (
                 f"{models_dir} 에서 {args.model_name}*.enf 를 찾지 못했습니다.\n"
-                "사전 컴파일된 .enf 를 --enf 로 지정하거나, --from-onnx <quantized.onnx> 로 컴파일하세요."
+                "사전 컴파일된 .enf 를 --enf 로 지정하거나, --from-onnx <quantized.onnx> 로 컴파일하세요.\n"
+                ".pth/.pt 가중치 파일은 직접 입력으로 지원하지 않습니다."
             )
             if args.require_enf:
                 raise FileNotFoundError(msg)

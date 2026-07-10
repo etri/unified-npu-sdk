@@ -65,6 +65,9 @@
 
 FuriosaAI Warboy 스택은 **공개 APT(`warboy-jammy`) + 공개 pip**로 설치되며, 별도 인증 파일이 필요 없습니다.
 
+> `models/` 폴더는 gitignore 대상이라 clone 직후에는 비어 있거나 아예 없을 수 있습니다.
+> 필요하면 직접 생성해서 모델 자산을 넣어야 합니다.
+
 ### 2. Docker 사전 준비
 
 - `furiosa-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 선택 사항입니다.
@@ -133,6 +136,14 @@ docker version
 `furiosa-sdk[quantizer]==0.10.2`(+`furiosa-models`)를 이미지에 설치합니다. Furiosa pip 인덱스가
 따로 필요하면 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
 
+이 브랜치의 build 입력은 아래 둘만 지원합니다.
+
+- 사전 컴파일된 `.enf`
+- `furiosa-compiler`로 컴파일할 **quantized ONNX**
+
+`resnet50.pth` 같은 PyTorch weight 파일은 이 브랜치에서 직접 컴파일 입력으로 쓰지 않습니다.
+필요하면 별도로 `quantized ONNX`를 준비한 뒤 `--from-onnx`로 넘겨야 합니다.
+
 컨테이너 실행 예시:
 
 ```bash
@@ -178,6 +189,8 @@ furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
 # 4) .enf 확보 또는 컴파일
+#    주의: models/ 는 gitignore 대상이라 직접 생성/배치해야 할 수 있습니다.
+#    또한 .pth 는 직접 입력으로 받지 않고, 사전 컴파일된 .enf 또는 quantized ONNX 만 지원합니다.
 #    (a) 사전 컴파일된 .enf 를 models/ 에 두었다면 그대로 확보(fetch):
 python3 examples/run_warboy_build.py --model-name resnet50
 #    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 1 PE):
@@ -269,6 +282,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 Warboy 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - 컴파일러 `furiosa-compiler`는 **quantized ONNX**를 입력으로 받아 `.enf`(int8)를 생성합니다.
   f32 ONNX 는 `furiosa.quantizer`(calibration)로 먼저 양자화해야 합니다 (host validation 참고).
+- `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
+- `.pth`/`.pt` 가중치 파일은 이 브랜치의 build 입력으로 직접 지원하지 않습니다.
 - `.enf`의 입력 dtype/layout은 quantized ONNX 스펙에 따라 고정(보통 int8/uint8)되므로, 추론 입력을 이에 맞춰야 합니다.
 - 다중 장치 서버에서는 `FURIOSA_DEVICES`/`--device`(예: `warboy(0)*2`)로 장치를 고정하세요.
 - 장치/모델 점검용 CLI: `furiosactl list`, `furiosactl info`, `furiosa-smi info`.
