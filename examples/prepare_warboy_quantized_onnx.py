@@ -106,7 +106,7 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prepare a quantized ONNX for FuriosaAI Warboy from torchvision ResNet50 weights."
+        description="Prepare a quantized ONNX for FuriosaAI Warboy from ResNet50 .pth/.pt weights."
     )
     parser.add_argument("--weights", type=Path, default=None, help="Path to resnet50 .pth/.pt weights.")
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights and write ONNX outputs.")

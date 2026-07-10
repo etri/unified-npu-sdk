@@ -55,7 +55,7 @@ COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
         --index-url ${PYTORCH_INDEX_URL} \
-        torch torchvision \
+        torch \
     && pip install --no-cache-dir \
         -r /tmp/requirements.txt
 
