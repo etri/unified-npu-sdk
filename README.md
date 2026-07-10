@@ -143,6 +143,8 @@ docker version
 
 `resnet50.pth` 같은 PyTorch weight 파일은 이 브랜치에서 직접 컴파일 입력으로 쓰지 않습니다.
 필요하면 별도로 `quantized ONNX`를 준비한 뒤 `--from-onnx`로 넘겨야 합니다.
+이유는 이 브랜치가 `furiosa-compiler` 호출만 감싸고 있으며, `f32 ONNX` 또는 `.pth`에서
+`quantized ONNX`를 만드는 `export + quantization + calibration` 단계는 현재 범위에 포함하지 않기 때문입니다.
 
 컨테이너 실행 예시:
 
@@ -284,6 +286,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   f32 ONNX 는 `furiosa.quantizer`(calibration)로 먼저 양자화해야 합니다 (host validation 참고).
 - `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
 - `.pth`/`.pt` 가중치 파일은 이 브랜치의 build 입력으로 직접 지원하지 않습니다.
+- 즉 현재 구현 범위는 `quantized ONNX -> .enf` 또는 `provided .enf -> runtime` 이며,
+  `.pth -> ONNX export -> quantization -> .enf` 전체 파이프라인은 아직 래핑하지 않습니다.
 - `.enf`의 입력 dtype/layout은 quantized ONNX 스펙에 따라 고정(보통 int8/uint8)되므로, 추론 입력을 이에 맞춰야 합니다.
 - 다중 장치 서버에서는 `FURIOSA_DEVICES`/`--device`(예: `warboy(0)*2`)로 장치를 고정하세요.
 - 장치/모델 점검용 CLI: `furiosactl list`, `furiosactl info`, `furiosa-smi info`.
