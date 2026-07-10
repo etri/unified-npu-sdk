@@ -30,6 +30,7 @@
 ├── Dockerfile
 ├── build.sh
 ├── examples/
+│   ├── prepare_warboy_quantized_onnx.py  # torchvision ResNet50 .pth/.pt -> f32 ONNX -> quantized ONNX 준비
 │   ├── run_warboy_build.py         # .enf 확보(fetch) 또는 quantized ONNX→.enf 컴파일(furiosa-compiler)
 │   ├── run_warboy_infer.py         # .enf 모델 추론 (furiosa.runtime)
 │   └── inspect_warboy_model.py     # .enf 입출력 메타 확인
@@ -142,9 +143,20 @@ docker version
 - `furiosa-compiler`로 컴파일할 **quantized ONNX**
 
 `resnet50.pth` 같은 PyTorch weight 파일은 이 브랜치에서 직접 컴파일 입력으로 쓰지 않습니다.
-필요하면 별도로 `quantized ONNX`를 준비한 뒤 `--from-onnx`로 넘겨야 합니다.
+필요하면 `examples/prepare_warboy_quantized_onnx.py` 로 `quantized ONNX`를 먼저 만든 뒤 `--from-onnx`로 넘겨야 합니다.
 이유는 이 브랜치가 `furiosa-compiler` 호출만 감싸고 있으며, `f32 ONNX` 또는 `.pth`에서
 `quantized ONNX`를 만드는 `export + quantization + calibration` 단계는 현재 범위에 포함하지 않기 때문입니다.
+
+예:
+
+```bash
+python3 examples/prepare_warboy_quantized_onnx.py \
+  --weights models/resnet50.pth
+
+python3 examples/run_warboy_build.py \
+  --from-onnx models/resnet50_quantized.onnx \
+  --model-name resnet50
+```
 
 컨테이너 실행 예시:
 
@@ -190,9 +202,15 @@ furiosactl list && furiosactl info || true
 furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
-# 4) .enf 확보 또는 컴파일
+# 4) .pth/.pt 가 있다면 quantized ONNX 준비
+#    tests/input.jpg 또는 --calib-dir 이미지로 calibration 하고, 없으면 synthetic random 으로 smoke 용 quantize 를 진행합니다.
+#    (a) torchvision ResNet50 weight -> quantized ONNX:
+python3 examples/prepare_warboy_quantized_onnx.py \
+  --weights models/resnet50.pth
+
+# 5) .enf 확보 또는 컴파일
 #    주의: models/ 는 gitignore 대상이라 직접 생성/배치해야 할 수 있습니다.
-#    또한 .pth 는 직접 입력으로 받지 않고, 사전 컴파일된 .enf 또는 quantized ONNX 만 지원합니다.
+#    또한 build 단계는 .pth 를 직접 받지 않고, 사전 컴파일된 .enf 또는 quantized ONNX 만 지원합니다.
 #    (a) 사전 컴파일된 .enf 를 models/ 에 두었다면 그대로 확보(fetch):
 python3 examples/run_warboy_build.py --model-name resnet50
 #    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 1 PE):
@@ -206,13 +224,13 @@ python3 examples/run_warboy_build.py \
   --target-npu warboy-2pe \
   --model-name resnet50
 
-# 5) .enf 추론
+# 6) .enf 추론
 #    tests/input.jpg가 없으면 synthetic 입력으로 런타임 경로를 검증합니다.
 python3 examples/run_warboy_infer.py \
   --engine-path builds/resnet50.enf \
   --iters 50
 
-# 6) 모델 메타 best-effort 확인
+# 7) 모델 메타 best-effort 확인
 python3 examples/inspect_warboy_model.py builds/resnet50.enf
 ```
 
