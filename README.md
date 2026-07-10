@@ -146,7 +146,7 @@ pip install furiosa-llm
 
 ```bash
 docker run -it --security-opt seccomp=unconfined \
-  --name unified-sdk_rngd_dev \
+  --name furiosa-llm-only \
   --device /dev/rngd0:/dev/rngd0 \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \

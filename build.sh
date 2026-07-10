@@ -22,10 +22,10 @@ DOCKER_DEVICE_ARGS=()
 DOCKER_TOOL_MOUNTS=()
 
 print_usage() {
-  echo "사용법: $0 [--name <container_name>] [--workspace <repo_path>] [--base-image <image>] [--furiosa-pip-index <url>] [--device <node>]"
+  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--furiosa-pip-index <url>] [--device <node>]"
   echo ""
   echo "옵션:"
-  echo "  --name        컨테이너 이름 (기본: ${IMAGE_NAME}_${TAG}_dev)"
+  echo "  -n, --name    컨테이너 이름 (기본: furiosa-llm-only)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: ${BASE_IMAGE})"
   echo "  --furiosa-pip-index  furiosa-llm 설치용 추가 pip 인덱스 (선택)"
@@ -76,7 +76,7 @@ print_run_hint() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --name)
+    -n|--name)
       [ -z "$2" ] && { echo "[ERROR] --name 값이 필요합니다"; exit 1; }
       CONTAINER_NAME="$2"; shift 2 ;;
     --workspace)
@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="${IMAGE_NAME}_${TAG}_dev"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="furiosa-llm-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
