@@ -5,6 +5,60 @@ import sys
 import os
 
 
+class _Bottleneck:
+    expansion = 4
+
+    def __init__(self, nn_module, inplanes: int, planes: int, stride: int = 1, downsample=None) -> None:
+        self.nn = nn_module
+        self.inplanes = inplanes
+        self.planes = planes
+        self.stride = stride
+        self.downsample = downsample
+
+    def build(self):
+        nn = self.nn
+
+        class BottleneckModule(nn.Module):
+            expansion = 4
+
+            def __init__(self, inplanes: int, planes: int, stride: int = 1, downsample=None) -> None:
+                super().__init__()
+                self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+                self.bn1 = nn.BatchNorm2d(planes)
+                self.conv2 = nn.Conv2d(
+                    planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+                )
+                self.bn2 = nn.BatchNorm2d(planes)
+                self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
+                self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+                self.relu = nn.ReLU(inplace=True)
+                self.downsample = downsample
+                self.stride = stride
+
+            def forward(self, x):
+                identity = x
+
+                out = self.conv1(x)
+                out = self.bn1(out)
+                out = self.relu(out)
+
+                out = self.conv2(out)
+                out = self.bn2(out)
+                out = self.relu(out)
+
+                out = self.conv3(out)
+                out = self.bn3(out)
+
+                if self.downsample is not None:
+                    identity = self.downsample(x)
+
+                out += identity
+                out = self.relu(out)
+                return out
+
+        return BottleneckModule(self.inplanes, self.planes, self.stride, self.downsample)
+
+
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
 
@@ -118,6 +172,79 @@ def _collect_image_candidates(calib_dir: Path | None, calib_image: Path) -> list
     return unique
 
 
+def _make_resnet50(torch_module):
+    nn = torch_module.nn
+
+    class ResNet(nn.Module):
+        def __init__(self, block_factory, layers: list[int], num_classes: int = 1000) -> None:
+            super().__init__()
+            self.inplanes = 64
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.bn1 = nn.BatchNorm2d(64)
+            self.relu = nn.ReLU(inplace=True)
+            self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            self.layer1 = self._make_layer(block_factory, 64, layers[0])
+            self.layer2 = self._make_layer(block_factory, 128, layers[1], stride=2)
+            self.layer3 = self._make_layer(block_factory, 256, layers[2], stride=2)
+            self.layer4 = self._make_layer(block_factory, 512, layers[3], stride=2)
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(512 * 4, num_classes)
+
+        def _make_layer(self, block_factory, planes: int, blocks: int, stride: int = 1):
+            downsample = None
+            if stride != 1 or self.inplanes != planes * 4:
+                downsample = nn.Sequential(
+                    nn.Conv2d(self.inplanes, planes * 4, kernel_size=1, stride=stride, bias=False),
+                    nn.BatchNorm2d(planes * 4),
+                )
+
+            layers = [block_factory(nn, self.inplanes, planes, stride, downsample).build()]
+            self.inplanes = planes * 4
+            for _ in range(1, blocks):
+                layers.append(block_factory(nn, self.inplanes, planes).build())
+            return nn.Sequential(*layers)
+
+        def forward(self, x):
+            x = self.conv1(x)
+            x = self.bn1(x)
+            x = self.relu(x)
+            x = self.maxpool(x)
+
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+            x = self.layer4(x)
+
+            x = self.avgpool(x)
+            x = torch_module.flatten(x, 1)
+            x = self.fc(x)
+            return x
+
+    return ResNet(_Bottleneck, [3, 4, 6, 3])
+
+
+def _center_crop_resize_pil(image, size: int):
+    width, height = image.size
+    scale = 256 / min(width, height)
+    resized = image.resize((round(width * scale), round(height * scale)))
+    left = max((resized.width - size) // 2, 0)
+    top = max((resized.height - size) // 2, 0)
+    return resized.crop((left, top, left + size, top + size))
+
+
+def _load_calibration_sample(image_path: Path, input_shape: tuple[int, ...], np_module):
+    from PIL import Image
+
+    image = Image.open(image_path).convert("RGB")
+    cropped = _center_crop_resize_pil(image, input_shape[-1])
+    array = np_module.asarray(cropped, dtype=np_module.float32) / 255.0
+    array = array.transpose(2, 0, 1)
+    mean = np_module.asarray(IMAGENET_MEAN, dtype=np_module.float32)[:, None, None]
+    std = np_module.asarray(IMAGENET_STD, dtype=np_module.float32)[:, None, None]
+    normalized = (array - mean) / std
+    return normalized[None, ...].astype(np_module.float32)
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -125,13 +252,11 @@ if __name__ == "__main__":
         import numpy as np
         import onnx
         import torch
-        from torchvision.io.image import read_image
-        from torchvision import transforms
-        from torchvision.models import resnet50
         from furiosa.quantizer import quantize, Calibrator, CalibrationMethod
+        from PIL import Image  # noqa: F401
     except ImportError as exc:
         print(f"Error: missing dependency - {exc}")
-        print("Need: torch, torchvision, onnx, furiosa-sdk[quantizer]")
+        print("Need: torch, onnx, pillow, furiosa-sdk[quantizer]")
         sys.exit(1)
 
     models_dir = args.models_dir.expanduser().resolve()
@@ -162,7 +287,7 @@ if __name__ == "__main__":
     print(f"(repo_root={REPO_ROOT})")
     print(f"(models_dir={models_dir})")
 
-    model = resnet50(weights=None)
+    model = _make_resnet50(torch)
     if weights_path is not None:
         state_dict = _load_state_dict(weights_path, torch)
         model.load_state_dict(state_dict, strict=False)
@@ -183,15 +308,6 @@ if __name__ == "__main__":
     )
     print("onnx(f32) =", f32_onnx)
 
-    preprocess = transforms.Compose(
-        [
-            transforms.Resize(256, antialias=True),
-            transforms.CenterCrop(args.input_shape[-1]),
-            transforms.ConvertImageDtype(torch.float32),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ]
-    )
-
     calib_dir = args.calib_dir.expanduser().resolve() if args.calib_dir else None
     calib_image = args.calib_image.expanduser().resolve()
     image_candidates = _collect_image_candidates(calib_dir, calib_image)
@@ -203,8 +319,7 @@ if __name__ == "__main__":
     if image_candidates:
         print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
         for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-            image = read_image(str(image_path))
-            sample = preprocess(image).unsqueeze(0).numpy().astype(np.float32)
+            sample = _load_calibration_sample(image_path, args.input_shape, np)
             calibrator.collect_data([[sample]])
     else:
         print(f"(calibration=synthetic random x{args.calib_iters})")
