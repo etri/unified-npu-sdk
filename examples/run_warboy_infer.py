@@ -111,6 +111,38 @@ def _load_labels(labels_path: Path):
     return None
 
 
+def _maybe_create_model_zoo_helper(engine_path: Path):
+    if not engine_path.stem.startswith("resnet50"):
+        return None
+    try:
+        from furiosa.models import vision
+    except Exception:
+        return None
+    if not hasattr(vision, "ResNet50"):
+        return None
+    try:
+        return vision.ResNet50()
+    except Exception:
+        return None
+
+
+def _load_with_model_zoo_preprocess(model_helper, image_path: Path):
+    preprocess_error = None
+    for kwargs in ({"with_scaling": True}, {}):
+        try:
+            inputs, contexts = model_helper.preprocess([str(image_path)], **kwargs)
+            return inputs, contexts, kwargs
+        except TypeError:
+            try:
+                inputs, contexts = model_helper.preprocess(str(image_path), **kwargs)
+                return inputs, contexts, kwargs
+            except Exception as exc:
+                preprocess_error = exc
+        except Exception as exc:
+            preprocess_error = exc
+    raise RuntimeError(f"Model Zoo preprocess failed: {preprocess_error!r}")
+
+
 def _extract_prediction_id(output_array, torch_module) -> int:
     y_t = torch_module.from_numpy(output_array)
     if y_t.ndim == 1 and y_t.numel() == 1:
@@ -142,10 +174,16 @@ if __name__ == "__main__":
 
     _check_files(engine_path)
     labels = _load_labels(labels_path)
+    model_helper = _maybe_create_model_zoo_helper(engine_path)
+    contexts = None
 
     if image_path.is_file():
-        batch = _load_image_batch(image_path, args.input_shape, np)
-        input_source = str(image_path)
+        if model_helper is not None:
+            batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(model_helper, image_path)
+            input_source = f"{image_path} (model-zoo preprocess {preprocess_kwargs})"
+        else:
+            batch = _load_image_batch(image_path, args.input_shape, np)
+            input_source = str(image_path)
     else:
         batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
         input_source = f"synthetic zeros {args.input_shape}"
@@ -180,12 +218,23 @@ if __name__ == "__main__":
         times.append((t1 - t0) * 1000)
 
     y = np.ascontiguousarray(y)
-    cls_id = _extract_prediction_id(y, torch)
-
-    if labels and 0 <= cls_id < len(labels):
-        print(f"pred: {labels[cls_id]} (id={cls_id})")
+    if model_helper is not None and contexts is not None:
+        try:
+            result = model_helper.postprocess([y], contexts)
+            print(f"postprocess: {result}")
+        except Exception as exc:
+            print(f"postprocess skipped: {exc!r}")
+            cls_id = _extract_prediction_id(y, torch)
+            if labels and 0 <= cls_id < len(labels):
+                print(f"pred: {labels[cls_id]} (id={cls_id})")
+            else:
+                print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
     else:
-        print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
+        cls_id = _extract_prediction_id(y, torch)
+        if labels and 0 <= cls_id < len(labels):
+            print(f"pred: {labels[cls_id]} (id={cls_id})")
+        else:
+            print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
     print(f"(engine={engine_path}, input={input_source}, device={args.device})")

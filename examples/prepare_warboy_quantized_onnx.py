@@ -283,14 +283,15 @@ if __name__ == "__main__":
     models_dir.mkdir(parents=True, exist_ok=True)
 
     weights_path = args.weights.expanduser().resolve() if args.weights else _find_weights(models_dir, args.model_name)
-    if weights_path is None and not args.allow_random_init:
-        raise FileNotFoundError(
-            f"{models_dir} 에서 {args.model_name}*.pth 또는 {args.model_name}*.pt 를 찾지 못했습니다.\n"
-            "예) models/resnet50.pth\n"
-            "가중치 없이 진행하려면 --allow-random-init 옵션을 사용하세요."
-        )
-    if weights_path is not None and not weights_path.is_file():
-        raise FileNotFoundError(f"weights file not found: {weights_path}")
+    if args.source == "pth":
+        if weights_path is None and not args.allow_random_init:
+            raise FileNotFoundError(
+                f"{models_dir} 에서 {args.model_name}*.pth 또는 {args.model_name}*.pt 를 찾지 못했습니다.\n"
+                "예) models/resnet50.pth\n"
+                "가중치 없이 진행하려면 --allow-random-init 옵션을 사용하세요."
+            )
+        if weights_path is not None and not weights_path.is_file():
+            raise FileNotFoundError(f"weights file not found: {weights_path}")
 
     f32_onnx = (
         args.f32_onnx.expanduser().resolve()
