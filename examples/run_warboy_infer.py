@@ -111,6 +111,14 @@ def _load_labels(labels_path: Path):
     return None
 
 
+def _extract_prediction_id(output_array, torch_module) -> int:
+    y_t = torch_module.from_numpy(output_array)
+    if y_t.ndim == 1 and y_t.numel() == 1:
+        return int(y_t.item())
+    flat = y_t.reshape(y_t.shape[0], -1)
+    return int(torch_module.argmax(flat, dim=1).item())
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -171,8 +179,8 @@ if __name__ == "__main__":
         t1 = timeit.default_timer()
         times.append((t1 - t0) * 1000)
 
-    y_t = torch.from_numpy(np.ascontiguousarray(y))
-    cls_id = int(torch.argmax(y_t.reshape(y_t.shape[0], -1), dim=1).item())
+    y = np.ascontiguousarray(y)
+    cls_id = _extract_prediction_id(y, torch)
 
     if labels and 0 <= cls_id < len(labels):
         print(f"pred: {labels[cls_id]} (id={cls_id})")

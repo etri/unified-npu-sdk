@@ -123,8 +123,8 @@ docker version
 - **Warboy 커널 드라이버**가 호스트에 설치되어 있어야 합니다 (`furiosactl list`/`info`로 확인).
   자세한 절차는 <https://developer.furiosa.ai/docs/latest/en/> 참조.
 - 컨테이너 실행 시 존재하는 장치 노드(`/dev/npu*`)만 `--device`로 전달합니다.
-- 기본 컴파일 타깃은 단일 PE 기준 `warboy` 입니다.
-- 2 PE 환경에서는 `--target-npu warboy-2pe` 또는 `extra={"target_npu": "warboy-2pe"}` 를 명시해 사용하세요.
+- 기본 컴파일 타깃은 `warboy-2pe` 입니다.
+- 1 PE 환경에서는 `--target-npu warboy` 또는 `extra={"target_npu": "warboy"}` 를 명시해 사용하세요.
 
 ### 4. Docker 빌드 & 실행
 
@@ -225,15 +225,15 @@ python3 examples/prepare_warboy_quantized_onnx.py \
 #    또한 build 단계는 .pth 를 직접 받지 않고, 사전 컴파일된 .enf 또는 quantized ONNX 만 지원합니다.
 #    (a) 사전 컴파일된 .enf 를 models/ 에 두었다면 그대로 확보(fetch):
 python3 examples/run_warboy_build.py --model-name resnet50
-#    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 1 PE):
+#    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 2 PE):
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
   --model-name resnet50
 
-#    (c) 2 PE 환경이라면 target-npu 를 명시:
+#    (c) 1 PE 환경이라면 target-npu 를 명시:
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
-  --target-npu warboy-2pe \
+  --target-npu warboy \
   --model-name resnet50
 
 # 6) .enf 추론
@@ -268,13 +268,13 @@ cfg = BuildConfig(
     precision="int8",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    extra={"target_npu": "warboy", "target_ir": "enf"},
+    extra={"target_npu": "warboy-2pe", "target_ir": "enf"},
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)
 
-# 2 PE 환경 예시:
-#     extra={"target_npu": "warboy-2pe", "target_ir": "enf"}
+# 1 PE 환경 예시:
+#     extra={"target_npu": "warboy", "target_ir": "enf"}
 
 # (b) 사전 컴파일된 .enf 확보(fetch): model_or_path 에 .enf 경로를 그대로 전달
 #     cfg = BuildConfig(backend="warboy", model_or_path="models/resnet50.enf", ...)
@@ -299,6 +299,10 @@ rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 224, 224), dtype=np.float32))
 destroy_runtime(rh)
 ```
+
+참고:
+- `model-zoo` 경로의 `ResNet50` quantized ONNX 는 현재 확인 기준 ONNX output 이 `ArgMax:0 [1]` 형태입니다.
+- 따라서 `run_warboy_infer.py` 는 `(1,)` scalar-like 출력을 logits 벡터가 아니라 top-1 class id 로 해석합니다.
 
 ---
 
