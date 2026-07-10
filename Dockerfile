@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
     pip install --no-cache-dir ${EXTRA_INDEX_ARG} \
         "furiosa-sdk[quantizer]==${FURIOSA_SDK_VERSION}" \
-        furiosa-models
+        "furiosa-models==${FURIOSA_SDK_VERSION}"
 
 # 6) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk

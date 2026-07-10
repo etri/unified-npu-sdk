@@ -315,6 +315,12 @@ if __name__ == "__main__":
             raise ImportError(
                 "furiosa-models is required for --source model-zoo"
             ) from exc
+        if not hasattr(vision, "ResNet50"):
+            raise AttributeError(
+                "furiosa.models.vision.ResNet50 not found. "
+                "This usually means the installed furiosa-models version does not match the expected API. "
+                "Use the pinned image setup with furiosa-models==0.10.2."
+            )
 
         if args.model_name != "resnet50":
             raise ValueError("--source model-zoo currently supports only --model-name resnet50")
