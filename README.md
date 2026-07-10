@@ -138,9 +138,12 @@ docker version
 - Ubuntu/Debian 예시:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://nexus.rebellions.ai/repository/apt-public/public.key | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/rebellions.asc
+sudo curl -fsSL https://nexus.rebellions.ai/repository/raw-public/rebellions.asc \
+  -o /etc/apt/keyrings/rebellions.asc
+sudo chmod a+r /etc/apt/keyrings/rebellions.asc
 
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/rebellions.asc] https://nexus.rebellions.ai/repository/apt-public/ stable main" | \
