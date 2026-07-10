@@ -75,7 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-name", default="resnet50", help="확장자 없는 출력 모델 이름.")
     parser.add_argument("--enf", type=Path, default=None, help="이미 컴파일된 .enf 를 직접 사용(fetch/provided).")
     parser.add_argument("--from-onnx", type=Path, default=None, help="quantized ONNX 를 furiosa-compiler 로 .enf 컴파일(compile hook).")
-    parser.add_argument("--target-npu", choices=("warboy", "warboy-2pe"), default="warboy-2pe")
+    parser.add_argument("--target-npu", choices=("warboy", "warboy-2pe"), default="warboy")
     parser.add_argument("--require-enf", action="store_true", help="fetch 모드에서 .enf 를 못 찾으면 실패 처리.")
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))

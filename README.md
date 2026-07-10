@@ -119,20 +119,10 @@ docker version
 - **Warboy 커널 드라이버**가 호스트에 설치되어 있어야 합니다 (`furiosactl list`/`info`로 확인).
   자세한 절차는 <https://developer.furiosa.ai/docs/latest/en/> 참조.
 - 컨테이너 실행 시 존재하는 장치 노드(`/dev/npu*`)만 `--device`로 전달합니다.
-- Warboy 는 2 PE 구성이며, 컴파일 타깃 기본값은 `warboy-2pe` 입니다.
+- 기본 컴파일 타깃은 단일 PE 기준 `warboy` 입니다.
+- 2 PE 환경에서는 `--target-npu warboy-2pe` 또는 `extra={"target_npu": "warboy-2pe"}` 를 명시해 사용하세요.
 
-### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
-
-```bash
-pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
-pip install onnx pillow
-pip install -e .
-# FuriosaAI SDK (참조 가이드 기준 0.10.2)
-pip install 'furiosa-sdk[quantizer]==0.10.2' furiosa-models
-# 시스템: APT warboy-jammy suite (furiosa-libnux, furiosa-libhal-warboy, furiosa-compiler, libonnxruntime)
-```
-
-### 5. Docker 빌드 & 실행
+### 4. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
@@ -185,7 +175,12 @@ python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 # 4) .enf 확보 또는 컴파일
 #    (a) 사전 컴파일된 .enf 를 models/ 에 두었다면 그대로 확보(fetch):
 python3 examples/run_warboy_build.py --model-name resnet50
-#    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook):
+#    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 1 PE):
+python3 examples/run_warboy_build.py \
+  --from-onnx models/resnet50_quantized.onnx \
+  --model-name resnet50
+
+#    (c) 2 PE 환경이라면 target-npu 를 명시:
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
   --target-npu warboy-2pe \
@@ -223,10 +218,13 @@ cfg = BuildConfig(
     precision="int8",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    extra={"target_npu": "warboy-2pe", "target_ir": "enf"},
+    extra={"target_npu": "warboy", "target_ir": "enf"},
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)
+
+# 2 PE 환경 예시:
+#     extra={"target_npu": "warboy-2pe", "target_ir": "enf"}
 
 # (b) 사전 컴파일된 .enf 확보(fetch): model_or_path 에 .enf 경로를 그대로 전달
 #     cfg = BuildConfig(backend="warboy", model_or_path="models/resnet50.enf", ...)
