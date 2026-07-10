@@ -245,6 +245,19 @@ def _load_calibration_sample(image_path: Path, input_shape: tuple[int, ...], np_
     return normalized[None, ...].astype(np_module.float32)
 
 
+def _load_and_infer_onnx(onnx_module, onnx_path: Path):
+    model = onnx_module.load(str(onnx_path))
+    try:
+        from onnx import shape_inference
+
+        inferred = shape_inference.infer_shapes(model)
+        onnx_module.save(inferred, str(onnx_path))
+        return inferred
+    except Exception as exc:
+        print(f"[WARN] ONNX shape inference skipped: {exc}")
+        return model
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -312,7 +325,7 @@ if __name__ == "__main__":
     calib_image = args.calib_image.expanduser().resolve()
     image_candidates = _collect_image_candidates(calib_dir, calib_image)
 
-    f32 = onnx.load(str(f32_onnx))
+    f32 = _load_and_infer_onnx(onnx, f32_onnx)
     method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
     calibrator = Calibrator(f32, method)
 
