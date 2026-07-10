@@ -135,6 +135,13 @@ docker version
 - **RBLN Container Toolkit**(`rbln-container-toolkit`)을 설치하는 것을 권장합니다.
   공식 Docker/NPU 연동 경로는 CDI handle(`rebellions.ai/npu=all`) 기반입니다. 자세한 내용은
   <https://docs.rbln.ai/latest/software/system_management/container_toolkit.html> 참조.
+- Ubuntu/Debian 예시:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y rbln-container-toolkit
+```
+
 - Container Toolkit 설치 후에는 아래 순서로 CDI/runtime 구성을 완료합니다.
 
 ```bash
