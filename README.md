@@ -151,7 +151,8 @@ docker version
 
 ```bash
 python3 examples/prepare_warboy_quantized_onnx.py \
-  --weights models/resnet50.pth
+  --weights models/resnet50.pth \
+  --calib-image /workspace/unified-sdk/models/input.jpg
 
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
@@ -203,10 +204,12 @@ furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
 # 4) .pth/.pt 가 있다면 quantized ONNX 준비
-#    tests/input.jpg 또는 --calib-dir 이미지로 calibration 하고, 없으면 synthetic random 으로 smoke 용 quantize 를 진행합니다.
+#    주의: quantization calibration 용 실제 이미지가 필요합니다.
+#    tests/input.jpg는 저장소에 항상 포함되는 자산이 아니므로, 보통 models/input.jpg 또는 별도 calib 디렉터리를 직접 준비합니다.
 #    (a) ResNet50 weight -> quantized ONNX:
 python3 examples/prepare_warboy_quantized_onnx.py \
-  --weights models/resnet50.pth
+  --weights models/resnet50.pth \
+  --calib-image models/input.jpg
 
 # 5) .enf 확보 또는 컴파일
 #    주의: models/ 는 gitignore 대상이라 직접 생성/배치해야 할 수 있습니다.
