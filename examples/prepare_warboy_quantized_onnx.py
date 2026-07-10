@@ -340,7 +340,7 @@ if __name__ == "__main__":
     print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
     for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
         sample = _load_calibration_sample(image_path, args.input_shape, np)
-        calibrator.collect_data([[sample]])
+        calibrator.collect_data([sample])
 
     ranges = calibrator.compute_range()
     quantized = quantize(f32, ranges)
