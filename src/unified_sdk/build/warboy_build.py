@@ -32,7 +32,7 @@ _VENDOR_TO_UNIFIED_API_MAP = {
 }
 
 
-# furiosa-compiler 타깃 (기본은 단일 PE warboy, 2 PE 환경은 warboy-2pe 명시)
+# furiosa-compiler 타깃 (기본은 2 PE warboy-2pe, 1 PE 환경은 warboy 명시)
 _TARGET_NPUS = ("warboy", "warboy-2pe")
 
 
@@ -81,7 +81,7 @@ def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
         "compile_options": {
-            "target_npu": extra.get("target_npu", "warboy"),
+            "target_npu": extra.get("target_npu", "warboy-2pe"),
             "target_ir": extra.get("target_ir", "enf"),
             "compiler_config": extra.get("compiler_config"),
         },
@@ -159,7 +159,7 @@ class _WarboyBuildAdapter:
             )
 
         _validate_shape(tuple(cfg.input_shape), "input_shape")
-        target_npu = extra.get("target_npu", "warboy")
+        target_npu = extra.get("target_npu", "warboy-2pe")
         target_ir = extra.get("target_ir", "enf")
 
         command = [
