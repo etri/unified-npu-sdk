@@ -1,34 +1,35 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+import subprocess
+from typing import Any, Dict, List
 
 from unified_sdk.build.registry import register
 from unified_sdk.types import BuildConfig, BuildResult
 
 
-_CAPABILITY_FAMILY = "llm.artifact-and-generation"
+_CAPABILITY_FAMILY = "llm.fxb-and-generation"
 _BUILD_PIPELINE = (
     "validate_config",
-    "resolve_model_ref_or_artifact",
-    "resolve_parallel_and_model_options",
-    "run_artifact_builder_or_return_model_ref",
-    "verify_artifact",
+    "resolve_model_ref",
+    "select_build_mode",
+    "return_model_ref_or_run_fxb_build",
+    "verify_fxb",
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
-    "provided_model_ref": "HF model id or existing artifact directory",
-    "compile": "furiosa_llm.ArtifactBuilder(...).build(str(out_dir))",
-    "parallel_config": "furiosa_llm.ParallelConfig(tensor_parallel_size=..., pipeline_parallel_size=...)",
-    "model_config": "furiosa_llm.ModelConfig(max_model_len=...)",
-    "artifact": "artifact directory or HF model id",
+    "fetch": "HF model id or local model path passed through to furiosa_llm.LLM(...)",
+    "fxb_build": "fxb build <model_id_or_path> <output_path> [options]",
+    "parallel_config": "fxb build --tensor-parallel-size / --pipeline-parallel-size",
+    "model_config": "fxb build --max-model-len",
+    "artifact": "HF model id or .fxb file path",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "HF model id or existing artifact directory": "build_unified(cfg) when extra['compile'] is false",
-    "furiosa_llm.ArtifactBuilder(...).build(str(out_dir))": "build_unified(cfg) when extra['compile'] is true",
-    "furiosa_llm.ParallelConfig(...)": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
-    "furiosa_llm.ModelConfig(max_model_len=...)": "BuildConfig.max_model_len",
-    "artifact directory or HF model id": "BuildResult.compiled_model_path",
+    "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified(cfg) when extra['build_mode'] is absent or 'fetch'",
+    "fxb build <model_id_or_path> <output_path> [options]": "build_unified(cfg) when extra['build_mode'] == 'fxb_build'",
+    "fxb build --tensor-parallel-size / --pipeline-parallel-size": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
+    "fxb build --max-model-len": "BuildConfig.max_model_len",
+    "HF model id or .fxb file path": "BuildResult.compiled_model_path",
 }
 
 
@@ -38,16 +39,29 @@ def _require_positive_int(value: Any, field_name: str) -> int:
     return value
 
 
+def _normalize_build_mode(extra: Dict[str, Any]) -> str:
+    mode = str(extra.get("build_mode", "fetch")).strip().lower()
+    if mode not in {"fetch", "fxb_build"}:
+        raise ValueError(f"Unsupported RNGD build mode: {mode!r}")
+    return mode
+
+
+def _fxb_output_path(out_dir: Path, model_name: str) -> Path:
+    output = out_dir / model_name
+    if output.suffix != ".fxb":
+        output = output.with_suffix(".fxb")
+    return output
+
+
 def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
         "build_pipeline": _BUILD_PIPELINE,
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
-        "compile_options": {
-            "compile": bool(extra.get("compile", False)),
-            "bucket_config": extra.get("bucket_config"),
-        },
+        "build_mode": _normalize_build_mode(extra),
+        "dry_run": bool(extra.get("dry_run", False)),
+        "optim_level": extra.get("optim_level"),
     }
 
 
@@ -66,15 +80,11 @@ def describe_api_mapping() -> Dict[str, Any]:
 class _RNGDBuildAdapter:
     """FuriosaAI RNGD build adapter.
 
-    LLM 스택이라 vision 백엔드의 '컴파일'과 의미가 다르다. 두 경로를 지원한다
-    (fetch 기본 + 선택 compile 훅):
-      1) fetch (기본): HF 모델 id (예: 'furiosa-ai/Qwen2.5-0.5B-Instruct') 또는
-         기존 아티팩트 디렉터리를 그대로 사용한다. LLM 이 로드 시 처리한다.
-      2) compile 훅 (extra['compile']=True): 설치된 furiosa-llm 이 ArtifactBuilder API 를
-         노출하는 경우에만 AOT 컴파일하여 아티팩트 디렉터리를 생성한다.
+    공식 smoke 기준은 fetch + LLM.generate 경로다.
+    선택적으로 FXB 기반 custom model build 경로를 지원한다.
 
-    공식 smoke 기준은 fetch + LLM.generate 경로이며, ArtifactBuilder 경로는 버전/API 의존
-    선택 기능으로 취급한다.
+      1) fetch (기본): HF 모델 id 또는 로컬 모델 경로를 그대로 사용한다.
+      2) fxb_build: `fxb build`로 .fxb 를 생성한다.
     """
 
     name = "rngd"
@@ -85,15 +95,14 @@ class _RNGDBuildAdapter:
 
         extra = dict(cfg.extra or {})
         model_ref = str(cfg.model_or_path)
-        compile_flag = bool(extra.get("compile", False))
+        mode = _normalize_build_mode(extra)
 
-        # ---- Path 1: fetch / provided (HF 모델 id 또는 기존 아티팩트 dir) ----
-        if not compile_flag:
+        if mode == "fetch":
             meta: Dict[str, Any] = {
                 "backend": self.name,
                 "source": "provided",
                 "model_ref": model_ref,
-                "note": "HF model id or existing artifact dir; loaded by furiosa_llm.LLM at runtime",
+                "note": "HF model id or local model path; loaded by furiosa_llm.LLM at runtime",
                 "extra": extra,
                 **_capability_metadata(extra, "model_ref"),
             }
@@ -103,69 +112,66 @@ class _RNGDBuildAdapter:
                 meta_data=meta,
             )
 
-        # ---- Path 2: 선택 기능 - ArtifactBuilder AOT 컴파일 (compile hook) ----
         tp = _require_positive_int(cfg.tensor_parallel_size, "tensor_parallel_size")
         pp = _require_positive_int(cfg.pipeline_parallel_size, "pipeline_parallel_size")
-        out_dir = Path(cfg.out_dir) / cfg.model_name
-        out_dir.parent.mkdir(parents=True, exist_ok=True)
+        out_dir = Path(cfg.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = _fxb_output_path(out_dir, cfg.model_name)
+
+        cmd: List[str] = [
+            "fxb",
+            "build",
+            model_ref,
+            str(output_path),
+            "--tensor-parallel-size",
+            str(tp),
+            "--pipeline-parallel-size",
+            str(pp),
+        ]
+        if cfg.max_model_len:
+            cmd.extend(["--max-model-len", str(int(cfg.max_model_len))])
+        if extra.get("optim_level"):
+            cmd.extend(["--optim-level", str(extra["optim_level"])])
+        if extra.get("dry_run"):
+            cmd.append("--dry-run")
+        if extra.get("build_report"):
+            cmd.append("--build-report")
+        if extra.get("concurrency"):
+            cmd.extend(["--concurrency", str(extra["concurrency"])])
 
         try:
-            from furiosa_llm import ArtifactBuilder
-        except Exception as exc:  # pragma: no cover - 벤더 SDK 필요
+            proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        except FileNotFoundError as exc:
             raise RuntimeError(
-                "Installed furiosa-llm does not expose ArtifactBuilder. "
-                "Official RNGD smoke uses fetch + generate and does not require AOT compile. "
-                "Use the fetch path, or pin a furiosa-llm version/API that provides ArtifactBuilder."
+                "The `fxb` command was not found. Official FXB build requires furiosa-llm with FXB support."
             ) from exc
 
-        builder_kwargs: Dict[str, Any] = {}
-        try:
-            from furiosa_llm import ParallelConfig
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            stdout = (proc.stdout or "").strip()
+            detail = stderr or stdout or f"`fxb build` failed with exit code {proc.returncode}"
+            raise RuntimeError(f"FXB build failed: {detail}")
 
-            builder_kwargs["parallel_config"] = ParallelConfig(
-                tensor_parallel_size=tp,
-                pipeline_parallel_size=pp,
-            )
-        except Exception:
-            pass
-        if cfg.max_model_len:
-            try:
-                from furiosa_llm import ModelConfig
-
-                builder_kwargs["model_config"] = ModelConfig(max_model_len=int(cfg.max_model_len))
-            except Exception:
-                pass
-
-        try:
-            builder = ArtifactBuilder(model_id_or_path=model_ref, **builder_kwargs)
-        except TypeError:
-            # 인자 이름이 다른 버전 대비 (첫 positional 로 시도)
-            builder = ArtifactBuilder(model_ref, **builder_kwargs)
-
-        try:
-            builder.build(str(out_dir))
-        except Exception as exc:
-            raise RuntimeError(f"furiosa-llm ArtifactBuilder.build failed: {exc}") from exc
-
-        if not out_dir.is_dir():
-            raise RuntimeError(
-                f"ArtifactBuilder reported success but artifact dir not found at {out_dir}"
-            )
+        if not extra.get("dry_run") and not output_path.is_file():
+            raise RuntimeError(f"`fxb build` reported success but FXB file not found at {output_path}")
 
         meta = {
             "backend": self.name,
-            "source": "artifact_builder",
-            "artifact_dir": str(out_dir),
+            "source": "fxb_build",
             "model_ref": model_ref,
+            "fxb_path": str(output_path),
             "tensor_parallel_size": tp,
             "pipeline_parallel_size": pp,
             "max_model_len": cfg.max_model_len,
+            "command": cmd,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
             "extra": extra,
-            **_capability_metadata(extra, "artifact_builder"),
+            **_capability_metadata(extra, "fxb_build"),
         }
         return BuildResult(
             backend=self.name,
-            compiled_model_path=str(out_dir),
+            compiled_model_path=str(output_path),
             meta_data=meta,
         )
 

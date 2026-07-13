@@ -58,20 +58,24 @@ DEFAULT_MODEL = os.getenv("RNGD_MODEL", "furiosa-ai/Qwen2.5-0.5B-Instruct")
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare a FuriosaAI RNGD model. "
-        "기본 smoke 경로는 HF 모델 id/아티팩트 fetch 이며, "
-        "--compile 은 설치된 furiosa-llm 이 ArtifactBuilder API 를 제공할 때만 사용하는 선택 기능입니다."
+        "기본 smoke 경로는 fetch(model id/local path 전달)이며, "
+        "custom smoke 는 --fxb-build 로 FXB 를 생성합니다."
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="HF 모델 id 또는 로컬 모델/아티팩트 경로.")
-    parser.add_argument("--out-dir", type=Path, default=ARTIFACTS_DIR, help="AOT 아티팩트 출력 상위 디렉터리.")
-    parser.add_argument("--model-name", default=None, help="아티팩트 하위 디렉터리 이름 (기본: 모델 id 의 마지막 요소).")
+    parser.add_argument("--out-dir", type=Path, default=ARTIFACTS_DIR, help="FXB 출력 상위 디렉터리.")
+    parser.add_argument("--model-name", default=None, help="FXB 파일 이름 (기본: 모델 id/경로 마지막 요소).")
     parser.add_argument(
-        "--compile",
+        "--fxb-build",
         action="store_true",
-        help="선택 기능: ArtifactBuilder 로 AOT 컴파일. 설치된 furiosa-llm 버전이 해당 API 를 노출할 때만 사용.",
+        help="custom smoke 경로: `fxb build`로 FXB 를 생성한다.",
     )
     parser.add_argument("--tensor-parallel-size", type=int, default=int(os.getenv("RNGD_TP", "1")))
     parser.add_argument("--pipeline-parallel-size", type=int, default=1)
     parser.add_argument("--max-model-len", type=int, default=None)
+    parser.add_argument("--dry-run", action="store_true", help="FXB 빌드 설정만 확인하고 실제 컴파일은 하지 않는다.")
+    parser.add_argument("--optim-level", default=None, help="FXB 빌드 최적화 레벨, 예: O0/O1/O2/O3.")
+    parser.add_argument("--build-report", action="store_true", help="FXB build report 출력.")
+    parser.add_argument("--concurrency", type=int, default=None, help="FXB 병렬 빌드 concurrency.")
     return parser
 
 
@@ -89,11 +93,17 @@ if __name__ == "__main__":
         tensor_parallel_size=args.tensor_parallel_size,
         pipeline_parallel_size=args.pipeline_parallel_size,
         max_model_len=args.max_model_len,
-        extra={"compile": bool(args.compile)},
+        extra={
+            "build_mode": "fxb_build" if args.fxb_build else "fetch",
+            "dry_run": bool(args.dry_run),
+            "optim_level": args.optim_level,
+            "build_report": bool(args.build_report),
+            "concurrency": args.concurrency,
+        },
     )
 
     result = build_unified(cfg)
-    mode = "optional AOT compile (ArtifactBuilder)" if args.compile else "fetch (provided model id / artifact)"
+    mode = "fxb_build" if args.fxb_build else "fetch (provided model id / local model path)"
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
     print(f"(mode={mode})")

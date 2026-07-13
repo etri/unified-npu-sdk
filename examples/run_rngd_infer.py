@@ -43,7 +43,9 @@ DEFAULT_ENGINE = os.getenv("RNGD_MODEL", "furiosa-ai/Qwen2.5-0.5B-Instruct")
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate text with a FuriosaAI RNGD LLM (furiosa-llm).")
     parser.add_argument("--engine-path", default=DEFAULT_ENGINE,
-                        help="아티팩트 디렉터리 또는 HF 모델 id.")
+                        help="HF 모델 id 또는 로컬 모델 경로.")
+    parser.add_argument("--fxb-path", default=None,
+                        help="선택 기능: 명시적으로 사용할 FXB 파일 경로. custom smoke 에서 사용.")
     parser.add_argument("--prompt", default="What is the capital of France?")
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -65,6 +67,7 @@ if __name__ == "__main__":
     cfg = RuntimeConfig(
         backend="rngd",
         engine_path=str(args.engine_path),
+        fxb_path=str(args.fxb_path) if args.fxb_path else None,
         devices=args.devices,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
@@ -91,6 +94,7 @@ if __name__ == "__main__":
 
     print("== RNGD generate ==")
     print("engine =", args.engine_path)
+    print("fxb =", args.fxb_path)
     print("prompt =", args.prompt)
     print("---- output ----")
     print(text)
