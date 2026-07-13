@@ -29,8 +29,8 @@ print_usage() {
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: ${BASE_IMAGE})"
   echo "  --furiosa-pip-index  furiosa-llm 설치용 추가 pip 인덱스 (선택)"
-  echo "  --device      RNGD 장치 노드/디렉터리, 예: /dev/rngd0, /dev/rngd, /dev/npu"
-  echo "                (기본: /dev/rngd*, /dev/npu* 및 /dev/rngd/, /dev/npu/ 아래 문자 장치 자동 감지)"
+  echo "  --device      RNGD 장치 노드/디렉터리, 예: /dev/rngd0, /dev/rngd"
+  echo "                (기본: /dev/rngd* 및 /dev/rngd/ 아래 문자 장치 자동 감지)"
   echo "  -h, --help    도움말 출력"
 }
 
@@ -65,12 +65,11 @@ detect_runtime_mounts() {
     return
   fi
 
-  for dev in /dev/rngd* /dev/npu*; do
+  for dev in /dev/rngd*; do
     collect_devices_from_path "${dev}"
   done
 
   collect_devices_from_path /dev/rngd
-  collect_devices_from_path /dev/npu
 
   TOOL_CANDIDATES=(
     "$(command -v furiosa-smi 2>/dev/null || true)"
@@ -160,8 +159,8 @@ echo "빌드 완료!"
 echo ""
 if [ ${#DOCKER_DEVICE_ARGS[@]} -eq 0 ]; then
   echo "[WARN] 이 호스트에서 RNGD 장치 노드를 찾지 못했습니다."
-  echo "       /dev/rngd* 또는 /dev/npu* 문자 장치, 혹은 /dev/rngd/ /dev/npu/ 아래 장치가 최소 1개 필요합니다."
-  echo "       필요하면 --device /dev/rngd0, --device /dev/rngd, --device /dev/npu 처럼 직접 지정하세요."
+  echo "       /dev/rngd* 문자 장치, 혹은 /dev/rngd/ 아래 장치가 최소 1개 필요합니다."
+  echo "       필요하면 --device /dev/rngd0 또는 --device /dev/rngd 처럼 직접 지정하세요."
   echo ""
 fi
 
