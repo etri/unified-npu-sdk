@@ -58,12 +58,17 @@ DEFAULT_MODEL = os.getenv("RNGD_MODEL", "furiosa-ai/Qwen2.5-0.5B-Instruct")
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Prepare a FuriosaAI RNGD model. "
-        "기본은 HF 아티팩트/모델 id 확보(fetch), --compile 지정 시 ArtifactBuilder AOT 컴파일(compile hook)."
+        "기본 smoke 경로는 HF 모델 id/아티팩트 fetch 이며, "
+        "--compile 은 설치된 furiosa-llm 이 ArtifactBuilder API 를 제공할 때만 사용하는 선택 기능입니다."
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="HF 모델 id 또는 로컬 모델/아티팩트 경로.")
     parser.add_argument("--out-dir", type=Path, default=ARTIFACTS_DIR, help="AOT 아티팩트 출력 상위 디렉터리.")
     parser.add_argument("--model-name", default=None, help="아티팩트 하위 디렉터리 이름 (기본: 모델 id 의 마지막 요소).")
-    parser.add_argument("--compile", action="store_true", help="ArtifactBuilder 로 AOT 컴파일 (compile hook).")
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="선택 기능: ArtifactBuilder 로 AOT 컴파일. 설치된 furiosa-llm 버전이 해당 API 를 노출할 때만 사용.",
+    )
     parser.add_argument("--tensor-parallel-size", type=int, default=int(os.getenv("RNGD_TP", "1")))
     parser.add_argument("--pipeline-parallel-size", type=int, default=1)
     parser.add_argument("--max-model-len", type=int, default=None)
@@ -88,7 +93,7 @@ if __name__ == "__main__":
     )
 
     result = build_unified(cfg)
-    mode = "AOT compile (ArtifactBuilder)" if args.compile else "fetch (provided model id / artifact)"
+    mode = "optional AOT compile (ArtifactBuilder)" if args.compile else "fetch (provided model id / artifact)"
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
     print(f"(mode={mode})")

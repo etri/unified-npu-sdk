@@ -4,7 +4,8 @@
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 RNGD 1종으로 좁힌 버전입니다.
 
 `rbln-only`·`qb-only`·`furiosa-only`와 동일한 단일-백엔드 골격을 따르되, **RNGD는 LLM 스택**이라
-빌드/추론의 의미가 다릅니다. 모델 준비는 **`furiosa-llm`의 `ArtifactBuilder`**, 서빙은 **`furiosa_llm.LLM`**을 사용하며,
+빌드/추론의 의미가 다릅니다. **공식 smoke 기준점은 `furiosa_llm.LLM` 기반 fetch + generate** 이며,
+선택적으로 `ArtifactBuilder` 기반 AOT 준비 경로를 둘 수 있습니다. 서빙은 **`furiosa_llm.LLM`**을 사용하며,
 `runtime.infer`는 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)**입니다(`generate` 별칭 제공).
 (vision 워크로드인 Warboy는 `furiosa-only` 브랜치에서 다룹니다.)
 
@@ -31,7 +32,7 @@
 ├── Dockerfile
 ├── build.sh
 ├── examples/
-│   ├── run_rngd_build.py           # HF 아티팩트/모델 확보(fetch) 또는 ArtifactBuilder AOT 컴파일
+│   ├── run_rngd_build.py           # HF 아티팩트/모델 확보(fetch), 선택적으로 ArtifactBuilder AOT 컴파일
 │   ├── run_rngd_infer.py           # LLM 텍스트 생성 (프롬프트 → 텍스트)
 │   └── inspect_rngd_model.py       # 아티팩트/모델 메타 확인
 └── src/unified_sdk/
@@ -41,7 +42,7 @@
     │   ├── __init__.py
     │   ├── api.py                  # build_unified
     │   ├── registry.py
-    │   └── rngd_build.py           # RNGD 빌드 어댑터 (furiosa-llm ArtifactBuilder)
+    │   └── rngd_build.py           # RNGD 빌드 어댑터 (fetch 기본, 선택적 ArtifactBuilder 훅)
     └── runtime/
         ├── __init__.py
         ├── api.py                  # create_runtime / infer / generate / destroy_runtime
@@ -51,7 +52,7 @@
 
 > `builds/host_validation_tools/`는 벤더 에스컬레이션용 로컬 재현 팩입니다. `builds/`는 gitignore
 > 대상이라 저장소에는 포함되지 않습니다. 다른 워크트리와 동일한 골격이되, RNGD는 LLM 흐름
-> (env → generate smoke → AOT 아티팩트 빌드 → 아티팩트 generate)으로 구성했습니다.
+> (env → generate smoke → 선택적 AOT 아티팩트 빌드 → 아티팩트 generate)으로 구성했습니다.
 
 ---
 
@@ -178,13 +179,8 @@ vendor SDK(`furiosa-llm`)를 직접 호출합니다.
 furiosa-smi info || true
 python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; print('OK')"
 
-# 4) 모델 확보 또는 컴파일
-#    (a) 사전 빌드된 HF 아티팩트/모델 id 확보(fetch, 기본):
+# 4) 모델 id 확보(fetch, 기본)
 python3 examples/run_rngd_build.py --model furiosa-ai/Qwen2.5-0.5B-Instruct
-#    (b) ArtifactBuilder 로 AOT 컴파일(compile hook, 무거움):
-python3 examples/run_rngd_build.py \
-  --model furiosa-ai/Qwen2.5-0.5B-Instruct \
-  --compile --tensor-parallel-size 1
 
 # 5) LLM 텍스트 생성
 python3 examples/run_rngd_infer.py \
@@ -194,6 +190,21 @@ python3 examples/run_rngd_infer.py \
 
 # 6) 아티팩트/모델 메타 확인
 python3 examples/inspect_rngd_model.py furiosa-ai/Qwen2.5-0.5B-Instruct
+```
+
+선택 기능:
+설치된 `furiosa-llm` 패키지가 `ArtifactBuilder` API를 실제로 노출하는 버전이라면, 아래처럼
+추가 AOT 준비를 시도할 수 있습니다. 이 경로는 공식 smoke 필수 항목이 아닙니다.
+
+```bash
+python3 - <<'PY'
+import furiosa_llm
+print('ArtifactBuilder=', hasattr(furiosa_llm, 'ArtifactBuilder'))
+PY
+
+python3 examples/run_rngd_build.py \
+  --model furiosa-ai/Qwen2.5-0.5B-Instruct \
+  --compile --tensor-parallel-size 1
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
@@ -214,7 +225,7 @@ cfg = BuildConfig(backend="rngd", model_or_path="furiosa-ai/Qwen2.5-0.5B-Instruc
 result = build_unified(cfg)
 print(result.compiled_model_path)   # 모델 id 또는 아티팩트 dir
 
-# (b) AOT 컴파일 (ArtifactBuilder): extra={"compile": True}
+# (b) 선택 기능: AOT 컴파일 (설치된 furiosa-llm 이 ArtifactBuilder 를 제공할 때만)
 cfg = BuildConfig(
     backend="rngd",
     model_or_path="furiosa-ai/Qwen2.5-0.5B-Instruct",
@@ -261,8 +272,10 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 RNGD(LLM) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - RNGD는 **LLM 스택**이라 `runtime.infer`가 텍스트 생성(프롬프트 → 텍스트)입니다. numpy 추론이 아닙니다.
   가독성을 위해 `generate`를 `infer`의 별칭으로 제공합니다.
-- 모델 준비 어댑터는 두 경로를 지원합니다: **fetch(기본)** = HF 모델 id/기존 아티팩트를 그대로 사용,
-  **compile 훅** = `ArtifactBuilder`로 AOT 컴파일(무거움). `run_rngd_build.py --compile`.
+- 모델 준비 어댑터의 기본 경로는 **fetch** 입니다. HF 모델 id/기존 아티팩트를 그대로 사용하고,
+  공식 smoke 문서도 이 경로를 기준으로 합니다.
+- `ArtifactBuilder` 기반 AOT 컴파일은 **선택 기능**입니다. 설치된 `furiosa-llm` 버전이 해당 API를
+  노출할 때만 `run_rngd_build.py --compile`를 사용하세요.
 - chat 모델은 `tokenizer.apply_chat_template`로 프롬프트를 감싸는 것이 정석입니다(`run_rngd_infer.py --chat`).
 - 다중 장치/병렬은 `--tensor-parallel-size`(빌드) 및 `--devices`(런타임, 예: `npu:0`)로 지정합니다.
 - 장치/상태 점검용 CLI: `furiosa-smi info`, `furiosa-smi info --full`.
