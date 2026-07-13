@@ -123,7 +123,7 @@ docker version
   자세한 절차는 Furiosa 공식 문서의 Get Started / Device Management 경로
   (<https://developer.furiosa.ai/latest/en/>)를 참조하세요.
 - 컨테이너 실행 시 존재하는 장치 노드만 `--device`로 전달합니다.
-  호스트 레이아웃은 드라이버 버전에 따라 `/dev/rngd*`, `/dev/npu*`, 또는 `/dev/rngd/`, `/dev/npu/`
+  호스트 레이아웃은 드라이버 버전에 따라 `/dev/rngd*` 또는 `/dev/rngd/`
   아래 계층형 문자 장치로 보일 수 있습니다.
 
 ### 4. Docker 빌드 & 실행
@@ -136,7 +136,7 @@ docker version
 `./build.sh`는 `warboy-jammy`가 아닌 **OS codename suite**로 furiosa APT 저장소를 추가하고
 `furiosa-smi`를 설치하며, `furiosa-llm`을 pip로 설치합니다. Furiosa pip 인덱스가 따로 필요하면
 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
-또한 런타임 장치는 `/dev/rngd*`, `/dev/npu*`, `/dev/rngd/`, `/dev/npu/` 레이아웃을 모두 자동 감지합니다.
+또한 런타임 장치는 `/dev/rngd*`, `/dev/rngd/` 레이아웃을 자동 감지합니다.
 
 컨테이너 실행 예시:
 
@@ -149,8 +149,8 @@ docker run -it --security-opt seccomp=unconfined \
   unified-sdk:rngd
 ```
 
-장치가 `/dev/rngd/` 또는 `/dev/npu/` 아래에 보이는 호스트라면 `./build.sh`가 해당 문자 장치를 자동으로
-여러 개 `--device`로 나열합니다. 필요하면 `./build.sh --device /dev/rngd`처럼 디렉터리를 직접 지정할 수도 있습니다.
+장치가 `/dev/rngd/` 아래에 보이는 호스트라면 `./build.sh`가 해당 문자 장치를 자동으로 여러 개
+`--device`로 나열합니다. 필요하면 `./build.sh --device /dev/rngd`처럼 디렉터리를 직접 지정할 수도 있습니다.
 
 컨테이너 내부 점검:
 
