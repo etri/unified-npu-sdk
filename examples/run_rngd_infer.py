@@ -61,6 +61,14 @@ def _build_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
+    if args.fxb_path:
+        fxb_path = Path(args.fxb_path).expanduser()
+        if not fxb_path.is_file():
+            raise SystemExit(
+                f"Error: --fxb-path does not point to an existing FXB file: {fxb_path}\n"
+                "Custom smoke requires a successful `fxb build` first."
+            )
+
     from unified_sdk.types import RuntimeConfig
     from unified_sdk.runtime import create_runtime, generate, destroy_runtime
 
