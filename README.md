@@ -162,6 +162,12 @@ furiosa-smi info || true
 python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; print('OK')"
 ```
 
+custom FXB build prerequisite:
+
+- `fxb build` custom smoke 는 컨테이너 내부에서 추가 빌드 툴체인을 필요로 할 수 있습니다.
+- 현재 Dockerfile 은 이를 위해 `build-essential`, `python3-dev` 를 함께 설치합니다.
+- 따라서 이 문서의 custom smoke 를 처음 시도하거나 Dockerfile 변경 후 다시 시도할 때는 `./build.sh`로 이미지를 다시 빌드해야 합니다.
+
 custom local model 준비:
 
 - `models/`와 `artifacts/`는 `.gitignore` 대상이라 저장소 clone/pull 만으로는 준비되지 않습니다.
@@ -226,6 +232,7 @@ python3 examples/inspect_rngd_model.py furiosa-ai/Qwen2.5-0.5B-Instruct
 # 4-B) custom smoke: local model path -> fxb build -> LLM(..., fxb=...) -> generate
 #      예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
 #      `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
+#      이 경로는 Dockerfile 의 build toolchain 변경이 반영된 이미지를 전제로 합니다.
 python3 examples/prepare_rngd_local_model.py \
   --model Qwen/Qwen3-8B-FP8
 python3 examples/run_rngd_build.py \
