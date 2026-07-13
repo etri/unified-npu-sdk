@@ -118,20 +118,13 @@ docker version
 
 ### 3. 호스트 사전 요구사항
 
-- **RNGD 커널 드라이버**가 호스트에 설치되어 있어야 합니다 (`furiosa-smi info`로 확인).
-  자세한 절차는 <https://developer.furiosa.ai/latest/en/> 참조.
+- **RNGD 커널 드라이버**와 `furiosa-smi`가 호스트에 설치되어 있어야 합니다.
+  `furiosa-smi info`가 정상 출력되면 이 사전 요구사항은 충족된 상태입니다.
+  자세한 절차는 Furiosa 공식 문서의 Get Started / Device Management 경로
+  (<https://developer.furiosa.ai/latest/en/>)를 참조하세요.
 - 컨테이너 실행 시 존재하는 장치 노드(`/dev/rngd*`)만 `--device`로 전달합니다.
 
-### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
-
-```bash
-pip install -e .
-# FuriosaAI RNGD LLM 스택 (torch/transformers 는 furiosa-llm 의존성으로 설치됨)
-pip install furiosa-llm
-# 시스템: APT OS codename suite (furiosa-driver-rngd, furiosa-smi)
-```
-
-### 5. Docker 빌드 & 실행
+### 4. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
