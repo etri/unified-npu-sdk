@@ -165,8 +165,9 @@ python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; pri
 custom local model 준비:
 
 - `models/`와 `artifacts/`는 `.gitignore` 대상이라 저장소 clone/pull 만으로는 준비되지 않습니다.
-- custom smoke 는 지원 모델의 **Hugging Face snapshot/local copy** 를 repo 내부 `models/` 아래에 미리 받아두는 전제를 둡니다.
+- custom smoke 는 지원 모델의 **upstream/raw Hugging Face snapshot/local copy** 를 repo 내부 `models/` 아래에 미리 받아두는 전제를 둡니다.
 - 현재 `./build.sh`가 마운트하는 `/workspace/unified-sdk` 아래 경로를 그대로 쓰면 추가 `-v /host/models:/models` 없이 진행할 수 있습니다.
+- Furiosa 공식 FXB 문서에서 명시적으로 build 예시로 드는 모델은 `Qwen/Qwen3-8B-FP8` 입니다. 현재 custom smoke 예시도 그 기준을 따릅니다.
 
 호스트 예시:
 
@@ -177,22 +178,22 @@ mkdir -p models
 # huggingface_hub 가 없으면 먼저 설치
 python3 -m pip install --user -U huggingface_hub
 
-# 지원 모델의 local snapshot 준비
+# custom FXB smoke 용 upstream/raw model snapshot 준비
 python3 examples/prepare_rngd_local_model.py \
-  --model furiosa-ai/Qwen2.5-0.5B-Instruct
+  --model Qwen/Qwen3-8B-FP8
 ```
 
 위 명령이 끝나면 기본적으로 아래 경로가 준비됩니다.
 
 ```bash
-models/Qwen2.5-0.5B-Instruct
+models/Qwen3-8B-FP8
 ```
 
 직접 `huggingface_hub` CLI를 쓰고 싶다면 동일하게 다음도 가능합니다.
 
 ```bash
-hf download furiosa-ai/Qwen2.5-0.5B-Instruct \
-  --local-dir ./models/Qwen2.5-0.5B-Instruct
+hf download Qwen/Qwen3-8B-FP8 \
+  --local-dir ./models/Qwen3-8B-FP8
 ```
 
 ---
@@ -223,21 +224,22 @@ python3 examples/run_rngd_infer.py \
 python3 examples/inspect_rngd_model.py furiosa-ai/Qwen2.5-0.5B-Instruct
 
 # 4-B) custom smoke: local model path -> fxb build -> LLM(..., fxb=...) -> generate
-#      예시 local path 는 supported architecture 의 HF snapshot/local copy 여야 합니다.
+#      예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
+#      `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
 python3 examples/prepare_rngd_local_model.py \
-  --model furiosa-ai/Qwen2.5-0.5B-Instruct
+  --model Qwen/Qwen3-8B-FP8
 python3 examples/run_rngd_build.py \
-  --model models/Qwen2.5-0.5B-Instruct \
+  --model models/Qwen3-8B-FP8 \
   --fxb-build \
-  --model-name qwen2_5_0_5b \
+  --model-name qwen3_8b_fp8 \
   --tensor-parallel-size 1
 python3 examples/run_rngd_infer.py \
-  --engine-path models/Qwen2.5-0.5B-Instruct \
-  --fxb-path artifacts/qwen2_5_0_5b.fxb \
+  --engine-path models/Qwen3-8B-FP8 \
+  --fxb-path artifacts/qwen3_8b_fp8.fxb \
   --prompt "What is the capital of France?" \
   --chat
-python3 examples/inspect_rngd_model.py models/Qwen2.5-0.5B-Instruct \
-  --fxb-path artifacts/qwen2_5_0_5b.fxb
+python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
+  --fxb-path artifacts/qwen3_8b_fp8.fxb
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
@@ -261,14 +263,14 @@ print(result.compiled_model_path)   # 모델 id 또는 로컬 모델 경로
 # (b) custom smoke: FXB 빌드
 cfg = BuildConfig(
     backend="rngd",
-    model_or_path="models/Qwen2.5-0.5B-Instruct",
+    model_or_path="models/Qwen3-8B-FP8",
     out_dir="artifacts",
-    model_name="qwen2_5_0_5b",
+    model_name="qwen3_8b_fp8",
     tensor_parallel_size=1,
     extra={"build_mode": "fxb_build"},
 )
 result = build_unified(cfg)
-print(result.compiled_model_path)   # artifacts/qwen2_5_0_5b.fxb
+print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
 ```
 
 ### 텍스트 생성
@@ -297,8 +299,8 @@ from unified_sdk.runtime import create_runtime, generate, destroy_runtime
 
 cfg = RuntimeConfig(
     backend="rngd",
-    engine_path="models/Qwen2.5-0.5B-Instruct",
-    fxb_path="artifacts/qwen2_5_0_5b.fxb",
+    engine_path="models/Qwen3-8B-FP8",
+    fxb_path="artifacts/qwen3_8b_fp8.fxb",
     max_tokens=128,
 )
 rh = create_runtime(cfg)
@@ -323,6 +325,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   가독성을 위해 `generate`를 `infer`의 별칭으로 제공합니다.
 - 표준 smoke 는 **model id -> generate** 입니다. 공식 quick start 도 이 경로를 기준으로 합니다.
 - custom smoke 는 **local model path -> fxb build -> LLM(..., fxb=...) -> generate** 입니다.
+- custom smoke 에서는 `furiosa-ai/...` prebuilt artifact repo 대신 upstream/raw model snapshot 을 사용해야 합니다.
+- 현재 custom smoke 예시는 Furiosa 공식 FXB 문서의 build 예시인 `Qwen/Qwen3-8B-FP8` 를 따릅니다.
 - custom local model 은 repo 내부 `models/` 같은 gitignored 경로에 별도 준비해야 합니다. 저장소에는 포함되지 않습니다.
 - `examples/prepare_rngd_local_model.py`는 custom smoke 전용 local snapshot 준비 예제입니다.
 - `FXB`는 Furiosa-LLM의 권장 compiled-artifact 형식입니다. `fxb build`, `fxb check`, `fxb add`는

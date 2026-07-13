@@ -31,15 +31,19 @@ def _resolve_repo_root() -> Path:
 
 
 REPO_ROOT = _resolve_repo_root()
-DEFAULT_MODEL = os.getenv("RNGD_MODEL", "furiosa-ai/Qwen2.5-0.5B-Instruct")
+DEFAULT_MODEL = os.getenv("RNGD_CUSTOM_MODEL", "Qwen/Qwen3-8B-FP8")
 DEFAULT_MODELS_DIR = REPO_ROOT / "models"
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download a supported RNGD model snapshot into the repo-local models/ directory for custom FXB smoke."
+        description="Download a supported upstream RNGD model snapshot into the repo-local models/ directory for custom FXB smoke."
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Hugging Face model id.")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help="Hugging Face model id. For custom FXB smoke, prefer upstream/raw model repos such as Qwen/Qwen3-8B-FP8.",
+    )
     parser.add_argument(
         "--models-dir",
         type=Path,
@@ -70,6 +74,11 @@ if __name__ == "__main__":
     model = str(args.model).strip()
     if not model:
         raise SystemExit("Error: --model must not be empty")
+    if model.startswith("furiosa-ai/"):
+        print(
+            "Warning: `furiosa-ai/...` repositories are typically prebuilt artifact/bundle repos.\n"
+            "For custom FXB smoke, prefer an upstream/raw model repo such as `Qwen/Qwen3-8B-FP8`."
+        )
 
     local_name = args.local_name or Path(model).name or "model"
     models_dir = args.models_dir.expanduser().resolve()

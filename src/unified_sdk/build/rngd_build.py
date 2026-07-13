@@ -53,6 +53,21 @@ def _fxb_output_path(out_dir: Path, model_name: str) -> Path:
     return output
 
 
+def _detect_prebuilt_artifact_dir(model_ref: str) -> str | None:
+    p = Path(model_ref)
+    if not p.is_dir():
+        return None
+
+    markers = []
+    for name in ("artifact.json", "binary_bundle.zip", "model_metadata.json"):
+        if (p / name).exists():
+            markers.append(name)
+
+    if not markers:
+        return None
+    return ", ".join(markers)
+
+
 def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
@@ -114,6 +129,15 @@ class _RNGDBuildAdapter:
 
         tp = _require_positive_int(cfg.tensor_parallel_size, "tensor_parallel_size")
         pp = _require_positive_int(cfg.pipeline_parallel_size, "pipeline_parallel_size")
+        artifact_markers = _detect_prebuilt_artifact_dir(model_ref)
+        if artifact_markers:
+            raise RuntimeError(
+                "FXB build expects an upstream/raw Hugging Face model snapshot or a local model directory, "
+                f"but {model_ref!r} looks like a prebuilt Furiosa artifact repo ({artifact_markers}). "
+                "Use this path with the standard smoke (`model id/local artifact -> generate`) instead, "
+                "or prepare an upstream model snapshot such as 'Qwen/Qwen3-8B-FP8' for custom FXB smoke."
+            )
+
         out_dir = Path(cfg.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = _fxb_output_path(out_dir, cfg.model_name)
