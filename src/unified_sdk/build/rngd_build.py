@@ -64,16 +64,17 @@ def describe_api_mapping() -> Dict[str, Any]:
 
 
 class _RNGDBuildAdapter:
-    """FuriosaAI RNGD build adapter — wraps furiosa-llm ArtifactBuilder.
+    """FuriosaAI RNGD build adapter.
 
     LLM 스택이라 vision 백엔드의 '컴파일'과 의미가 다르다. 두 경로를 지원한다
-    (fetch 기본 + compile 훅):
+    (fetch 기본 + 선택 compile 훅):
       1) fetch (기본): HF 모델 id (예: 'furiosa-ai/Qwen2.5-0.5B-Instruct') 또는
          기존 아티팩트 디렉터리를 그대로 사용한다. LLM 이 로드 시 처리한다.
-      2) compile 훅 (extra['compile']=True): ArtifactBuilder 로 AOT 컴파일하여
-         아티팩트 디렉터리를 생성한다.
+      2) compile 훅 (extra['compile']=True): 설치된 furiosa-llm 이 ArtifactBuilder API 를
+         노출하는 경우에만 AOT 컴파일하여 아티팩트 디렉터리를 생성한다.
 
-    참조: developer.furiosa.ai (furiosa_llm.ArtifactBuilder / model-preparation).
+    공식 smoke 기준은 fetch + LLM.generate 경로이며, ArtifactBuilder 경로는 버전/API 의존
+    선택 기능으로 취급한다.
     """
 
     name = "rngd"
@@ -102,7 +103,7 @@ class _RNGDBuildAdapter:
                 meta_data=meta,
             )
 
-        # ---- Path 2: ArtifactBuilder AOT 컴파일 (compile hook) ----
+        # ---- Path 2: 선택 기능 - ArtifactBuilder AOT 컴파일 (compile hook) ----
         tp = _require_positive_int(cfg.tensor_parallel_size, "tensor_parallel_size")
         pp = _require_positive_int(cfg.pipeline_parallel_size, "pipeline_parallel_size")
         out_dir = Path(cfg.out_dir) / cfg.model_name
@@ -112,8 +113,9 @@ class _RNGDBuildAdapter:
             from furiosa_llm import ArtifactBuilder
         except Exception as exc:  # pragma: no cover - 벤더 SDK 필요
             raise RuntimeError(
-                "furiosa-llm is required to build an RNGD artifact. "
-                "Install furiosa-llm first (see developer.furiosa.ai)."
+                "Installed furiosa-llm does not expose ArtifactBuilder. "
+                "Official RNGD smoke uses fetch + generate and does not require AOT compile. "
+                "Use the fetch path, or pin a furiosa-llm version/API that provides ArtifactBuilder."
             ) from exc
 
         builder_kwargs: Dict[str, Any] = {}
