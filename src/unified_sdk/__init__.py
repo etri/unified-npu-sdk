@@ -5,8 +5,8 @@ Unified SDK (RNGD-only worktree)
 A unified SDK for compiling and serving LLMs on FuriosaAI RNGD NPUs.
 
 Structure:
- - build:     Model preparation modules (furiosa-llm ArtifactBuilder -> artifact dir)
- - runtime:   Runtime creation and text generation modules (furiosa_llm.LLM)
+ - build:     Model preparation modules (fetch or fxb build)
+ - runtime:   Runtime creation and text generation modules (furiosa_llm.LLM / explicit FXB)
  - backends:  Backend adapters (FuriosaAI RNGD only in this worktree)
  - frontends: Model import and conversion helpers
 

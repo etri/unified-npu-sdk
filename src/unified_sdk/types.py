@@ -12,25 +12,26 @@ RuntimeBackendName = Literal["rngd"]
 @dataclass
 class BuildConfig:
     backend: BuildBackendName
-    # HuggingFace 모델 id (예: 'furiosa-ai/Qwen2.5-0.5B-Instruct') 또는 로컬 모델/아티팩트 경로
+    # HuggingFace 모델 id (예: 'furiosa-ai/Qwen2.5-0.5B-Instruct') 또는 로컬 모델 경로
     model_or_path: Any
     out_dir: str | Path = "artifacts"
     model_name: str = "model"
     tensor_parallel_size: int = 1
     pipeline_parallel_size: int = 1
     max_model_len: Optional[int] = None
-    extra: Optional[Dict[str, Any]] = None  # compile(bool), bucket_config 등 ArtifactBuilder 옵션
+    extra: Optional[Dict[str, Any]] = None  # build_mode(fetch|fxb_build), dry_run, optim_level 등
 
 @dataclass
 class BuildResult:
     backend: str
-    compiled_model_path: str            # 아티팩트 디렉터리 경로 또는 HF 모델 id
+    compiled_model_path: str            # HF 모델 id 또는 FXB 파일 경로
     meta_data: Dict[str, Any]
 
 @dataclass
 class RuntimeConfig:
     backend: RuntimeBackendName
-    engine_path: str | Path             # 아티팩트 dir 또는 HF 모델 id
+    engine_path: str | Path             # HF 모델 id 또는 로컬 모델 경로
+    fxb_path: Optional[str | Path] = None
     devices: Optional[str] = None       # 예: 'npu:0'. 미지정 시 furiosa-llm 기본 선택
     # 기본 SamplingParams (호출별로 override 가능)
     max_tokens: int = 128

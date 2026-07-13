@@ -10,21 +10,21 @@ from unified_sdk.types import RuntimeConfig, RuntimeHandle
 _CAPABILITY_FAMILY = "llm.artifact-and-generation-runtime"
 _RUNTIME_PIPELINE = (
     "validate_runtime_config",
-    "load_llm_or_artifact",
+    "load_llm_or_local_model",
+    "optionally_attach_fxb",
     "resolve_sampling_params",
     "run_text_generation",
     "extract_text",
     "destroy_runtime",
 )
 _VENDOR_API_MAP = {
-    "create_runtime": "furiosa_llm.LLM(model_id) or furiosa_llm.LLM.from_artifacts(artifact_dir)",
+    "create_runtime": "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)",
     "sampling": "furiosa_llm.SamplingParams(**params)",
     "generate": "llm.generate(prompts, sampling)",
     "destroy": "llm.shutdown/close/dispose best-effort",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "furiosa_llm.LLM(model_id)": "create_runtime(cfg)",
-    "furiosa_llm.LLM.from_artifacts(artifact_dir)": "create_runtime(cfg)",
+    "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)": "create_runtime(cfg)",
     "furiosa_llm.SamplingParams(**params)": "infer(rh, prompt, **overrides) / generate(...)",
     "llm.generate(prompts, sampling)": "infer(rh, prompt, **overrides) / generate(...)",
     "RequestOutput.outputs[0].text": "infer(...) return str or list[str]",
@@ -69,9 +69,9 @@ def _extract_text(request_output: Any) -> str:
 class _RNGDRuntime:
     """FuriosaAI RNGD runtime adapter — wraps furiosa_llm.LLM.
 
-    참조 API (developer.furiosa.ai / 사내 가이드 code-21):
+    참조 API (developer.furiosa.ai):
       - from furiosa_llm import LLM, SamplingParams
-      - llm = LLM(model_id)  또는  LLM.from_artifacts(artifact_dir)
+      - llm = LLM(model_id_or_path, fxb=optional_fxb_path, devices=...)
       - sp = SamplingParams(max_tokens=..., temperature=..., top_p=..., top_k=..., min_tokens=...)
       - outputs = llm.generate([prompt], sp)  -> outputs[i].outputs[0].text
     """
@@ -91,12 +91,20 @@ class _RNGDRuntime:
                 "Install furiosa-llm first (see developer.furiosa.ai)."
             ) from exc
 
+        fxb_path = str(cfg.fxb_path) if cfg.fxb_path else None
+        llm_kwargs: Dict[str, Any] = {}
+        if cfg.devices:
+            llm_kwargs["devices"] = cfg.devices
+        if fxb_path:
+            llm_kwargs["fxb"] = fxb_path
+
         try:
-            if Path(engine).is_dir():
-                llm = LLM.from_artifacts(engine)
-                source = "artifacts"
+            llm = LLM(engine, **llm_kwargs)
+            if fxb_path:
+                source = "model_or_path+fxb"
+            elif Path(engine).is_dir():
+                source = "local_model_path"
             else:
-                llm = LLM(engine)  # HF 모델 id
                 source = "model_id"
         except Exception as exc:
             raise RuntimeError(f"Failed to load RNGD LLM for {engine!r}: {exc}") from exc
@@ -116,6 +124,7 @@ class _RNGDRuntime:
                 "llm": llm,
                 "source": source,
                 "devices": cfg.devices,
+                "fxb_path": fxb_path,
                 "sampling_defaults": sampling_defaults,
                 "extra": dict(cfg.extra or {}),
                 "capability_family": _CAPABILITY_FAMILY,
