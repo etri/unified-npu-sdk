@@ -9,8 +9,9 @@ IMAGE_NAME="unified-sdk"
 TAG="qb"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
-BASE_IMAGE="${QB_BASE_IMAGE:-ubuntu:22.04}"
+BASE_IMAGE="${QB_BASE_IMAGE:-mobilint/qbcompiler:latest}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC:-mobilint-qb-runtime}"
 QB_DEVICE="${QB_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
@@ -32,6 +33,8 @@ print_usage() {
   echo "                (default: ${BASE_IMAGE})"
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
+  echo "  --runtime-pip-spec  pip spec used for Mobilint QB runtime"
+  echo "                (default: ${QB_RUNTIME_PIP_SPEC})"
   echo "  --device      Mobilint device node, e.g. /dev/aries0"
   echo "                (default: auto-detect /dev/aries* and /dev/arise*)"
   echo "  -h, --help    Show this help message"
@@ -93,6 +96,9 @@ while [[ $# -gt 0 ]]; do
     --pytorch-index-url)
       [ -z "$2" ] && { echo "[ERROR] --pytorch-index-url requires a value"; exit 1; }
       PYTORCH_INDEX_URL="$2"; shift 2 ;;
+    --runtime-pip-spec)
+      [ -z "$2" ] && { echo "[ERROR] --runtime-pip-spec requires a value"; exit 1; }
+      QB_RUNTIME_PIP_SPEC="$2"; shift 2 ;;
     --device)
       [ -z "$2" ] && { echo "[ERROR] --device requires a value"; exit 1; }
       QB_DEVICE="$2"; shift 2 ;;
@@ -112,16 +118,18 @@ if [ ! -d "${WORKSPACE_DIR}" ]; then
 fi
 WORKSPACE_DIR="$(cd "${WORKSPACE_DIR}" && pwd)"
 
-# Mobilint SDK 패키지 (qubee + qbruntime) - 필수
+# Mobilint SDK 패키지 - compiler wheel만 vendor 제공
 VENDOR_DIR="${PROJECT_ROOT}/vendor"
-if ! ls "${VENDOR_DIR}"/*.whl >/dev/null 2>&1; then
-  echo "[ERROR] Mobilint SDK wheels not found under: ${VENDOR_DIR}"
+if ! ls "${VENDOR_DIR}"/qubee-*.whl >/dev/null 2>&1; then
+  echo "[ERROR] Mobilint qb compiler wheel not found under: ${VENDOR_DIR}"
   echo ""
-  echo "Place vendor-provided qubee(compiler) + qbruntime(QB-RUNTIME) wheels first:"
-  echo "  cp /path/to/qubee-*.whl     ${VENDOR_DIR}/"
-  echo "  cp /path/to/qbruntime-*.whl ${VENDOR_DIR}/"
+  echo "Place the vendor-provided qubee compiler wheel first:"
+  echo "  cp /path/to/qubee-*.whl ${VENDOR_DIR}/"
   echo ""
-  echo "See https://docs.mobilint.com/v1.2/en/introduction.html"
+  echo "QB runtime is installed inside the image via pip:"
+  echo "  ${QB_RUNTIME_PIP_SPEC}"
+  echo ""
+  echo "See https://docs.mobilint.com/v1.3/en/introduction.html"
   exit 1
 fi
 
@@ -131,7 +139,8 @@ echo "  Container name : ${CONTAINER_NAME}"
 echo "  Workspace(repo): ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
-echo "  Vendor wheels  : $(ls "${VENDOR_DIR}"/*.whl | xargs -n1 basename | paste -sd, -)"
+echo "  Runtime (pip)  : ${QB_RUNTIME_PIP_SPEC}"
+echo "  Compiler wheel : $(ls "${VENDOR_DIR}"/qubee-*.whl | xargs -n1 basename | paste -sd, -)"
 echo "  Device         : ${QB_DEVICE:-auto}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 
@@ -144,6 +153,7 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg UID="${UID_VALUE}" \
   --build-arg GID="${GID_VALUE}" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
+  --build-arg QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC}" \
   .
 
 detect_runtime_mounts

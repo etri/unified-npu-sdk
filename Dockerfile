@@ -2,13 +2,14 @@
 # =========================
 # unified-sdk (QB / Mobilint ARISE base)
 # =========================
-ARG BASE_IMAGE=ubuntu:22.04
+ARG BASE_IMAGE=mobilint/qbcompiler:latest
 FROM ${BASE_IMAGE}
 
 ARG USERNAME=etri
 ARG UID=1000
 ARG GID=1000
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+ARG QB_RUNTIME_PIP_SPEC=mobilint-qb-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -45,18 +46,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && pip install --no-cache-dir \
         -r /tmp/requirements.txt
 
-# 4) Mobilint SDK 설치 (vendor-provided)
-#    - qubee   : ONNX -> .mxq 양자화 컴파일러
-#    - qbruntime: QB-RUNTIME (.mxq 추론) + mobilint-cli
-#    공개 PyPI 에 없으므로, 벤더에게 받은 wheel 을 vendor/ 에 넣어두면 빌드시 설치한다.
-#    (설치 방법/패키지 명은 docs.mobilint.com 참조. maccel 이 아니라 qbruntime 을 사용한다.)
+# 4) Mobilint SDK 설치
+#    - qb compiler : 공식 qbcompiler Docker 이미지를 기반으로 사용
+#    - qubee       : 벤더 제공 Python compiler wheel
+#    - qbruntime   : 공식 pip 패키지(mobilint-qb-runtime)
 COPY --chown=${UID}:${GID} vendor/ /tmp/vendor/
 RUN --mount=type=cache,target=/root/.cache/pip \
-    if ls /tmp/vendor/*.whl >/dev/null 2>&1; then \
-        pip install --no-cache-dir /tmp/vendor/*.whl ; \
+    pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir "${QB_RUNTIME_PIP_SPEC}" \
+    && if ls /tmp/vendor/qubee-*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir /tmp/vendor/qubee-*.whl ; \
     else \
-        echo "[WARN] no Mobilint wheels under vendor/. qubee/qbruntime NOT installed in image." ; \
-        echo "       Place vendor-provided qubee + qbruntime wheels in vendor/ and rebuild." ; \
+        echo "[WARN] no qubee wheel under vendor/. compiler Python API NOT installed in image." ; \
+        echo "       Place a vendor-provided qubee wheel in vendor/ and rebuild." ; \
     fi
 
 # 5) unified-sdk 소스 복사 및 설치
