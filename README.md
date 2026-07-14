@@ -4,7 +4,7 @@
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 QB 1종으로 좁힌 버전입니다.
 
 `main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되, `rbln-only`·`trt-only`와 동일한 단일-백엔드 패턴을 따릅니다.
-컴파일은 **Mobilint compiler Python API**(`qubee` 또는 `qbcompiler`로 노출될 수 있음), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qbcompiler` wheel + `pip install mobilint-qb-runtime` + `apt install mobilint-cli`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
+컴파일은 **Mobilint compiler Python API**(`qubee` 또는 `qbcompiler`로 노출될 수 있음), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qbcompiler` wheel + `pip install mobilint-qb-runtime` + Mobilint APT 저장소를 통한 `apt install mobilint-cli`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
 
 ---
 
@@ -69,7 +69,7 @@ Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler
 - **Compiler base**: Mobilint 공식 `qbcompiler` Docker 이미지
 - **Compiler Python API**: 벤더 제공 `qbcompiler-*.whl` (`qubee` 또는 `qbcompiler` import로 노출될 수 있음)
 - **Runtime**: `pip install mobilint-qb-runtime`
-- **CLI Utility**: `apt install mobilint-cli`
+- **CLI Utility**: Mobilint APT 저장소 등록 후 `apt install mobilint-cli`
 
 조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 compiler Python import 이름은 `qubee` 또는 `qbcompiler`일 수 있습니다.
 
@@ -98,6 +98,7 @@ cp /path/to/qbcompiler-*.whl vendor/
   - GPU 가속 compile이 필요한 환경에서만 `--base-image mobilint/qbcompiler:<major>.<minor>-cuda12.8.1-ubuntu22.04`처럼 명시적으로 바꿔 쓰세요.
 - Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
 - `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
+- `qb-only` Dockerfile은 컨테이너 안에서 `mobilint-cli`를 설치하기 위해 Mobilint APT 저장소(`https://dl.mobilint.com/apt`)를 추가합니다.
 
 Ubuntu 예시:
 

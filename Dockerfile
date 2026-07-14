@@ -19,11 +19,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PYTHONPATH=/workspace/unified-sdk/src
 
-# 1) 기본 패키지
+# 1) 기본 패키지 및 Mobilint APT 저장소 등록
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://dl.mobilint.com/apt/gpg.pub -o /etc/apt/keyrings/mblt.asc \
+    && chmod a+r /etc/apt/keyrings/mblt.asc \
+    && printf "%s\n" \
+        "deb [signed-by=/etc/apt/keyrings/mblt.asc] https://dl.mobilint.com/apt stable multiverse" \
+        > /etc/apt/sources.list.d/mobilint.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
         mobilint-cli \
-        git ca-certificates curl \
+        git \
     && ln -sf /usr/bin/python3 /usr/local/bin/python \
     && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
     && rm -rf /var/lib/apt/lists/*
