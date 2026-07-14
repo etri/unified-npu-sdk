@@ -9,7 +9,7 @@ IMAGE_NAME="unified-sdk"
 TAG="qb"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
-BASE_IMAGE="${QB_BASE_IMAGE:-mobilint/qbcompiler:latest}"
+BASE_IMAGE="${QB_BASE_IMAGE:-}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC:-mobilint-qb-runtime}"
 QB_DEVICE="${QB_DEVICE:-}"
@@ -21,6 +21,21 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 
 DOCKER_DEVICE_ARGS=()
 DOCKER_TOOL_MOUNTS=()
+COMPILER_WHEELS=()
+
+infer_base_image_from_wheel() {
+  local wheel version
+  for wheel in "${COMPILER_WHEELS[@]}"; do
+    wheel="$(basename "${wheel}")"
+    if [[ "${wheel}" =~ ^qbcompiler-([0-9][0-9A-Za-z\.\+\-]*)- ]]; then
+      version="${BASH_REMATCH[1]}"
+      version="${version%%+*}"
+      echo "mobilint/qbcompiler:v${version}-cpu"
+      return 0
+    fi
+  done
+  return 1
+}
 
 print_usage() {
   echo "Usage: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>] [--device <node>]"
@@ -30,7 +45,7 @@ print_usage() {
   echo "  --workspace   Host repo path to mount into /workspace/unified-sdk"
   echo "                (default: current project root)"
   echo "  --base-image  Docker base image used for build"
-  echo "                (default: ${BASE_IMAGE})"
+  echo "                (default: infer from qbcompiler wheel, e.g. mobilint/qbcompiler:v1.2.0-cpu)"
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --runtime-pip-spec  pip spec used for Mobilint QB runtime"
@@ -134,6 +149,12 @@ if [ ${#COMPILER_WHEELS[@]} -eq 0 ]; then
   echo ""
   echo "See https://docs.mobilint.com/v1.3/en/introduction.html"
   exit 1
+fi
+
+if [ -z "${BASE_IMAGE}" ]; then
+  if ! BASE_IMAGE="$(infer_base_image_from_wheel)"; then
+    BASE_IMAGE="mobilint/qbcompiler:v1.2.0-cpu"
+  fi
 fi
 
 echo "Building Docker image: ${IMAGE_NAME}:${TAG}"
