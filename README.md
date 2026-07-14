@@ -72,6 +72,9 @@ Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler
 
 조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 Python import 이름은 여전히 `qubee`로 노출될 수 있습니다.
 
+> 권장: `vendor/`에는 `qbcompiler` wheel을 **한 버전만** 두세요. 여러 버전을 같이 두면 어떤 wheel 기준으로
+> base image를 추론할지 헷갈릴 수 있으므로, 테스트에 사용할 버전 하나만 남기는 것이 안전합니다.
+
 ```bash
 # 예시 1) 별도 worktree
 # cd ~/Codings/Micro_DC/qb-only
