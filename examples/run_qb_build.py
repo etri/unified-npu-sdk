@@ -269,6 +269,8 @@ if __name__ == "__main__":
     out_dir.mkdir(parents=True, exist_ok=True)
 
     extra: dict = {"quantize_method": args.quantize_method, "core_mode": args.core_mode}
+    extra["product"] = args.product
+    extra["target_device"] = args.product
     if args.use_random_calib:
         extra["use_random_calib"] = True
 

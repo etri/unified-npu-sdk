@@ -86,6 +86,9 @@ def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
     core_mode = extra.get("core_mode")
     if core_mode is not None and (not isinstance(core_mode, str) or not core_mode.strip()):
         raise ValueError("BuildConfig.extra['core_mode'] must be a non-empty string when provided")
+    target_device = extra.get("target_device")
+    if target_device is not None and (not isinstance(target_device, str) or not target_device.strip()):
+        raise ValueError("BuildConfig.extra['target_device'] must be a non-empty string when provided")
     return extra
 
 
@@ -194,6 +197,7 @@ class _QBBuildAdapter:
             "save_path": str(mxq_path),
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
+            "target_device": extra.get("target_device", extra.get("product", "aries")),
         }
         if cfg.calib_data_path:
             compile_kwargs["calib_data_path"] = str(cfg.calib_data_path)
