@@ -234,9 +234,10 @@ python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for 
 
 ### 4-a) 표준 fetching smoke
 
-Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/vision/<product>/<core_mode>/`
-아래에 있으면, `run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
+Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/...` 아래에 있으면,
+`run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
 없으면 `mblt_model_zoo.vision.ResNet50()` 표준 경로를 1회 실행해 `.mxq`를 materialize 한 뒤 다시 fetch 합니다.
+이때 workspace 내부에서는 최종적으로 `./models/<model-name>.mxq`로 한 번 더 정규화해서, 이후 흐름은 `./models` 기준으로 통일합니다.
 
 ```bash
 python3 examples/run_qb_build.py --model-name resnet50

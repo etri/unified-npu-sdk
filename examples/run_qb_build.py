@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import sys
 import os
+import shutil
 from typing import Any
 
 def _is_repo_root(path: Path) -> bool:
@@ -180,18 +181,36 @@ def _find_mxq(models_dir: Path, model_name: str) -> Path | None:
 def _find_model_zoo_mxq(model_name: str, product: str, core_mode: str) -> Path | None:
     home = Path.home()
     normalized = model_name.lower()
-    zoo_root = home / ".mblt_model_zoo" / "vision" / product / core_mode
+    zoo_root_new = home / ".mblt_model_zoo" / "vision" / product / core_mode
+    zoo_root_legacy = home / ".mblt_model_zoo" / product
 
     explicit_candidates = [
-        zoo_root / f"{normalized}_IMAGENET1K_V2.mxq",
-        zoo_root / f"{normalized}_DEFAULT.mxq",
+        zoo_root_new / f"{normalized}_IMAGENET1K_V2.mxq",
+        zoo_root_new / f"{normalized}_DEFAULT.mxq",
+        zoo_root_legacy / f"{normalized}_IMAGENET1K_V2.mxq",
+        zoo_root_legacy / f"{normalized}_DEFAULT.mxq",
     ]
     for candidate in explicit_candidates:
         if candidate.is_file():
             return candidate
 
-    glob_candidates = sorted(zoo_root.glob(f"{normalized}*.mxq"))
-    return glob_candidates[0] if glob_candidates else None
+    glob_candidates = (
+        sorted(zoo_root_new.glob(f"{normalized}*.mxq"))
+        + sorted(zoo_root_legacy.glob(f"{normalized}*.mxq"))
+    )
+    if glob_candidates:
+        return glob_candidates[0]
+
+    recursive_candidates = sorted((home / ".mblt_model_zoo").rglob(f"{normalized}*.mxq"))
+    return recursive_candidates[0] if recursive_candidates else None
+
+
+def _normalize_mxq_into_models(src_mxq: Path, models_dir: Path, model_name: str) -> Path:
+    target = (models_dir / model_name).with_suffix(".mxq")
+    models_dir.mkdir(parents=True, exist_ok=True)
+    if src_mxq.resolve() != target.resolve():
+        shutil.copyfile(src_mxq, target)
+    return target
 
 
 def _trigger_model_zoo_fetch(model_name: str, product: str, core_mode: str) -> Path | None:
@@ -293,7 +312,9 @@ if __name__ == "__main__":
             if mxq is None:
                 mxq = _trigger_model_zoo_fetch(args.model_name, args.product, args.core_mode)
             if mxq is not None:
-                source_desc = f"standard fetch from official model zoo: {mxq}"
+                normalized_mxq = _normalize_mxq_into_models(mxq, models_dir, args.model_name)
+                source_desc = f"standard fetch from official model zoo: {mxq} -> {normalized_mxq}"
+                mxq = normalized_mxq
         if mxq is None:
             msg = (
                 f"{models_dir} 또는 ~/.mblt_model_zoo/vision/{args.product}/{args.core_mode} 에서 "
