@@ -27,9 +27,8 @@ infer_base_image_from_wheel() {
   local wheel version
   for wheel in "${COMPILER_WHEELS[@]}"; do
     wheel="$(basename "${wheel}")"
-    if [[ "${wheel}" =~ ^qbcompiler-([0-9][0-9A-Za-z\.\+\-]*)- ]]; then
+    if [[ "${wheel}" =~ ^qbcompiler-([0-9]+(\.[0-9]+)*)- ]]; then
       version="${BASH_REMATCH[1]}"
-      version="${version%%+*}"
       echo "mobilint/qbcompiler:v${version}-cpu"
       return 0
     fi
