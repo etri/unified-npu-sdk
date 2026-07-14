@@ -120,11 +120,12 @@ WORKSPACE_DIR="$(cd "${WORKSPACE_DIR}" && pwd)"
 
 # Mobilint SDK 패키지 - compiler wheel만 vendor 제공
 VENDOR_DIR="${PROJECT_ROOT}/vendor"
-if ! ls "${VENDOR_DIR}"/qubee-*.whl >/dev/null 2>&1; then
+COMPILER_WHEEL_PATTERN=("${VENDOR_DIR}"/qbcompiler-*.whl "${VENDOR_DIR}"/qubee-*.whl)
+if ! ls "${COMPILER_WHEEL_PATTERN[@]}" >/dev/null 2>&1; then
   echo "[ERROR] Mobilint qb compiler wheel not found under: ${VENDOR_DIR}"
   echo ""
-  echo "Place the vendor-provided qubee compiler wheel first:"
-  echo "  cp /path/to/qubee-*.whl ${VENDOR_DIR}/"
+  echo "Place the vendor-provided qb compiler wheel first:"
+  echo "  cp /path/to/qbcompiler-*.whl ${VENDOR_DIR}/"
   echo ""
   echo "QB runtime is installed inside the image via pip:"
   echo "  ${QB_RUNTIME_PIP_SPEC}"
@@ -140,7 +141,7 @@ echo "  Workspace(repo): ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  Runtime (pip)  : ${QB_RUNTIME_PIP_SPEC}"
-echo "  Compiler wheel : $(ls "${VENDOR_DIR}"/qubee-*.whl | xargs -n1 basename | paste -sd, -)"
+echo "  Compiler wheel : $(ls "${COMPILER_WHEEL_PATTERN[@]}" 2>/dev/null | xargs -n1 basename | paste -sd, -)"
 echo "  Device         : ${QB_DEVICE:-auto}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 

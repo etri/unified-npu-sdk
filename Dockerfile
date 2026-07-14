@@ -48,17 +48,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # 4) Mobilint SDK 설치
 #    - qb compiler : 공식 qbcompiler Docker 이미지를 기반으로 사용
-#    - qubee       : 벤더 제공 Python compiler wheel
+#    - qbcompiler  : 벤더 제공 compiler wheel (Python API는 qubee 로 노출될 수 있음)
 #    - qbruntime   : 공식 pip 패키지(mobilint-qb-runtime)
 COPY --chown=${UID}:${GID} vendor/ /tmp/vendor/
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir "${QB_RUNTIME_PIP_SPEC}" \
-    && if ls /tmp/vendor/qubee-*.whl >/dev/null 2>&1; then \
+    && if ls /tmp/vendor/qbcompiler-*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir /tmp/vendor/qbcompiler-*.whl ; \
+    elif ls /tmp/vendor/qubee-*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir /tmp/vendor/qubee-*.whl ; \
     else \
-        echo "[WARN] no qubee wheel under vendor/. compiler Python API NOT installed in image." ; \
-        echo "       Place a vendor-provided qubee wheel in vendor/ and rebuild." ; \
+        echo "[WARN] no qb compiler wheel under vendor/. compiler Python API NOT installed in image." ; \
+        echo "       Place a vendor-provided qbcompiler-*.whl in vendor/ and rebuild." ; \
     fi
 
 # 5) unified-sdk 소스 복사 및 설치
