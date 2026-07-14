@@ -24,12 +24,18 @@ DOCKER_TOOL_MOUNTS=()
 COMPILER_WHEELS=()
 
 infer_base_image_from_wheel() {
-  local wheel version
+  local wheel version tag_version
   for wheel in "${COMPILER_WHEELS[@]}"; do
     wheel="$(basename "${wheel}")"
     if [[ "${wheel}" =~ ^qbcompiler-([0-9]+(\.[0-9]+)*)(\+[A-Za-z0-9._-]+)?- ]]; then
       version="${BASH_REMATCH[1]}"
-      echo "mobilint/qbcompiler:v${version}-cpu"
+      IFS='.' read -r -a _parts <<< "${version}"
+      if [ ${#_parts[@]} -ge 2 ]; then
+        tag_version="${_parts[0]}.${_parts[1]}"
+      else
+        tag_version="${_parts[0]}"
+      fi
+      echo "mobilint/qbcompiler:${tag_version}-cpu-ubuntu22.04"
       return 0
     fi
   done
@@ -44,8 +50,8 @@ print_usage() {
   echo "  --workspace   Host repo path to mount into /workspace/unified-sdk"
   echo "                (default: current project root)"
   echo "  --base-image  Docker base image used for build"
-  echo "                (default: infer from qbcompiler wheel, e.g. mobilint/qbcompiler:v1.2.0-cpu)"
-  echo "                Use mobilint/qbcompiler:v<version> for GPU-accelerated compile."
+  echo "                (default: infer from qbcompiler wheel, e.g. mobilint/qbcompiler:1.2-cpu-ubuntu22.04)"
+  echo "                Use mobilint/qbcompiler:1.2-cuda12.8.1-ubuntu22.04 for GPU-accelerated compile."
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --runtime-pip-spec  pip spec used for Mobilint QB runtime"
@@ -160,7 +166,7 @@ if [ -z "${BASE_IMAGE}" ]; then
     echo "  qbcompiler-1.2.0-py3-none-any.whl"
     echo ""
     echo "Please pass the compiler image explicitly, for example:"
-    echo "  ./build.sh --base-image mobilint/qbcompiler:v1.1.2-cpu"
+    echo "  ./build.sh --base-image mobilint/qbcompiler:1.1-cpu-ubuntu22.04"
     echo ""
     echo "See https://docs.mobilint.com/v1.3/en/installing_compiler.html"
     exit 1
