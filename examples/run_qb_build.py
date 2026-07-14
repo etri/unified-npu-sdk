@@ -70,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Build a Mobilint ARISE (QB) .mxq model. "
         "기본은 사전 컴파일된 .mxq 확보(fetch), --from-onnx 지정 시 qubee 컴파일(compile hook)."
     )
-    parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 .mxq 를 찾을 디렉터리.")
+    parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 먼저 탐색할 .mxq 디렉터리.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="결과 .mxq 출력 디렉터리.")
     parser.add_argument("--model-name", default="resnet50", help="확장자 없는 출력 모델 이름.")
     parser.add_argument("--mxq", type=Path, default=None, help="이미 컴파일된 .mxq 를 직접 사용(fetch/provided).")
@@ -94,12 +94,30 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
+    parser.add_argument("--product", default=os.getenv("MBLT_PRODUCT", "aries"))
     return parser
 
 
 def _find_mxq(models_dir: Path, model_name: str) -> Path | None:
     candidates = sorted(models_dir.glob(f"{model_name}*.mxq")) + sorted(models_dir.glob("*.mxq"))
     return candidates[0] if candidates else None
+
+
+def _find_model_zoo_mxq(model_name: str, product: str, core_mode: str) -> Path | None:
+    home = Path.home()
+    normalized = model_name.lower()
+    zoo_root = home / ".mblt_model_zoo" / "vision" / product / core_mode
+
+    explicit_candidates = [
+        zoo_root / f"{normalized}_IMAGENET1K_V2.mxq",
+        zoo_root / f"{normalized}_DEFAULT.mxq",
+    ]
+    for candidate in explicit_candidates:
+        if candidate.is_file():
+            return candidate
+
+    glob_candidates = sorted(zoo_root.glob(f"{normalized}*.mxq"))
+    return glob_candidates[0] if glob_candidates else None
 
 
 if __name__ == "__main__":
@@ -114,7 +132,7 @@ if __name__ == "__main__":
     if args.use_random_calib:
         extra["use_random_calib"] = True
 
-    # 우선순위: --from-onnx(compile) > --mxq(provided) > models/ 자동탐지(fetch)
+    # 우선순위: --from-onnx(compile) > --mxq(provided) > models/ 자동탐지(fetch) > ~/.mblt_model_zoo fallback
     if args.from_onnx is not None:
         onnx_path = args.from_onnx.expanduser().resolve()
         if not onnx_path.is_file():
@@ -124,9 +142,15 @@ if __name__ == "__main__":
         source_desc = f"qubee compile from ONNX: {onnx_path}"
     else:
         mxq = args.mxq.expanduser().resolve() if args.mxq else _find_mxq(models_dir, args.model_name)
+        source_desc = ""
+        if mxq is None:
+            mxq = _find_model_zoo_mxq(args.model_name, args.product, args.core_mode)
+            if mxq is not None:
+                source_desc = f"official model zoo .mxq: {mxq}"
         if mxq is None:
             msg = (
-                f"{models_dir} 에서 {args.model_name}*.mxq 를 찾지 못했습니다.\n"
+                f"{models_dir} 또는 ~/.mblt_model_zoo/vision/{args.product}/{args.core_mode} 에서 "
+                f"{args.model_name}*.mxq 를 찾지 못했습니다.\n"
                 "사전 컴파일된 .mxq 를 --mxq 로 지정하거나, --from-onnx <onnx> 로 qubee 컴파일하세요."
             )
             if args.require_mxq:
@@ -135,7 +159,8 @@ if __name__ == "__main__":
             sys.exit(1)
         model_or_path = str(mxq)
         calib = None
-        source_desc = f"provided .mxq: {mxq}"
+        if not source_desc:
+            source_desc = f"provided .mxq: {mxq}"
 
     cfg = BuildConfig(
         backend="qb",
