@@ -228,26 +228,67 @@ command -v mobilint-cli && mobilint-cli status || true
 python3 -c "import unified_sdk, qbruntime; print('OK')"
 python3 -c "import qbruntime; from qbruntime import type as t; print('devices=', t.get_available_device_numbers())"
 python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')"
+```
 
-# 4) .mxq 확보 또는 컴파일
-#    (a) 사전 컴파일된 .mxq 를 models/ 에 두었거나,
-#        Mobilint 공식 문서 흐름대로 ~/.mblt_model_zoo/... 에 이미 생성돼 있다면 그대로 확보(fetch):
+### 4-a) 표준 fetching smoke
+
+Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/vision/<product>/<core_mode>/`
+아래에 있으면, `run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
+
+```bash
 python3 examples/run_qb_build.py --model-name resnet50
-#    (b) ONNX 를 compiler Python API(qubee/qbcompiler)로 컴파일(compile hook, random calib smoke):
+```
+
+### 4-b) custom fetching smoke
+
+사전 컴파일된 `.mxq`를 직접 받은 경우에는 로컬 경로를 명시해서 fetch 합니다.
+
+```bash
 python3 examples/run_qb_build.py \
-  --from-onnx models/resnet50.onnx \
+  --mxq /path/to/resnet50.mxq \
+  --model-name resnet50
+```
+
+또는 `models/` 아래에 `resnet50*.mxq`를 두고 `--model-name resnet50`만 써도 됩니다.
+
+### 4-c) custom compile smoke
+
+직접 컴파일하는 경로는 두 가지입니다.
+
+```bash
+# (1) ONNX -> .mxq
+python3 examples/run_qb_build.py \
+  --from-onnx models/yolov7.onnx \
+  --use-random-calib \
+  --model-name yolov7
+
+# (2) PTH/PT -> ONNX export -> .mxq
+#     현재 예제는 resnet50.pth/.pt 기준으로 지원합니다.
+python3 examples/run_qb_build.py \
+  --from-pth models/resnet50.pth \
   --use-random-calib \
   --model-name resnet50
+```
 
-# 5) .mxq 추론
-#    tests/input.jpg가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
+`--from-pth`를 쓰면 기본적으로 `models/<model-name>.onnx`를 중간 산출물로 생성한 뒤,
+그 ONNX를 compiler Python API(`qubee`/`qbcompiler`)로 `.mxq` 컴파일합니다.
+중간 ONNX 경로를 직접 정하고 싶으면 `--export-onnx-path`를 지정하세요.
+
+### 5) .mxq 추론
+
+`tests/input.jpg`가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
+
+```bash
 python3 examples/run_qb_infer.py \
   --engine-path builds/resnet50.mxq \
   --device 0 \
   --core-mode global8 \
   --iters 50
+```
 
-# 6) 모델 메타 확인
+### 6) 모델 메타 확인
+
+```bash
 python3 examples/inspect_qb_model.py builds/resnet50.mxq
 ```
 
@@ -264,7 +305,7 @@ python3 examples/inspect_qb_model.py builds/resnet50.mxq
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
 
-# (a) ONNX -> .mxq (qubee compile hook)
+# (a) ONNX -> .mxq
 cfg = BuildConfig(
     backend="qb",
     model_or_path="models/resnet50.onnx",   # ONNX 경로
@@ -281,6 +322,10 @@ print(result.compiled_model_path)
 
 # (b) 사전 컴파일된 .mxq 확보(fetch): model_or_path 에 .mxq 경로를 그대로 전달
 #     cfg = BuildConfig(backend="qb", model_or_path="models/resnet50.mxq", ...)
+
+# (c) PyTorch module 인스턴스를 직접 전달하는 lower-level 경로도 이론상 가능하지만,
+#     qb-only 예제/README 기준 권장 custom compile 흐름은
+#     .pth/.pt -> ONNX export -> build_unified(cfg) 입니다.
 ```
 
 ### 추론
