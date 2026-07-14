@@ -206,6 +206,7 @@ docker run -it --security-opt seccomp=unconfined \
 cd /workspace/unified-sdk
 command -v mobilint-cli && mobilint-cli status || true
 python3 -c "import unified_sdk, qbruntime; print('OK')"
+python3 -c "import mblt_model_zoo; print('mblt_model_zoo=', getattr(mblt_model_zoo, '__version__', 'unknown'))"
 python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'))"
 ```
 
@@ -227,6 +228,7 @@ vendor SDK(compiler Python API `qubee`/`qbcompiler`, runtime `qbruntime`)를 직
 command -v mobilint-cli && mobilint-cli status || true
 python3 -c "import unified_sdk, qbruntime; print('OK')"
 python3 -c "import qbruntime; from qbruntime import type as t; print('devices=', t.get_available_device_numbers())"
+python3 -c "import mblt_model_zoo; print('mblt_model_zoo=', getattr(mblt_model_zoo, '__version__', 'unknown'))"
 python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')"
 ```
 
@@ -234,10 +236,13 @@ python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for 
 
 Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/vision/<product>/<core_mode>/`
 아래에 있으면, `run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
+없으면 `mblt_model_zoo.vision.ResNet50()` 표준 경로를 1회 실행해 `.mxq`를 materialize 한 뒤 다시 fetch 합니다.
 
 ```bash
 python3 examples/run_qb_build.py --model-name resnet50
 ```
+
+현재 표준 model zoo materialize 예제는 `resnet50` 기준으로 맞춰져 있습니다.
 
 ### 4-b) custom fetching smoke
 
@@ -273,6 +278,9 @@ python3 examples/run_qb_build.py \
 `--from-pth`를 쓰면 기본적으로 `models/<model-name>.onnx`를 중간 산출물로 생성한 뒤,
 그 ONNX를 compiler Python API(`qubee`/`qbcompiler`)로 `.mxq` 컴파일합니다.
 중간 ONNX 경로를 직접 정하고 싶으면 `--export-onnx-path`를 지정하세요.
+단, `--from-pth models/resnet50.pth`는 **torchvision ResNet50 분류 모델 가중치**일 때를 가정합니다.
+예를 들어 RetinaFace처럼 backbone 키가 `body.*`로 시작하는 checkpoint는 이 경로로 바로 쓸 수 없고,
+해당 아키텍처 전용 ONNX export 또는 사전 컴파일된 `.mxq`/별도 ONNX 준비가 필요합니다.
 
 ### 5) .mxq 추론
 

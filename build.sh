@@ -12,6 +12,7 @@ WORKSPACE_DIR=""
 BASE_IMAGE="${QB_BASE_IMAGE:-}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC:-mobilint-qb-runtime}"
+MBLT_MODEL_ZOO_PIP_SPEC="${MBLT_MODEL_ZOO_PIP_SPEC:-mblt-model-zoo}"
 QB_DEVICE="${QB_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
@@ -55,6 +56,8 @@ print_usage() {
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --runtime-pip-spec  pip spec used for Mobilint QB runtime"
   echo "                (default: ${QB_RUNTIME_PIP_SPEC})"
+  echo "  --model-zoo-pip-spec  pip spec used for Mobilint Model Zoo package"
+  echo "                (default: ${MBLT_MODEL_ZOO_PIP_SPEC})"
   echo "  --device      Mobilint device node, e.g. /dev/aries0"
   echo "                (default: auto-detect /dev/aries* and /dev/arise*)"
   echo "  -h, --help    Show this help message"
@@ -102,6 +105,9 @@ while [[ $# -gt 0 ]]; do
     --runtime-pip-spec)
       [ -z "$2" ] && { echo "[ERROR] --runtime-pip-spec requires a value"; exit 1; }
       QB_RUNTIME_PIP_SPEC="$2"; shift 2 ;;
+    --model-zoo-pip-spec)
+      [ -z "$2" ] && { echo "[ERROR] --model-zoo-pip-spec requires a value"; exit 1; }
+      MBLT_MODEL_ZOO_PIP_SPEC="$2"; shift 2 ;;
     --device)
       [ -z "$2" ] && { echo "[ERROR] --device requires a value"; exit 1; }
       QB_DEVICE="$2"; shift 2 ;;
@@ -162,6 +168,7 @@ echo "  Workspace(repo): ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  Runtime (pip)  : ${QB_RUNTIME_PIP_SPEC}"
+echo "  Model Zoo (pip): ${MBLT_MODEL_ZOO_PIP_SPEC}"
 echo "  Compiler wheel : $(printf '%s\n' "${COMPILER_WHEELS[@]}" | xargs -n1 basename | paste -sd, -)"
 echo "  Device         : ${QB_DEVICE:-auto}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
@@ -176,6 +183,7 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg GID="${GID_VALUE}" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   --build-arg QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC}" \
+  --build-arg MBLT_MODEL_ZOO_PIP_SPEC="${MBLT_MODEL_ZOO_PIP_SPEC}" \
   .
 
 detect_runtime_mounts
@@ -197,5 +205,6 @@ echo "Sanity check inside container:"
 echo "  command -v mobilint-cli && mobilint-cli status || true"
 echo "  python3 -c \"import unified_sdk, qbruntime; print('OK')\""
 echo "  python3 -c \"import qbruntime; from qbruntime import type as t; print('devices=', t.get_available_device_numbers())\""
+echo "  python3 -c \"import mblt_model_zoo; print('mblt_model_zoo=', getattr(mblt_model_zoo, '__version__', 'unknown'))\""
 echo "  python3 -c \"import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')\""
 echo "  python3 examples/run_qb_build.py --help"

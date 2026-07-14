@@ -135,9 +135,15 @@ def _prepare_module_from_pth(weights_path: Path, model_name: str):
     model = tv_models.resnet50(weights=None)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing or unexpected:
+        hint = ""
+        if unexpected and all(key.startswith("body.") for key in unexpected[: min(len(unexpected), 10)]):
+            hint = (
+                " The checkpoint looks like a detector/backbone-style state_dict "
+                "(e.g. keys prefixed with 'body.'), not a plain torchvision ResNet50 classifier."
+            )
         raise RuntimeError(
             "Failed to load resnet50 weights cleanly from checkpoint. "
-            f"missing={list(missing)}, unexpected={list(unexpected)}"
+            f"missing={list(missing)}, unexpected={list(unexpected)}.{hint}"
         )
     model.eval()
     return model
@@ -186,6 +192,53 @@ def _find_model_zoo_mxq(model_name: str, product: str, core_mode: str) -> Path |
 
     glob_candidates = sorted(zoo_root.glob(f"{normalized}*.mxq"))
     return glob_candidates[0] if glob_candidates else None
+
+
+def _trigger_model_zoo_fetch(model_name: str, product: str, core_mode: str) -> Path | None:
+    """Best-effort materialization of a standard MXQ via mblt_model_zoo.
+
+    The Mobilint docs exercise `mblt_model_zoo.vision.ResNet50` once and then
+    reuse the emitted `~/.mblt_model_zoo/.../*.mxq` artifact. We mirror that
+    standard smoke path here. If the artifact appears after this routine, we
+    treat it as a standard fetch success.
+    """
+    normalized = model_name.lower()
+    if normalized != "resnet50":
+        return None
+
+    try:
+        import torch
+        from torchvision.io import write_png
+        from mblt_model_zoo.vision import ResNet50
+    except Exception:
+        return None
+
+    scratch_image = MODELS_DIR / "_mblt_model_zoo_resnet50_smoke.png"
+    if not scratch_image.is_file():
+        scratch_image.parent.mkdir(parents=True, exist_ok=True)
+        img = torch.full((3, 224, 224), 127, dtype=torch.uint8)
+        write_png(img, str(scratch_image))
+
+    model = ResNet50(
+        local_path=None,
+        model_type="DEFAULT",
+        infer_mode=core_mode,
+        product=product,
+    )
+    try:
+        input_img = model.preprocess(str(scratch_image))
+        output = model(input_img)
+        try:
+            model.postprocess(output)
+        except Exception:
+            pass
+    finally:
+        try:
+            model.dispose()
+        except Exception:
+            pass
+
+    return _find_model_zoo_mxq(model_name, product, core_mode)
 
 
 if __name__ == "__main__":
@@ -237,6 +290,8 @@ if __name__ == "__main__":
         source_desc = ""
         if mxq is None:
             mxq = _find_model_zoo_mxq(args.model_name, args.product, args.core_mode)
+            if mxq is None:
+                mxq = _trigger_model_zoo_fetch(args.model_name, args.product, args.core_mode)
             if mxq is not None:
                 source_desc = f"standard fetch from official model zoo: {mxq}"
         if mxq is None:
