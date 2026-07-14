@@ -87,6 +87,8 @@ cp /path/to/qbcompiler-*.whl vendor/
   - 예: `qbcompiler-1.1.2+aries2-py3-none-any.whl` -> `mobilint/qbcompiler:1.1-cpu-ubuntu22.04`
   - 예: `qbcompiler-1.2.0-py3-none-any.whl` -> `mobilint/qbcompiler:1.2-cpu-ubuntu22.04`
   - wheel 이름에서 버전을 추론할 수 없으면 `--base-image`로 직접 지정해야 합니다.
+- 실제로 pull 가능한 compiler 태그는 Mobilint Docker Hub tags 페이지에서 먼저 확인하는 것을 권장합니다:
+  <https://hub.docker.com/r/mobilint/qbcompiler/tags>
 - Mobilint Docker Hub 태그 기준 compiler 이미지는 **CPU 전용**(`mobilint/qbcompiler:<major>.<minor>-cpu-ubuntu22.04`)과 **GPU 가속**(`mobilint/qbcompiler:<major>.<minor>-cuda12.8.1-ubuntu22.04`) 두 종류가 있습니다.
   - 일반적인 wrapper smoke나 CPU-only compile이면 `-cpu` 이미지를 쓰면 됩니다.
   - GPU 가속 compile이 필요한 환경에서만 `--base-image mobilint/qbcompiler:<major>.<minor>-cuda12.8.1-ubuntu22.04`처럼 명시적으로 바꿔 쓰세요.
