@@ -67,7 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fxb-build",
         action="store_true",
-        help="custom smoke 경로: `fxb build`로 FXB 를 생성한다.",
+        help="선택 기능: custom build smoke 경로에서 `fxb build`로 FXB 를 생성한다. vendor/toolchain 상태에 따라 실패할 수 있다.",
     )
     parser.add_argument("--tensor-parallel-size", type=int, default=int(os.getenv("RNGD_TP", "1")))
     parser.add_argument("--pipeline-parallel-size", type=int, default=1)
