@@ -34,6 +34,13 @@ _VENDOR_TO_UNIFIED_API_MAP = {
 
 # Mobilint compiler Python API(mxq_compile) 가 지원하는 양자화 방법
 _QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
+_TARGET_DEVICE_BY_PRODUCT = {
+    "aries": "aries-rb",
+    "aries-rb": "aries-rb",
+    "regulus": "regulus-rb",
+    "regulus-rb": "regulus-rb",
+    "regulus-ra": "regulus-ra",
+}
 
 
 def _resolve_mxq_compile():
@@ -98,6 +105,14 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     if path.suffix != ".mxq":
         path = path.with_suffix(".mxq")
     return path
+
+
+def _resolve_target_device(extra: Dict[str, Any]) -> str:
+    explicit = extra.get("target_device")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    product = str(extra.get("product", "aries")).strip().lower()
+    return _TARGET_DEVICE_BY_PRODUCT.get(product, product)
 
 
 def _looks_like_mxq(model_or_path: Any) -> bool:
@@ -197,7 +212,7 @@ class _QBBuildAdapter:
             "save_path": str(mxq_path),
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
-            "target_device": extra.get("target_device", extra.get("product", "aries")),
+            "target_device": _resolve_target_device(extra),
         }
         if cfg.calib_data_path:
             compile_kwargs["calib_data_path"] = str(cfg.calib_data_path)
