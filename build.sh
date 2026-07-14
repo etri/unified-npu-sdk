@@ -27,7 +27,7 @@ infer_base_image_from_wheel() {
   local wheel version
   for wheel in "${COMPILER_WHEELS[@]}"; do
     wheel="$(basename "${wheel}")"
-    if [[ "${wheel}" =~ ^qbcompiler-([0-9]+(\.[0-9]+)*)- ]]; then
+    if [[ "${wheel}" =~ ^qbcompiler-([0-9]+(\.[0-9]+)*)(\+[A-Za-z0-9._-]+)?- ]]; then
       version="${BASH_REMATCH[1]}"
       echo "mobilint/qbcompiler:v${version}-cpu"
       return 0
@@ -153,7 +153,17 @@ fi
 
 if [ -z "${BASE_IMAGE}" ]; then
   if ! BASE_IMAGE="$(infer_base_image_from_wheel)"; then
-    BASE_IMAGE="mobilint/qbcompiler:v1.2.0-cpu"
+    echo "[ERROR] Could not infer Mobilint qbcompiler base image from vendor wheel name."
+    echo ""
+    echo "Expected a filename like one of:"
+    echo "  qbcompiler-1.1.2+aries2-py3-none-any.whl"
+    echo "  qbcompiler-1.2.0-py3-none-any.whl"
+    echo ""
+    echo "Please pass the compiler image explicitly, for example:"
+    echo "  ./build.sh --base-image mobilint/qbcompiler:v1.1.2-cpu"
+    echo ""
+    echo "See https://docs.mobilint.com/v1.3/en/installing_compiler.html"
+    exit 1
   fi
 fi
 
