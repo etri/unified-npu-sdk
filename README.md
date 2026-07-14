@@ -83,7 +83,7 @@ cp /path/to/qbcompiler-*.whl vendor/
 ### 2. Docker 사전 준비
 
 - `qb-only` 검증은 **Docker 기준**으로 진행합니다.
-- Mobilint 공식 compiler 설치 문서는 `qbcompiler` Docker 이미지를 기준으로 설명합니다. 이 브랜치도 같은 방향을 따르며, 기본 베이스 이미지는 `mobilint/qbcompiler:latest` 입니다.
+- Mobilint 공식 compiler 설치 문서는 **버전 태그가 붙은** `qbcompiler` Docker 이미지를 기준으로 설명합니다. 이 브랜치도 같은 방향을 따르며, 기본 베이스 이미지는 `vendor/qbcompiler-*.whl`의 버전에서 자동 추론한 `mobilint/qbcompiler:v<version>-cpu` 입니다.
 - Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
 - `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
 
@@ -148,7 +148,7 @@ docker version
 `./build.sh`는 기본적으로 `torch`/`torchvision`을 CPU wheel index
 (`https://download.pytorch.org/whl/cpu`)에서 설치하고, 다음 조합으로 이미지를 구성합니다.
 
-- base image: `mobilint/qbcompiler:latest`
+- base image: `mobilint/qbcompiler:v<version>-cpu` (기본은 `qbcompiler-*.whl` 버전에서 자동 추론)
 - compiler wheel: `vendor/qbcompiler-*.whl`
 - runtime pip package: `mobilint-qb-runtime`
 

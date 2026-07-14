@@ -2,7 +2,7 @@
 # =========================
 # unified-sdk (QB / Mobilint ARISE base)
 # =========================
-ARG BASE_IMAGE=mobilint/qbcompiler:latest
+ARG BASE_IMAGE=mobilint/qbcompiler:v1.2.0-cpu
 FROM ${BASE_IMAGE}
 
 ARG USERNAME=etri
