@@ -46,6 +46,7 @@ print_usage() {
   echo "                (default: current project root)"
   echo "  --base-image  Docker base image used for build"
   echo "                (default: infer from qbcompiler wheel, e.g. mobilint/qbcompiler:v1.2.0-cpu)"
+  echo "                Use mobilint/qbcompiler:v<version> for GPU-accelerated compile."
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --runtime-pip-spec  pip spec used for Mobilint QB runtime"
