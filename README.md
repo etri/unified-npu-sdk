@@ -206,7 +206,8 @@ python3 -c "import qbruntime; from qbruntime import type as t; print('devices=',
 python3 -c "import qubee; print('qubee=', getattr(qubee, '__version__', 'unknown'))"
 
 # 4) .mxq 확보 또는 컴파일
-#    (a) 사전 컴파일된 .mxq 를 models/ 에 두었다면 그대로 확보(fetch):
+#    (a) 사전 컴파일된 .mxq 를 models/ 에 두었거나,
+#        Mobilint 공식 문서 흐름대로 ~/.mblt_model_zoo/... 에 이미 생성돼 있다면 그대로 확보(fetch):
 python3 examples/run_qb_build.py --model-name resnet50
 #    (b) ONNX 를 qubee 로 컴파일(compile hook, random calib smoke):
 python3 examples/run_qb_build.py \
