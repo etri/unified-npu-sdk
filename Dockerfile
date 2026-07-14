@@ -2,7 +2,7 @@
 # =========================
 # unified-sdk (QB / Mobilint ARISE base)
 # =========================
-ARG BASE_IMAGE=mobilint/qbcompiler:v1.2.0-cpu
+ARG BASE_IMAGE=mobilint/qbcompiler:1.2-cpu-ubuntu22.04
 FROM ${BASE_IMAGE}
 
 ARG USERNAME=etri
