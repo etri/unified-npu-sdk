@@ -29,7 +29,7 @@
 ├── Dockerfile
 ├── build.sh
 ├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
-│   └── README.md                   #   qubee-*.whl
+│   └── README.md                   #   qbcompiler-*.whl
 ├── examples/
 │   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(qubee)
 │   ├── run_qb_infer.py             # .mxq 모델 추론 (qbruntime)
@@ -67,17 +67,17 @@
 Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler`로 나뉩니다. 이 브랜치는:
 
 - **Compiler base**: Mobilint 공식 `qbcompiler` Docker 이미지
-- **Compiler Python API**: 벤더 제공 `qubee-*.whl`
+- **Compiler Python API**: 벤더 제공 `qbcompiler-*.whl`
 - **Runtime**: `pip install mobilint-qb-runtime`
 
-조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qubee` compiler wheel만** 둡니다.
+조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 Python import 이름은 여전히 `qubee`로 노출될 수 있습니다.
 
 ```bash
 # 예시 1) 별도 worktree
 # cd ~/Codings/Micro_DC/qb-only
 
 # Mobilint compiler wheel 배치 (docs.mobilint.com 참조)
-cp /path/to/qubee-*.whl vendor/
+cp /path/to/qbcompiler-*.whl vendor/
 ```
 
 ### 2. Docker 사전 준비
@@ -149,7 +149,7 @@ docker version
 (`https://download.pytorch.org/whl/cpu`)에서 설치하고, 다음 조합으로 이미지를 구성합니다.
 
 - base image: `mobilint/qbcompiler:latest`
-- compiler wheel: `vendor/qubee-*.whl`
+- compiler wheel: `vendor/qbcompiler-*.whl`
 - runtime pip package: `mobilint-qb-runtime`
 
 다른 값을 쓰려면:
@@ -194,7 +194,7 @@ python3 -c "import unified_sdk, qbruntime; print('OK')"
 vendor SDK(`qubee`/`qbruntime`)를 직접 호출합니다.
 
 ```bash
-# 1) 이미지 빌드 (vendor/ 에 qubee wheel 필요, runtime 은 pip 설치)
+# 1) 이미지 빌드 (vendor/ 에 qbcompiler wheel 필요, runtime 은 pip 설치)
 ./build.sh
 
 # 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
