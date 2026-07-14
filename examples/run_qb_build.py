@@ -100,6 +100,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
     parser.add_argument("--product", default=os.getenv("MBLT_PRODUCT", "aries"))
+    parser.add_argument(
+        "--target-device",
+        default=os.getenv("MBLT_TARGET_DEVICE", ""),
+        help="Mobilint compiler target device. 예: aries-rb, regulus-ra, regulus-rb. 기본은 --product 에서 추론.",
+    )
     return parser
 
 
@@ -270,7 +275,8 @@ if __name__ == "__main__":
 
     extra: dict = {"quantize_method": args.quantize_method, "core_mode": args.core_mode}
     extra["product"] = args.product
-    extra["target_device"] = args.product
+    if args.target_device:
+        extra["target_device"] = args.target_device
     if args.use_random_calib:
         extra["use_random_calib"] = True
 

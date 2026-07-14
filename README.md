@@ -282,7 +282,19 @@ python3 examples/run_qb_build.py \
 단, `--from-pth models/resnet50.pth`는 **torchvision ResNet50 분류 모델 가중치**일 때를 가정합니다.
 예를 들어 RetinaFace처럼 backbone 키가 `body.*`로 시작하는 checkpoint는 이 경로로 바로 쓸 수 없고,
 해당 아키텍처 전용 ONNX export 또는 사전 컴파일된 `.mxq`/별도 ONNX 준비가 필요합니다.
-기본 `target_device`는 `--product` 값을 따라가며, 기본값은 문서 기준 `aries`입니다.
+기본 `target_device`는 `--product`에서 추론합니다.
+- `aries` -> `aries-rb`
+- `regulus` -> `regulus-rb`
+
+현재 compiler가 요구하는 실제 문자열이 다를 수 있으므로, 필요하면 직접 override 하세요.
+
+```bash
+python3 examples/run_qb_build.py \
+  --from-onnx models/yolov7.onnx \
+  --use-random-calib \
+  --model-name yolov7 \
+  --target-device aries-rb
+```
 
 ### 5) .mxq 추론
 
