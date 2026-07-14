@@ -10,6 +10,7 @@ ARG UID=1000
 ARG GID=1000
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG QB_RUNTIME_PIP_SPEC=mobilint-qb-runtime
+ARG MBLT_MODEL_ZOO_PIP_SPEC=mblt-model-zoo
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -60,10 +61,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #    - qb compiler : 공식 qbcompiler Docker 이미지를 기반으로 사용
 #    - qbcompiler  : 벤더 제공 compiler wheel (Python API는 qubee 로 노출될 수 있음)
 #    - qbruntime   : 공식 pip 패키지(mobilint-qb-runtime)
+#    - model zoo   : 표준 fetch smoke 를 위해 mblt-model-zoo 패키지를 설치한다.
 COPY --chown=${UID}:${GID} vendor/ /tmp/vendor/
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir "${QB_RUNTIME_PIP_SPEC}" \
+    && pip install --no-cache-dir "${QB_RUNTIME_PIP_SPEC}" "${MBLT_MODEL_ZOO_PIP_SPEC}" \
     && if ls /tmp/vendor/qbcompiler-*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir /tmp/vendor/qbcompiler-*.whl ; \
     elif ls /tmp/vendor/qubee-*.whl >/dev/null 2>&1; then \
