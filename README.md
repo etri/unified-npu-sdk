@@ -4,7 +4,7 @@
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 QB 1종으로 좁힌 버전입니다.
 
 `main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되, `rbln-only`·`trt-only`와 동일한 단일-백엔드 패턴을 따릅니다.
-컴파일은 **`qubee`**(ONNX → `.mxq` 양자화 컴파일러), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
+컴파일은 **`qubee`**(ONNX → `.mxq` 양자화 컴파일러), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qubee` wheel + `pip install mobilint-qb-runtime`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
 
 ---
 
@@ -28,8 +28,8 @@
 ├── devcontainer.json
 ├── Dockerfile
 ├── build.sh
-├── vendor/                         # (gitignore) Mobilint SDK wheel 배치 위치
-│   └── README.md                   #   qubee-*.whl / qbruntime-*.whl
+├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
+│   └── README.md                   #   qubee-*.whl
 ├── examples/
 │   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(qubee)
 │   ├── run_qb_infer.py             # .mxq 모델 추론 (qbruntime)
@@ -57,27 +57,33 @@
 
 ## 💾 설치 방법
 
-### 1. 저장소 체크아웃 & 벤더 패키지 배치
+### 1. 저장소 체크아웃 & 컴파일러 wheel 배치
 
 이 브랜치는 두 방식 모두 지원합니다.
 
 - 별도 worktree 폴더 예: `.../qb-only/`
 - 일반 저장소 루트 예: `.../unified-npu-sdk/`에서 `git switch qb-only`
 
-Mobilint SDK(`qubee`, `qbruntime`)는 공개 PyPI에 없으므로, 벤더에게 받은 wheel을 `vendor/`에 둡니다.
+Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler`로 나뉩니다. 이 브랜치는:
+
+- **Compiler base**: Mobilint 공식 `qbcompiler` Docker 이미지
+- **Compiler Python API**: 벤더 제공 `qubee-*.whl`
+- **Runtime**: `pip install mobilint-qb-runtime`
+
+조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qubee` compiler wheel만** 둡니다.
 
 ```bash
 # 예시 1) 별도 worktree
 # cd ~/Codings/Micro_DC/qb-only
 
-# Mobilint SDK wheel 배치 (docs.mobilint.com 참조)
-cp /path/to/qubee-*.whl     vendor/
-cp /path/to/qbruntime-*.whl vendor/
+# Mobilint compiler wheel 배치 (docs.mobilint.com 참조)
+cp /path/to/qubee-*.whl vendor/
 ```
 
 ### 2. Docker 사전 준비
 
-- `qb-only` 검증은 **Docker 기준**으로 진행합니다. 호스트에 `pip install -e .` 같은 로컬 직접 설치는 선택 사항입니다.
+- `qb-only` 검증은 **Docker 기준**으로 진행합니다.
+- Mobilint 공식 compiler 설치 문서는 `qbcompiler` Docker 이미지를 기준으로 설명합니다. 이 브랜치도 같은 방향을 따르며, 기본 베이스 이미지는 `mobilint/qbcompiler:latest` 입니다.
 - Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
 - `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
 
@@ -127,21 +133,12 @@ docker version
 ### 3. 호스트 사전 요구사항
 
 - **Mobilint ARISE 드라이버**가 호스트에 설치되어 있어야 합니다 (`mobilint-cli status`로 확인).
-  자세한 절차는 <https://docs.mobilint.com/v1.2/en/introduction.html> 참조.
+  자세한 절차는 <https://docs.mobilint.com/v1.3/en/introduction.html> 및
+  <https://docs.mobilint.com/v1.3/en/installing_runtime_library.html> 참조.
 - 컨테이너 실행 시 실제로 존재하는 장치 노드(`/dev/aries*` 또는 `/dev/arise*`)만 `--device`로 전달합니다.
 - 코어 모드는 참조 검증 기준 `global8`을 기본값으로 사용하며, `MBLT_CORE_MODE`로 바꿀 수 있습니다.
 
-### 4. 로컬 개발 설치 (선택, 컨테이너 대신 직접)
-
-```bash
-pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
-pip install onnx
-pip install -e .
-# Mobilint SDK (vendor-provided)
-pip install vendor/qubee-*.whl vendor/qbruntime-*.whl
-```
-
-### 5. Docker 빌드 & 실행
+### 4. Docker 빌드 & 실행
 
 ```bash
 ./build.sh
@@ -149,9 +146,25 @@ pip install vendor/qubee-*.whl vendor/qbruntime-*.whl
 ```
 
 `./build.sh`는 기본적으로 `torch`/`torchvision`을 CPU wheel index
-(`https://download.pytorch.org/whl/cpu`)에서 설치하고, `vendor/*.whl`(qubee/qbruntime)을 이미지에
-설치합니다. 다른 PyTorch index를 써야 하면 `PYTORCH_INDEX_URL=... ./build.sh` 또는
-`./build.sh --pytorch-index-url <url>`로 바꿀 수 있습니다.
+(`https://download.pytorch.org/whl/cpu`)에서 설치하고, 다음 조합으로 이미지를 구성합니다.
+
+- base image: `mobilint/qbcompiler:latest`
+- compiler wheel: `vendor/qubee-*.whl`
+- runtime pip package: `mobilint-qb-runtime`
+
+다른 값을 쓰려면:
+
+```bash
+QB_BASE_IMAGE=... ./build.sh
+QB_RUNTIME_PIP_SPEC=... ./build.sh
+PYTORCH_INDEX_URL=... ./build.sh
+```
+
+또는:
+
+```bash
+./build.sh --base-image <image> --runtime-pip-spec <pip-spec> --pytorch-index-url <url>
+```
 
 컨테이너 실행 예시:
 
@@ -181,7 +194,7 @@ python3 -c "import unified_sdk, qbruntime; print('OK')"
 vendor SDK(`qubee`/`qbruntime`)를 직접 호출합니다.
 
 ```bash
-# 1) 이미지 빌드 (vendor/ 에 qubee, qbruntime wheel 필요)
+# 1) 이미지 빌드 (vendor/ 에 qubee wheel 필요, runtime 은 pip 설치)
 ./build.sh
 
 # 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
