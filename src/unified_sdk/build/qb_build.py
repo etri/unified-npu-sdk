@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import importlib
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -19,20 +20,46 @@ _BUILD_PIPELINE = (
 )
 _VENDOR_API_MAP = {
     "provided_artifact": "shutil.copyfile(src_mxq, mxq_path)",
-    "compile": "qubee.mxq_compile(**compile_kwargs)",
+    "compile": "compiler_python_api.mxq_compile(**compile_kwargs)",
     "calibration": "calib_data_path or use_random_calib",
     "artifact": ".mxq",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
     "shutil.copyfile(src_mxq, mxq_path)": "build_unified(cfg) for provided .mxq",
-    "qubee.mxq_compile(**compile_kwargs)": "build_unified(cfg) for ONNX/torch compile",
+    "compiler_python_api.mxq_compile(**compile_kwargs)": "build_unified(cfg) for ONNX/torch compile",
     "calib_data_path or use_random_calib": "BuildConfig.calib_data_path / BuildConfig.extra",
     ".mxq artifact": "BuildResult.compiled_model_path",
 }
 
 
-# qubee mxq_compile 이 지원하는 양자화 방법 (docs.mobilint.com / qubee 참고)
+# Mobilint compiler Python API(mxq_compile) 가 지원하는 양자화 방법
 _QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
+
+
+def _resolve_mxq_compile():
+    """Resolve the Mobilint compiler API regardless of package exposure name.
+
+    Vendor wheel filenames may be `qbcompiler-*.whl`, while the Python import
+    is still exposed as `qubee` on some versions. Newer wheels may expose the
+    top-level package as `qbcompiler`. We support both here.
+    """
+    errors: list[str] = []
+    for module_name in ("qubee", "qbcompiler"):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+            continue
+        mxq_compile = getattr(module, "mxq_compile", None)
+        if callable(mxq_compile):
+            return module_name, mxq_compile
+        errors.append(f"{module_name}: missing mxq_compile")
+    raise RuntimeError(
+        "Mobilint compiler Python API is required to compile a model to .mxq. "
+        "Expected a vendor wheel exposing `qubee.mxq_compile(...)` or "
+        "`qbcompiler.mxq_compile(...)`. "
+        f"Checked modules: {', '.join(errors) or 'none'}"
+    )
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
@@ -108,7 +135,7 @@ class _QBBuildAdapter:
 
     두 가지 경로를 지원한다 (fetch 기본 + compile 훅):
       1) 이미 컴파일된 .mxq 를 제공받은 경우 -> 검증 후 out_dir 로 배치 (provided/fetch)
-      2) ONNX / torch 모델을 받은 경우      -> qubee.mxq_compile 로 .mxq 컴파일 (compile hook)
+      2) ONNX / torch 모델을 받은 경우      -> compiler Python API(mxq_compile) 로 .mxq 컴파일
     """
 
     name = "qb"
@@ -146,14 +173,11 @@ class _QBBuildAdapter:
                 meta_data=meta,
             )
 
-        # ---- Path 2: qubee 로 ONNX/torch -> .mxq 컴파일 (compile hook) ----
+        # ---- Path 2: compiler Python API 로 ONNX/torch -> .mxq 컴파일 ----
         try:
-            from qubee import mxq_compile
+            compiler_module_name, mxq_compile = _resolve_mxq_compile()
         except Exception as exc:  # pragma: no cover - 벤더 SDK 필요
-            raise RuntimeError(
-                "qubee compiler is required to compile a model to .mxq. "
-                "Install the Mobilint 'qubee' package first (see docs.mobilint.com)."
-            ) from exc
+            raise RuntimeError(str(exc)) from exc
 
         _validate_shape(tuple(cfg.input_shape), "input_shape")
         quantize_method = extra.get("quantize_method", "percentile")
@@ -174,7 +198,7 @@ class _QBBuildAdapter:
         if cfg.calib_data_path:
             compile_kwargs["calib_data_path"] = str(cfg.calib_data_path)
 
-        # 선택 옵션은 있으면 그대로 qubee 로 패스스루
+        # 선택 옵션은 있으면 그대로 compiler Python API 로 패스스루
         for opt in ("model_nickname", "optimize_option", "singlecore_compile", "save_sample"):
             if extra.get(opt) is not None:
                 compile_kwargs[opt] = extra[opt]
@@ -182,25 +206,26 @@ class _QBBuildAdapter:
         try:
             mxq_compile(**compile_kwargs)
         except Exception as exc:
-            raise RuntimeError(f"qubee mxq_compile failed: {exc}") from exc
+            raise RuntimeError(f"{compiler_module_name} mxq_compile failed: {exc}") from exc
 
         if not mxq_path.is_file():
             raise RuntimeError(
-                f"qubee reported success but .mxq not found at {mxq_path}. "
-                "Check qubee 'save_path' behavior for your qubee version."
+                f"{compiler_module_name} reported success but .mxq not found at {mxq_path}. "
+                f"Check {compiler_module_name} 'save_path' behavior for your compiler version."
             )
 
         meta = {
             "backend": self.name,
             "mxq_path": str(mxq_path),
-            "source": "qubee_compile",
+            "source": f"{compiler_module_name}_compile",
+            "compiler_module": compiler_module_name,
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
             "calib_data_path": cfg.calib_data_path,
             "input_shape": tuple(cfg.input_shape),
             "precision": cfg.precision,
             "extra": extra,
-            **_capability_metadata(extra, "qubee_compile"),
+            **_capability_metadata(extra, f"{compiler_module_name}_compile"),
         }
         return BuildResult(
             backend=self.name,

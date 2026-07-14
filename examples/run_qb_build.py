@@ -68,14 +68,14 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a Mobilint ARISE (QB) .mxq model. "
-        "기본은 사전 컴파일된 .mxq 확보(fetch), --from-onnx 지정 시 qubee 컴파일(compile hook)."
+        "기본은 사전 컴파일된 .mxq 확보(fetch), --from-onnx 지정 시 Mobilint compiler Python API(qubee/qbcompiler)로 컴파일(compile hook)."
     )
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 먼저 탐색할 .mxq 디렉터리.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="결과 .mxq 출력 디렉터리.")
     parser.add_argument("--model-name", default="resnet50", help="확장자 없는 출력 모델 이름.")
     parser.add_argument("--mxq", type=Path, default=None, help="이미 컴파일된 .mxq 를 직접 사용(fetch/provided).")
-    parser.add_argument("--from-onnx", type=Path, default=None, help="이 ONNX 를 qubee 로 .mxq 컴파일(compile hook).")
-    parser.add_argument("--calib", type=Path, default=None, help="qubee calibration 데이터셋 메타 파일(.txt/.json).")
+    parser.add_argument("--from-onnx", type=Path, default=None, help="이 ONNX 를 Mobilint compiler Python API(qubee/qbcompiler)로 .mxq 컴파일(compile hook).")
+    parser.add_argument("--calib", type=Path, default=None, help="Mobilint compiler calibration 데이터셋 메타 파일(.txt/.json).")
     parser.add_argument(
         "--quantize-method",
         choices=("percentile", "maxpercentile", "max", "kl"),
@@ -139,7 +139,7 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"ONNX not found: {onnx_path}")
         model_or_path: str = str(onnx_path)
         calib = str(args.calib.expanduser().resolve()) if args.calib else None
-        source_desc = f"qubee compile from ONNX: {onnx_path}"
+        source_desc = f"compiler Python API compile from ONNX: {onnx_path}"
     else:
         mxq = args.mxq.expanduser().resolve() if args.mxq else _find_mxq(models_dir, args.model_name)
         source_desc = ""
@@ -151,7 +151,7 @@ if __name__ == "__main__":
             msg = (
                 f"{models_dir} 또는 ~/.mblt_model_zoo/vision/{args.product}/{args.core_mode} 에서 "
                 f"{args.model_name}*.mxq 를 찾지 못했습니다.\n"
-                "사전 컴파일된 .mxq 를 --mxq 로 지정하거나, --from-onnx <onnx> 로 qubee 컴파일하세요."
+                "사전 컴파일된 .mxq 를 --mxq 로 지정하거나, --from-onnx <onnx> 로 Mobilint compiler Python API(qubee/qbcompiler) 컴파일을 수행하세요."
             )
             if args.require_mxq:
                 raise FileNotFoundError(msg)

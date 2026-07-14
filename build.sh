@@ -20,7 +20,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
 DOCKER_DEVICE_ARGS=()
-DOCKER_TOOL_MOUNTS=()
 COMPILER_WHEELS=()
 
 infer_base_image_from_wheel() {
@@ -73,20 +72,6 @@ detect_runtime_mounts() {
     fi
   done
 
-  TOOL_CANDIDATES=(
-    "$(command -v mobilint-cli 2>/dev/null || true)"
-    /usr/local/bin/mobilint-cli
-    /usr/bin/mobilint-cli
-  )
-
-  for tool in "${TOOL_CANDIDATES[@]}"; do
-    if [ -f "${tool}" ]; then
-      case " ${DOCKER_TOOL_MOUNTS[*]} " in
-        *" ${tool}:${tool} "*) ;;
-        *) DOCKER_TOOL_MOUNTS+=( "-v" "${tool}:${tool}" ) ;;
-      esac
-    fi
-  done
 }
 
 print_run_hint() {
@@ -97,9 +82,6 @@ print_run_hint() {
   done
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
-  for ((i=0; i<${#DOCKER_TOOL_MOUNTS[@]}; i+=2)); do
-    echo "  ${DOCKER_TOOL_MOUNTS[i]} ${DOCKER_TOOL_MOUNTS[i+1]} \\"
-  done
   echo "  ${IMAGE_NAME}:${TAG}"
 }
 
@@ -215,5 +197,5 @@ echo "Sanity check inside container:"
 echo "  command -v mobilint-cli && mobilint-cli status || true"
 echo "  python3 -c \"import unified_sdk, qbruntime; print('OK')\""
 echo "  python3 -c \"import qbruntime; from qbruntime import type as t; print('devices=', t.get_available_device_numbers())\""
-echo "  python3 -c \"import qubee; print('qubee=', getattr(qubee, '__version__', 'unknown'))\""
+echo "  python3 -c \"import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')\""
 echo "  python3 examples/run_qb_build.py --help"

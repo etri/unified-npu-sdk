@@ -4,7 +4,7 @@
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 QB 1종으로 좁힌 버전입니다.
 
 `main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되, `rbln-only`·`trt-only`와 동일한 단일-백엔드 패턴을 따릅니다.
-컴파일은 **`qubee`**(ONNX → `.mxq` 양자화 컴파일러), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qubee` wheel + `pip install mobilint-qb-runtime`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
+컴파일은 **Mobilint compiler Python API**(`qubee` 또는 `qbcompiler`로 노출될 수 있음), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qbcompiler` wheel + `pip install mobilint-qb-runtime` + `apt install mobilint-cli`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
 
 ---
 
@@ -31,7 +31,7 @@
 ├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
 │   └── README.md                   #   qbcompiler-*.whl
 ├── examples/
-│   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(qubee)
+│   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(compiler Python API)
 │   ├── run_qb_infer.py             # .mxq 모델 추론 (qbruntime)
 │   └── inspect_qb_model.py         # .mxq 요약 정보 확인
 └── src/unified_sdk/
@@ -41,7 +41,7 @@
     │   ├── __init__.py
     │   ├── api.py                  # build_unified
     │   ├── registry.py
-    │   └── qb_build.py             # QB 빌드 어댑터 (qubee.mxq_compile)
+    │   └── qb_build.py             # QB 빌드 어댑터 (qubee/qbcompiler mxq_compile)
     └── runtime/
         ├── __init__.py
         ├── api.py                  # create_runtime / infer / destroy_runtime
@@ -51,7 +51,7 @@
 
 > `builds/host_validation_tools/`는 벤더 에스컬레이션용 로컬 재현 팩입니다. `builds/`는 gitignore
 > 대상이라 저장소에는 포함되지 않습니다. `rbln-only`와 동일한 흐름(env → smoke → resnet50
-> compile → infer)을 qubee/qbruntime/mobilint-cli 기준으로 구성했습니다.
+> compile → infer)을 compiler Python API(qubee/qbcompiler) / qbruntime / mobilint-cli 기준으로 구성했습니다.
 
 ---
 
@@ -67,10 +67,11 @@
 Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler`로 나뉩니다. 이 브랜치는:
 
 - **Compiler base**: Mobilint 공식 `qbcompiler` Docker 이미지
-- **Compiler Python API**: 벤더 제공 `qbcompiler-*.whl`
+- **Compiler Python API**: 벤더 제공 `qbcompiler-*.whl` (`qubee` 또는 `qbcompiler` import로 노출될 수 있음)
 - **Runtime**: `pip install mobilint-qb-runtime`
+- **CLI Utility**: `apt install mobilint-cli`
 
-조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 Python import 이름은 여전히 `qubee`로 노출될 수 있습니다.
+조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 compiler Python import 이름은 `qubee` 또는 `qbcompiler`일 수 있습니다.
 
 > 권장: `vendor/`에는 `qbcompiler` wheel을 **한 버전만** 두세요. 여러 버전을 같이 두면 어떤 wheel 기준으로
 > base image를 추론할지 헷갈릴 수 있으므로, 테스트에 사용할 버전 하나만 남기는 것이 안전합니다.
@@ -204,6 +205,7 @@ docker run -it --security-opt seccomp=unconfined \
 cd /workspace/unified-sdk
 command -v mobilint-cli && mobilint-cli status || true
 python3 -c "import unified_sdk, qbruntime; print('OK')"
+python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'))"
 ```
 
 ---
@@ -212,7 +214,7 @@ python3 -c "import unified_sdk, qbruntime; print('OK')"
 
 아래 흐름은 **Mobilint ARISE 장치가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `qb-only`
 백엔드를 검증하는 표준 smoke 절차입니다. 추가 wrapper 계층 없이 Unified SDK의 QB adapter가
-vendor SDK(`qubee`/`qbruntime`)를 직접 호출합니다.
+vendor SDK(compiler Python API `qubee`/`qbcompiler`, runtime `qbruntime`)를 직접 호출합니다.
 
 ```bash
 # 1) 이미지 빌드 (vendor/ 에 qbcompiler wheel 필요, runtime 은 pip 설치)
@@ -224,13 +226,13 @@ vendor SDK(`qubee`/`qbruntime`)를 직접 호출합니다.
 command -v mobilint-cli && mobilint-cli status || true
 python3 -c "import unified_sdk, qbruntime; print('OK')"
 python3 -c "import qbruntime; from qbruntime import type as t; print('devices=', t.get_available_device_numbers())"
-python3 -c "import qubee; print('qubee=', getattr(qubee, '__version__', 'unknown'))"
+python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')"
 
 # 4) .mxq 확보 또는 컴파일
 #    (a) 사전 컴파일된 .mxq 를 models/ 에 두었거나,
 #        Mobilint 공식 문서 흐름대로 ~/.mblt_model_zoo/... 에 이미 생성돼 있다면 그대로 확보(fetch):
 python3 examples/run_qb_build.py --model-name resnet50
-#    (b) ONNX 를 qubee 로 컴파일(compile hook, random calib smoke):
+#    (b) ONNX 를 compiler Python API(qubee/qbcompiler)로 컴파일(compile hook, random calib smoke):
 python3 examples/run_qb_build.py \
   --from-onnx models/resnet50.onnx \
   --use-random-calib \
@@ -313,9 +315,9 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 QB(Mobilint ARISE) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - ARISE 런타임은 **`qbruntime`(QB-RUNTIME)** 을 사용합니다. 구형 ARIES용 `maccel`이 아닙니다.
-- 컴파일러 `qubee`는 **ONNX**를 입력으로 받아 int8 양자화 `.mxq`를 생성합니다. calibration 데이터셋이
+- compiler Python API(`qubee` 또는 `qbcompiler`)는 **ONNX**를 입력으로 받아 int8 양자화 `.mxq`를 생성합니다. calibration 데이터셋이
   없으면 `use_random_calib=True`로 smoke 컴파일할 수 있습니다.
-- `.mxq`의 입력 layout/dtype은 컴파일 시 결정(qubee `preprocess_dict`)되므로, 추론 입력을 이에 맞춰야 합니다.
+- `.mxq`의 입력 layout/dtype은 컴파일 시 결정(compiler `preprocess_dict`)되므로, 추론 입력을 이에 맞춰야 합니다.
 - 다중 장치 서버에서는 `MBLT_DEVICE`/`--device`로 장치 ID를, `MBLT_CORE_MODE`/`--core-mode`로 코어 모드를 고정하세요.
 - 장치/모델 점검용 CLI: `mobilint-cli status`, `mobilint-cli mxqtool show <mxq>`,
   `mobilint-cli testinfer ...`, `mobilint-cli benchmark ...`.

@@ -6,7 +6,7 @@ and are **not** committed to git (`*.whl` / `*.tar.gz` are ignored).
 Required for the compiler image:
 
 - `qbcompiler-*.whl` — ONNX -> `.mxq` quantizing compiler wheel
-  - depending on the package version, the Python import may still be exposed as `qubee`
+  - depending on the package version, the Python import may be exposed as `qubee` or `qbcompiler`
 
 ```bash
 cp /path/to/qbcompiler-*.whl ./vendor/

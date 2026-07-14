@@ -22,6 +22,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # 1) 기본 패키지
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
+        mobilint-cli \
         git ca-certificates curl \
     && ln -sf /usr/bin/python3 /usr/local/bin/python \
     && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
