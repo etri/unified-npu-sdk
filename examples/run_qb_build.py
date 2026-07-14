@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import sys
 import os
+from typing import Any
 
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
@@ -68,13 +69,16 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a Mobilint ARISE (QB) .mxq model. "
-        "기본은 사전 컴파일된 .mxq 확보(fetch), --from-onnx 지정 시 Mobilint compiler Python API(qubee/qbcompiler)로 컴파일(compile hook)."
+        "기본은 표준 model zoo / 로컬 .mxq 확보(fetch), "
+        "--from-onnx 또는 --from-pth 지정 시 Mobilint compiler Python API(qubee/qbcompiler)로 컴파일(compile hook)."
     )
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 먼저 탐색할 .mxq 디렉터리.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="결과 .mxq 출력 디렉터리.")
     parser.add_argument("--model-name", default="resnet50", help="확장자 없는 출력 모델 이름.")
     parser.add_argument("--mxq", type=Path, default=None, help="이미 컴파일된 .mxq 를 직접 사용(fetch/provided).")
     parser.add_argument("--from-onnx", type=Path, default=None, help="이 ONNX 를 Mobilint compiler Python API(qubee/qbcompiler)로 .mxq 컴파일(compile hook).")
+    parser.add_argument("--from-pth", type=Path, default=None, help="이 .pth/.pt weights를 ONNX로 export한 뒤 .mxq 컴파일(현재 resnet50 예제 지원).")
+    parser.add_argument("--export-onnx-path", type=Path, default=None, help="--from-pth 사용 시 생성할 중간 ONNX 경로 (기본: models/<model-name>.onnx).")
     parser.add_argument("--calib", type=Path, default=None, help="Mobilint compiler calibration 데이터셋 메타 파일(.txt/.json).")
     parser.add_argument(
         "--quantize-method",
@@ -96,6 +100,70 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
     parser.add_argument("--product", default=os.getenv("MBLT_PRODUCT", "aries"))
     return parser
+
+
+def _unwrap_state_dict(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        for key in ("state_dict", "model", "weights"):
+            nested = payload.get(key)
+            if isinstance(nested, dict):
+                payload = nested
+                break
+    if not isinstance(payload, dict):
+        raise TypeError(f"Unsupported checkpoint payload type: {type(payload)!r}")
+    return payload
+
+
+def _prepare_module_from_pth(weights_path: Path, model_name: str):
+    try:
+        import torch
+        from torchvision import models as tv_models
+    except ImportError as exc:
+        raise RuntimeError(
+            "torch and torchvision are required to compile from .pth/.pt weights."
+        ) from exc
+
+    normalized = model_name.lower()
+    if normalized != "resnet50":
+        raise ValueError(
+            "--from-pth currently supports only --model-name resnet50. "
+            "Use --from-onnx for other architectures."
+        )
+
+    checkpoint = torch.load(str(weights_path), map_location="cpu")
+    state_dict = _unwrap_state_dict(checkpoint)
+    model = tv_models.resnet50(weights=None)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing or unexpected:
+        raise RuntimeError(
+            "Failed to load resnet50 weights cleanly from checkpoint. "
+            f"missing={list(missing)}, unexpected={list(unexpected)}"
+        )
+    model.eval()
+    return model
+
+
+def _export_onnx_from_pth(weights_path: Path, export_onnx_path: Path, model_name: str, input_name: str, input_shape: tuple[int, ...]) -> Path:
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("torch is required to export ONNX from .pth/.pt weights.") from exc
+
+    model = _prepare_module_from_pth(weights_path, model_name)
+    export_onnx_path.parent.mkdir(parents=True, exist_ok=True)
+    dummy = torch.randn(input_shape, dtype=torch.float32)
+    torch.onnx.export(
+        model,
+        dummy,
+        str(export_onnx_path),
+        input_names=[input_name],
+        output_names=["output"],
+        opset_version=13,
+        do_constant_folding=True,
+    )
+    if not export_onnx_path.is_file():
+        raise RuntimeError(f"ONNX export did not produce a file: {export_onnx_path}")
+    return export_onnx_path
 
 
 def _find_mxq(models_dir: Path, model_name: str) -> Path | None:
@@ -132,26 +200,52 @@ if __name__ == "__main__":
     if args.use_random_calib:
         extra["use_random_calib"] = True
 
-    # 우선순위: --from-onnx(compile) > --mxq(provided) > models/ 자동탐지(fetch) > ~/.mblt_model_zoo fallback
-    if args.from_onnx is not None:
+    # 우선순위:
+    #   1) --from-pth    : local weights -> ONNX export -> compile
+    #   2) --from-onnx   : local/custom ONNX -> compile
+    #   3) --mxq         : custom/local precompiled .mxq fetch
+    #   4) models/       : local/custom fetch
+    #   5) ~/.mblt_model_zoo : standard fetch
+    if args.from_pth is not None:
+        weights_path = args.from_pth.expanduser().resolve()
+        if not weights_path.is_file():
+            raise FileNotFoundError(f"PTH/PT weights not found: {weights_path}")
+        export_onnx_path = (
+            args.export_onnx_path.expanduser().resolve()
+            if args.export_onnx_path is not None
+            else (models_dir / f"{args.model_name}.onnx").resolve()
+        )
+        onnx_path = _export_onnx_from_pth(
+            weights_path=weights_path,
+            export_onnx_path=export_onnx_path,
+            model_name=args.model_name,
+            input_name=args.input_name,
+            input_shape=args.input_shape,
+        )
+        model_or_path = str(onnx_path)
+        calib = str(args.calib.expanduser().resolve()) if args.calib else None
+        source_desc = f"local weights -> ONNX export -> compiler Python API compile: {weights_path} -> {onnx_path}"
+    elif args.from_onnx is not None:
         onnx_path = args.from_onnx.expanduser().resolve()
         if not onnx_path.is_file():
             raise FileNotFoundError(f"ONNX not found: {onnx_path}")
         model_or_path: str = str(onnx_path)
         calib = str(args.calib.expanduser().resolve()) if args.calib else None
-        source_desc = f"compiler Python API compile from ONNX: {onnx_path}"
+        source_desc = f"local/custom ONNX -> compiler Python API compile: {onnx_path}"
     else:
         mxq = args.mxq.expanduser().resolve() if args.mxq else _find_mxq(models_dir, args.model_name)
         source_desc = ""
         if mxq is None:
             mxq = _find_model_zoo_mxq(args.model_name, args.product, args.core_mode)
             if mxq is not None:
-                source_desc = f"official model zoo .mxq: {mxq}"
+                source_desc = f"standard fetch from official model zoo: {mxq}"
         if mxq is None:
             msg = (
                 f"{models_dir} 또는 ~/.mblt_model_zoo/vision/{args.product}/{args.core_mode} 에서 "
                 f"{args.model_name}*.mxq 를 찾지 못했습니다.\n"
-                "사전 컴파일된 .mxq 를 --mxq 로 지정하거나, --from-onnx <onnx> 로 Mobilint compiler Python API(qubee/qbcompiler) 컴파일을 수행하세요."
+                "표준 fetch는 ~/.mblt_model_zoo 의 .mxq 를 사용합니다.\n"
+                "custom fetch는 --mxq <mxq> 로 로컬 경로를 지정하세요.\n"
+                "custom compile은 --from-onnx <onnx> 또는 --from-pth <weights> 로 수행하세요."
             )
             if args.require_mxq:
                 raise FileNotFoundError(msg)
@@ -160,7 +254,7 @@ if __name__ == "__main__":
         model_or_path = str(mxq)
         calib = None
         if not source_desc:
-            source_desc = f"provided .mxq: {mxq}"
+            source_desc = f"custom/local fetch from provided .mxq: {mxq}"
 
     cfg = BuildConfig(
         backend="qb",
