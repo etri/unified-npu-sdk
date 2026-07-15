@@ -298,7 +298,8 @@ python3 examples/run_qb_build.py \
 
 ### 5) .mxq 추론
 
-`tests/input.jpg`가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
+기본 입력 이미지는 `models/input.jpg`, 클래스 라벨은 `models/labels.txt`를 사용합니다.
+이미지가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
 
 ```bash
 python3 examples/run_qb_infer.py \
