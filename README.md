@@ -219,6 +219,9 @@ python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 python3 examples/run_warboy_build.py --list-model-zoo
 python3 examples/run_warboy_build.py --model-name resnet50
 
+# 참고: 목록에 보이는 일부 detection/pose 계열 모델은 현재 이미지의 선택 의존성 조합에 따라
+# zoo 객체 import 단계에서 추가 Python 패키지를 요구할 수 있습니다.
+
 # 4-b) custom fetching smoke (provided .enf)
 python3 examples/run_warboy_build.py --enf models/resnet50.enf --model-name resnet50
 

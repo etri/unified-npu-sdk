@@ -91,8 +91,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _find_enf(models_dir: Path, model_name: str) -> Path | None:
-    candidates = sorted(models_dir.glob(f"{model_name}*.enf")) + sorted(models_dir.glob("*.enf"))
-    return candidates[0] if candidates else None
+    normalized = _normalize_model_name(model_name)
+    for candidate in sorted(models_dir.glob("*.enf")):
+        if _normalize_model_name(candidate.stem) == normalized:
+            return candidate
+    return None
 
 
 def _normalize_model_name(name: str) -> str:
@@ -130,11 +133,23 @@ def _fetch_model_zoo_enf(model_name: str, target_npu: str, models_dir: Path) -> 
     if resolved is None:
         return None
 
-    model_cls = getattr(vision, resolved, None)
+    try:
+        model_cls = getattr(vision, resolved, None)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to import Furiosa model zoo target {resolved!r}. "
+            "Some vision models may require optional runtime dependencies in the current image."
+        ) from exc
     if not callable(model_cls):
         return None
 
-    model = model_cls()
+    try:
+        model = model_cls()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to construct Furiosa model zoo target {resolved!r}. "
+            "Check optional dependencies for this model family in the current image."
+        ) from exc
     num_pe = 1 if target_npu == "warboy" else 2
     model_source = model.model_source(num_pe=num_pe)
 
