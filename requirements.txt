@@ -2,3 +2,4 @@ numpy
 onnx
 pillow
 torch
+torchvision

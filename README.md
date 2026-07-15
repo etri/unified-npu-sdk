@@ -133,7 +133,7 @@ docker version
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-`./build.sh`는 `torch`를 CPU wheel index에서 설치하고, `warboy-jammy` APT suite와
+`./build.sh`는 `torch`와 `torchvision`을 같은 CPU wheel index에서 함께 설치하고, `warboy-jammy` APT suite와
 `furiosa-sdk[quantizer]==0.10.2`, `furiosa-models==0.10.2`를 이미지에 설치합니다. Furiosa pip 인덱스가
 따로 필요하면 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
 
@@ -191,6 +191,7 @@ cd /workspace/unified-sdk
 furiosactl list && furiosactl info || true
 furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
+python3 -c "import torch, torchvision; print('torch=', torch.__version__, 'torchvision=', torchvision.__version__)"
 
 # (선택) model-zoo API 확인
 python3 -c "from furiosa.models import vision; print(hasattr(vision, 'ResNet50'))"
@@ -360,6 +361,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `furiosa-models`는 Warboy용 open model zoo이며, `furiosa.models.vision` 또는 `furiosa-models list`로
   지원 모델을 확인할 수 있습니다. 현재 확인 가능한 대표 vision 모델은 `ResNet50`, `EfficientNetB0`,
   `EfficientNetV2s`, `SSDMobileNet`, `SSDResNet34`, `YOLOv5m`, `YOLOv5l`, `YOLOv7w6Pose` 입니다.
+- detection/pose 계열 model zoo(`YOLOv5*`, `YOLOv7w6Pose`)는 내부적으로 `torchvision` postprocess 의존성을 사용할 수 있으므로,
+  컨테이너에서는 `torch`/`torchvision`을 같은 PyTorch wheel index에서 함께 설치한 이미지를 기준으로 검증합니다.
 - `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
 - plain ONNX 는 `prepare_warboy_quantized_onnx.py --source onnx --onnx ...` 로 quantized ONNX 를 먼저 준비한 뒤
   `--from-onnx`로 넘깁니다.
