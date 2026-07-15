@@ -3,6 +3,7 @@ import timeit
 from pathlib import Path
 import sys
 import os
+import re
 
 
 def _center_crop_resize_pil(image, size: int):
@@ -111,17 +112,42 @@ def _load_labels(labels_path: Path):
     return None
 
 
+def _normalize_model_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def _list_model_zoo_targets() -> list[str]:
+    try:
+        from furiosa.models import vision
+    except Exception:
+        return []
+
+    declared = getattr(vision, "__all__", None)
+    if isinstance(declared, (list, tuple)):
+        return sorted({str(name) for name in declared if isinstance(name, str) and not name.startswith("_")})
+
+    return sorted({name for name in dir(vision) if not name.startswith("_")})
+
+
+def _resolve_model_zoo_target(model_name: str) -> str | None:
+    normalized = _normalize_model_name(model_name)
+    for candidate in _list_model_zoo_targets():
+        if _normalize_model_name(candidate) == normalized:
+            return candidate
+    return None
+
+
 def _maybe_create_model_zoo_helper(engine_path: Path):
-    if not engine_path.stem.startswith("resnet50"):
-        return None
     try:
         from furiosa.models import vision
     except Exception:
         return None
-    if not hasattr(vision, "ResNet50"):
+
+    resolved = _resolve_model_zoo_target(engine_path.stem)
+    if resolved is None or not hasattr(vision, resolved):
         return None
     try:
-        return vision.ResNet50()
+        return getattr(vision, resolved)()
     except Exception:
         return None
 
