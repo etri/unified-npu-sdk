@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import os
 import shutil
+import re
 from typing import Any
 
 def _is_repo_root(path: Path) -> bool:
@@ -218,44 +219,108 @@ def _normalize_mxq_into_models(src_mxq: Path, models_dir: Path, model_name: str)
     return target
 
 
+def _normalize_model_zoo_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def _resolve_model_zoo_class(model_name: str):
+    try:
+        from mblt_model_zoo import vision
+    except Exception:
+        return None
+
+    normalized = _normalize_model_zoo_name(model_name)
+    matches: list[tuple[str, Any]] = []
+    for attr_name in dir(vision):
+        if attr_name.startswith("_"):
+            continue
+        candidate = getattr(vision, attr_name, None)
+        if candidate is None or not callable(candidate):
+            continue
+        if _normalize_model_zoo_name(attr_name) == normalized:
+            matches.append((attr_name, candidate))
+
+    if not matches:
+        return None
+
+    # Prefer class-like names such as ResNet50, MobileNetV2 over helper aliases.
+    matches.sort(key=lambda item: (not item[0][:1].isupper(), item[0]))
+    return matches[0]
+
+
 def _trigger_model_zoo_fetch(model_name: str, product: str, core_mode: str) -> Path | None:
     """Best-effort materialization of a standard MXQ via mblt_model_zoo.
 
     The Mobilint docs exercise `mblt_model_zoo.vision.ResNet50` once and then
-    reuse the emitted `~/.mblt_model_zoo/.../*.mxq` artifact. We mirror that
-    standard smoke path here. If the artifact appears after this routine, we
-    treat it as a standard fetch success.
+    reuse the emitted `~/.mblt_model_zoo/.../*.mxq` artifact. We generalize
+    that pattern by resolving `--model-name` against `mblt_model_zoo.vision`
+    symbols (e.g. `resnet50` -> `ResNet50`, `mobilenet_v2` -> `MobileNetV2`).
+    If the artifact appears after this routine, we treat it as a standard fetch
+    success.
     """
-    normalized = model_name.lower()
-    if normalized != "resnet50":
-        return None
-
     try:
         import torch
         from torchvision.io import write_png
-        from mblt_model_zoo.vision import ResNet50
     except Exception:
         return None
 
-    scratch_image = MODELS_DIR / "_mblt_model_zoo_resnet50_smoke.png"
+    resolved = _resolve_model_zoo_class(model_name)
+    if resolved is None:
+        return None
+    _, model_cls = resolved
+
+    scratch_image = MODELS_DIR / f"_mblt_model_zoo_{model_name.lower()}_smoke.png"
     if not scratch_image.is_file():
         scratch_image.parent.mkdir(parents=True, exist_ok=True)
         img = torch.full((3, 224, 224), 127, dtype=torch.uint8)
         write_png(img, str(scratch_image))
 
-    model = ResNet50(
-        local_path=None,
-        model_type="DEFAULT",
-        infer_mode=core_mode,
-        product=product,
+    ctor_variants = (
+        {
+            "local_path": None,
+            "model_type": "DEFAULT",
+            "infer_mode": core_mode,
+            "product": product,
+        },
+        {
+            "model_type": "DEFAULT",
+            "infer_mode": core_mode,
+            "product": product,
+        },
+        {
+            "infer_mode": core_mode,
+            "product": product,
+        },
+        {},
     )
-    try:
-        input_img = model.preprocess(str(scratch_image))
-        output = model(input_img)
+    model = None
+    for kwargs in ctor_variants:
         try:
-            model.postprocess(output)
-        except Exception:
-            pass
+            model = model_cls(**kwargs)
+            break
+        except TypeError:
+            continue
+    if model is None:
+        return None
+
+    try:
+        if hasattr(model, "preprocess"):
+            input_img = model.preprocess(str(scratch_image))
+            output = model(input_img)
+            try:
+                model.postprocess(output)
+            except Exception:
+                pass
+        elif callable(model):
+            try:
+                model(str(scratch_image))
+            except Exception:
+                try:
+                    model()
+                except Exception:
+                    return None
+        else:
+            return None
     finally:
         try:
             model.dispose()

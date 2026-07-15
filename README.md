@@ -236,14 +236,19 @@ python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for 
 
 Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/...` 아래에 있으면,
 `run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
-없으면 `mblt_model_zoo.vision.ResNet50()` 표준 경로를 1회 실행해 `.mxq`를 materialize 한 뒤 다시 fetch 합니다.
+없으면 `mblt_model_zoo.vision.*` 심볼에서 `--model-name`과 이름이 맞는 클래스를 찾아
+1회 실행해 `.mxq`를 materialize 한 뒤 다시 fetch 합니다.
 이때 workspace 내부에서는 최종적으로 `./models/<model-name>.mxq`로 한 번 더 정규화해서, 이후 흐름은 `./models` 기준으로 통일합니다.
 
 ```bash
 python3 examples/run_qb_build.py --model-name resnet50
 ```
 
-현재 표준 model zoo materialize 예제는 `resnet50` 기준으로 맞춰져 있습니다.
+예를 들어 이름 정규화 기준으로 다음 같은 매칭을 기대합니다.
+- `resnet50` -> `mblt_model_zoo.vision.ResNet50`
+- `mobilenet_v2` -> `mblt_model_zoo.vision.MobileNetV2`
+
+단, 실제로 materialize 가능한 모델은 설치된 `mblt-model-zoo` 패키지가 제공하는 클래스에 따라 달라집니다.
 
 ### 4-b) custom fetching smoke
 
