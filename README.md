@@ -226,12 +226,27 @@ python3 examples/run_tensorrt_build.py \
   --input-shape 1,3,640,640
 
 # 4-c-2) PTH/PT -> ONNX export -> .engine 컴파일
+#        (사용자 제공 checkpoint를 대상으로 하며, 여기서 pretrained weight를 새로 받지 않습니다)
 python3 examples/run_tensorrt_build.py \
   --from-pth models/resnet50.pth \
   --model-name resnet50 \
   --precision fp32 \
   --input-name input \
   --input-shape 1,3,224,224
+
+# 4-c-2-a) 사용자 PTH/PT checkpoint를 torchvision 아키텍처에 로드 가능한지만 확인
+python3 examples/run_tensorrt_build.py \
+  --from-pth models/resnet50.pth \
+  --model-name resnet50 \
+  --validate-pth-only
+
+# 4-c-2-b) ONNX export까지만 확인
+python3 examples/run_tensorrt_build.py \
+  --from-pth models/resnet50.pth \
+  --model-name resnet50 \
+  --input-name input \
+  --input-shape 1,3,224,224 \
+  --export-only
 
 # 5) .engine 추론
 python3 examples/run_tensorrt_infer.py \
@@ -280,7 +295,14 @@ print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
 - custom fetch: provided `.engine` copy/normalize
 - custom compile:
   - `--onnx` 또는 `models/*.onnx`
-  - `--from-pth` (`torchvision` model zoo 이름과 맞는 `.pth/.pt` checkpoint)
+  - `--from-pth` (`torchvision` model zoo 이름과 맞는 **사용자 제공** `.pth/.pt` checkpoint)
+
+`--from-pth` 경로는:
+- `--model-name`에 맞는 `torchvision` 아키텍처를 **구조 템플릿**으로 사용하고
+- 실제 weight는 사용자가 제공한 checkpoint에서 읽어
+- 네임스페이스 보정 후 ONNX export
+- 마지막에 TensorRT compile
+순으로 진행합니다.
 
 ### 추론
 

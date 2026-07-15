@@ -85,6 +85,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="설치된 torchvision model zoo 에서 사용 가능한 모델 이름 후보를 출력하고 종료합니다.",
     )
+    parser.add_argument(
+        "--validate-pth-only",
+        action="store_true",
+        help="--from-pth 경로에서 사용자 checkpoint를 torchvision 아키텍처에 로드 가능한지만 확인하고 종료합니다.",
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="--from-pth 또는 표준 fetch 경로에서 ONNX export까지만 수행하고 TensorRT compile 전에 종료합니다.",
+    )
     parser.add_argument("--precision", choices=("fp32", "fp16", "int8"), default="fp32")
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--min-shape", type=_parse_shape, default=None)
@@ -315,12 +325,26 @@ if __name__ == "__main__":
         if not weights_path.is_file():
             raise FileNotFoundError(f"PTH/PT weights not found: {weights_path}")
         resolved_name, model = _prepare_module_from_pth(weights_path, args.model_name)
+        if args.validate_pth_only:
+            print("PTH validation OK")
+            print(f"(repo_root={REPO_ROOT})")
+            print(f"(weights={weights_path})")
+            print(f"(resolved_torchvision_model={resolved_name})")
+            sys.exit(0)
         onnx_path = _export_module_to_onnx(
             model=model,
             export_onnx_path=export_onnx_path,
             input_name=args.input_name,
             input_shape=args.input_shape,
         )
+        if args.export_only:
+            print("ONNX export complete!", onnx_path)
+            print(f"(repo_root={REPO_ROOT})")
+            print(
+                f"(source=local weights -> ONNX export only: {weights_path} -> {onnx_path} "
+                f"({resolved_name}))"
+            )
+            sys.exit(0)
         model_or_path = str(onnx_path)
         source_desc = f"local weights -> ONNX export -> TensorRT compile: {weights_path} -> {onnx_path} ({resolved_name})"
     elif args.onnx is not None:
@@ -348,6 +372,14 @@ if __name__ == "__main__":
                 input_name=args.input_name,
                 input_shape=args.input_shape,
             )
+            if args.export_only:
+                print("ONNX export complete!", onnx_path)
+                print(f"(repo_root={REPO_ROOT})")
+                print(
+                    f"(source=standard fetch from torchvision model zoo -> ONNX export only: "
+                    f"{resolved_name} -> {onnx_path})"
+                )
+                sys.exit(0)
             model_or_path = str(onnx_path)
             source_desc = (
                 f"standard fetch from torchvision model zoo -> ONNX export -> TensorRT compile: "
