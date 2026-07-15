@@ -335,6 +335,32 @@ def _load_and_infer_onnx(onnx_module, onnx_path: Path):
         return model
 
 
+def _extract_onnx_input_shape(onnx_model, input_name: str | None = None) -> tuple[int, ...] | None:
+    inputs = list(getattr(onnx_model.graph, "input", []))
+    if not inputs:
+        return None
+
+    selected = None
+    if input_name:
+        for candidate in inputs:
+            if candidate.name == input_name:
+                selected = candidate
+                break
+    if selected is None:
+        selected = inputs[0]
+
+    tensor_type = getattr(selected.type, "tensor_type", None)
+    if tensor_type is None:
+        return None
+
+    dims: list[int] = []
+    for dim in tensor_type.shape.dim:
+        if dim.dim_value <= 0:
+            return None
+        dims.append(int(dim.dim_value))
+    return tuple(dims)
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -449,6 +475,17 @@ if __name__ == "__main__":
         image_candidates = _collect_image_candidates(calib_dir, calib_image)
 
         f32 = _load_and_infer_onnx(onnx, f32_onnx)
+        inferred_input_shape = _extract_onnx_input_shape(f32, args.input_name)
+        input_shape = args.input_shape
+        if inferred_input_shape and inferred_input_shape != args.input_shape:
+            if args.input_shape == (1, 3, 224, 224):
+                input_shape = inferred_input_shape
+                print(f"(input_shape=auto from onnx: {input_shape})")
+            else:
+                raise ValueError(
+                    f"--input-shape {args.input_shape} does not match ONNX input shape {inferred_input_shape}. "
+                    "Pass the ONNX-matching shape explicitly."
+                )
         method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
         calibrator = Calibrator(f32, method)
 
@@ -462,7 +499,7 @@ if __name__ == "__main__":
 
         print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
         for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-            sample = _load_calibration_sample(image_path, args.input_shape, np)
+            sample = _load_calibration_sample(image_path, input_shape, np)
             print(
                 f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
                 f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
