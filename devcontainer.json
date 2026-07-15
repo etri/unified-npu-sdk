@@ -1,6 +1,6 @@
 {
   "name": "unified-sdk-trt-dev",
-  "image": "unified-sdk:trt",
+  "image": "unified-sdk:tensorrt",
   "runArgs": [
     "--gpus", "all",
     "-v", "${localWorkspaceFolder}:/workspace/unified-sdk"
