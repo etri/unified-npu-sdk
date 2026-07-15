@@ -102,39 +102,50 @@ def _to_numpy(output: Any) -> np.ndarray:
     return np.asarray(output)
 
 
-def _build_model_config(qb_type, core_mode: Optional[str]):
-    """qbruntime.type.ModelConfig 를 best-effort 로 구성한다.
+# core_mode 문자열 -> qbruntime.type.ModelConfig 의 전용 세터 이름.
+# ModelConfig 는 CoreMode 인자를 받는 범용 세터가 아니라 모드별 세터를 제공한다
+# (set_global8_core_mode() 등, 인자 없이 호출). mxq 가 컴파일된 모드와 반드시
+# 일치해야 하며, 불일치 시 로드가 Model_MXQAndModelConfigNotMatch 로 실패한다.
+_CORE_MODE_SETTERS = {
+    "auto": "set_auto_core_mode",
+    "single": "set_single_core_mode",
+    "global4": "set_global4_core_mode",
+    "global8": "set_global8_core_mode",
+    "multi": "set_multi_core_mode",
+}
 
-    core_mode 예: 'global8' (참조 테스트 가이드 기준). qbruntime.type.CoreMode 는
-    문서상 enum 이며 버전에 따라 멤버/세터 이름이 다를 수 있어, 안전하게 매칭하고
-    실패하면 기본 ModelConfig (None) 로 위임한다.
+
+def _build_model_config(qb_type, core_mode: Optional[str]):
+    """qbruntime.type.ModelConfig 를 구성한다.
+
+    core_mode 예: 'global8'. 지정된 모드를 반드시 반영하며, 반영에 실패하면
+    (기본 Auto 로 지정되지 않고) 명시적으로 예외를 던진다. 기본 Auto 는
+    mxq 가 단일 코어 모드일 때만 유효하기 때문이다.
     """
     ModelConfig = getattr(qb_type, "ModelConfig", None)
     if ModelConfig is None:
         return None
-    try:
-        mc = ModelConfig()
-    except Exception:
-        return None
+    mc = ModelConfig()
 
-    if core_mode:
-        CoreMode = getattr(qb_type, "CoreMode", None)
-        member = None
-        if CoreMode is not None:
-            member = (
-                getattr(CoreMode, core_mode, None)
-                or getattr(CoreMode, core_mode.upper(), None)
-                or getattr(CoreMode, core_mode.capitalize(), None)
-            )
-        if member is not None:
-            for setter in ("set_core_mode", "set_global_core_mode", "set_single_core_mode"):
-                fn = getattr(mc, setter, None)
-                if callable(fn):
-                    try:
-                        fn(member)
-                        break
-                    except Exception:
-                        continue
+    if not core_mode:
+        return mc  # 기본 auto-core mode (단일 코어 모드 mxq 에서만 유효)
+
+    key = core_mode.strip().lower()
+    setter_name = _CORE_MODE_SETTERS.get(key)
+    if setter_name is None:
+        raise ValueError(
+            f"Unsupported core_mode {core_mode!r}. "
+            f"Use one of: {', '.join(_CORE_MODE_SETTERS)}."
+        )
+    fn = getattr(mc, setter_name, None)
+    if not callable(fn):
+        raise RuntimeError(
+            f"qbruntime ModelConfig has no {setter_name}() for core_mode={core_mode!r}"
+        )
+    if fn() is False:
+        raise RuntimeError(
+            f"ModelConfig.{setter_name}() failed to set core_mode={core_mode!r}"
+        )
     return mc
 
 
