@@ -105,14 +105,11 @@ def _list_model_zoo_targets() -> list[str]:
     except Exception:
         return []
 
-    items: list[str] = []
-    for name in dir(vision):
-        if name.startswith("_"):
-            continue
-        candidate = getattr(vision, name, None)
-        if callable(candidate):
-            items.append(name)
-    return sorted(set(items))
+    declared = getattr(vision, "__all__", None)
+    if isinstance(declared, (list, tuple)):
+        return sorted({str(name) for name in declared if isinstance(name, str) and not name.startswith("_")})
+
+    return sorted({name for name in dir(vision) if not name.startswith("_")})
 
 
 def _resolve_model_zoo_target(model_name: str) -> str | None:
