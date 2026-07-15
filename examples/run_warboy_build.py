@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import sys
 import os
+import re
 
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
@@ -68,7 +69,8 @@ def _parse_shape(value: str) -> tuple[int, ...]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a FuriosaAI Warboy .enf model. "
-        "기본은 사전 컴파일된 .enf 확보(fetch), --from-onnx(quantized ONNX) 지정 시 furiosa-compiler 컴파일(compile hook). "
+        "기본은 Furiosa model zoo ENF fetch 또는 사전 컴파일된 .enf 확보(fetch), "
+        "--from-onnx(quantized ONNX) 지정 시 furiosa-compiler 컴파일(compile hook). "
         ".pth/.pt 가중치 파일은 직접 입력으로 지원하지 않습니다."
     )
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="fetch 모드에서 .enf 를 찾을 디렉터리.")
@@ -78,6 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from-onnx", type=Path, default=None, help="quantized ONNX 를 furiosa-compiler 로 .enf 컴파일(compile hook).")
     parser.add_argument("--target-npu", choices=("warboy", "warboy-2pe"), default="warboy-2pe")
     parser.add_argument("--require-enf", action="store_true", help="fetch 모드에서 .enf 를 못 찾으면 실패 처리.")
+    parser.add_argument(
+        "--list-model-zoo",
+        action="store_true",
+        help="설치된 furiosa.models.vision model zoo 에서 사용 가능한 모델 이름 후보를 출력하고 종료합니다.",
+    )
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
     return parser
@@ -88,8 +95,77 @@ def _find_enf(models_dir: Path, model_name: str) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _normalize_model_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def _list_model_zoo_targets() -> list[str]:
+    try:
+        from furiosa.models import vision
+    except Exception:
+        return []
+
+    items: list[str] = []
+    for name in dir(vision):
+        if name.startswith("_"):
+            continue
+        candidate = getattr(vision, name, None)
+        if callable(candidate):
+            items.append(name)
+    return sorted(set(items))
+
+
+def _resolve_model_zoo_target(model_name: str) -> str | None:
+    normalized = _normalize_model_name(model_name)
+    for candidate in _list_model_zoo_targets():
+        if _normalize_model_name(candidate) == normalized:
+            return candidate
+    return None
+
+
+def _fetch_model_zoo_enf(model_name: str, target_npu: str, models_dir: Path) -> Path | None:
+    try:
+        from furiosa.models import vision
+    except Exception:
+        return None
+
+    resolved = _resolve_model_zoo_target(model_name)
+    if resolved is None:
+        return None
+
+    model_cls = getattr(vision, resolved, None)
+    if not callable(model_cls):
+        return None
+
+    model = model_cls()
+    num_pe = 1 if target_npu == "warboy" else 2
+    model_source = model.model_source(num_pe=num_pe)
+
+    out_path = (models_dir / model_name).with_suffix(".enf")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(model_source, (bytes, bytearray)):
+        out_path.write_bytes(model_source)
+    else:
+        source_path = Path(str(model_source)).expanduser().resolve()
+        if not source_path.is_file():
+            raise FileNotFoundError(f"model zoo ENF source not found: {source_path}")
+        out_path.write_bytes(source_path.read_bytes())
+    return out_path
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
+
+    if args.list_model_zoo:
+        items = _list_model_zoo_targets()
+        if not items:
+            print("furiosa.models.vision model zoo 목록을 찾지 못했습니다.")
+            sys.exit(1)
+        print("== Available Furiosa model zoo targets ==")
+        for name in items:
+            print(name)
+        sys.exit(0)
 
     models_dir = args.models_dir.expanduser().resolve()
     out_dir = args.out_dir.expanduser().resolve()
@@ -98,7 +174,7 @@ if __name__ == "__main__":
 
     extra: dict = {"target_npu": args.target_npu, "target_ir": "enf"}
 
-    # 우선순위: --from-onnx(compile) > --enf(provided) > models/ 자동탐지(fetch)
+    # 우선순위: --from-onnx(compile) > --enf(provided) > models/ 자동탐지(fetch) > model zoo ENF fetch
     if args.from_onnx is not None:
         onnx_path = args.from_onnx.expanduser().resolve()
         if not onnx_path.is_file():
@@ -106,10 +182,15 @@ if __name__ == "__main__":
         model_or_path: str = str(onnx_path)
         source_desc = f"furiosa-compiler from quantized ONNX: {onnx_path}"
     else:
+        fetched_from_model_zoo = False
         enf = args.enf.expanduser().resolve() if args.enf else _find_enf(models_dir, args.model_name)
         if enf is None:
+            enf = _fetch_model_zoo_enf(args.model_name, args.target_npu, models_dir)
+            fetched_from_model_zoo = enf is not None
+        if enf is None:
             msg = (
-                f"{models_dir} 에서 {args.model_name}*.enf 를 찾지 못했습니다.\n"
+                f"{models_dir} 에서 {args.model_name}*.enf 를 찾지 못했고, "
+                "Furiosa model zoo 에서도 대응 ENF 를 확보하지 못했습니다.\n"
                 "사전 컴파일된 .enf 를 --enf 로 지정하거나, --from-onnx <quantized.onnx> 로 컴파일하세요.\n"
                 ".pth/.pt 가중치 파일은 직접 입력으로 지원하지 않습니다."
             )
@@ -118,7 +199,10 @@ if __name__ == "__main__":
             print("[WARN] " + msg)
             sys.exit(1)
         model_or_path = str(enf)
-        source_desc = f"provided .enf: {enf}"
+        if fetched_from_model_zoo:
+            source_desc = f"standard fetch from Furiosa model zoo ENF: {enf}"
+        else:
+            source_desc = f"provided .enf: {enf}"
 
     cfg = BuildConfig(
         backend="warboy",

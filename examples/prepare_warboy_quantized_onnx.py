@@ -1,8 +1,10 @@
 import argparse
 import itertools
+import importlib
 from pathlib import Path
 import sys
 import os
+import re
 
 
 class _Bottleneck:
@@ -110,14 +112,27 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--source",
-        choices=("model-zoo", "pth"),
+        choices=("model-zoo", "onnx", "pth"),
         default="model-zoo",
         help="model-zoo: use furiosa.models.vision.ResNet50() quantized ONNX (recommended), "
+        "onnx: quantize a provided floating-point ONNX, "
         "pth: export local .pth/.pt and calibrate it.",
     )
+    parser.add_argument("--onnx", type=Path, default=None, help="Path to floating-point ONNX used with --source onnx.")
     parser.add_argument("--weights", type=Path, default=None, help="Path to resnet50 .pth/.pt weights.")
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights and write ONNX outputs.")
     parser.add_argument("--model-name", default="resnet50", help="Base model name used for input/output file names.")
+    parser.add_argument(
+        "--model-factory",
+        default=None,
+        help="For --source pth, optional Python factory path 'package.module:callable' that returns a torch.nn.Module. "
+        "Use this for non-built-in architectures.",
+    )
+    parser.add_argument(
+        "--list-model-zoo",
+        action="store_true",
+        help="설치된 furiosa.models.vision model zoo 에서 사용 가능한 모델 이름 후보를 출력하고 종료합니다.",
+    )
     parser.add_argument("--f32-onnx", type=Path, default=None, help="Optional f32 ONNX output path.")
     parser.add_argument("--quant-onnx", type=Path, default=None, help="Optional quantized ONNX output path.")
     parser.add_argument("--input-name", default="input")
@@ -137,6 +152,34 @@ def _build_parser() -> argparse.ArgumentParser:
 def _find_weights(models_dir: Path, model_name: str) -> Path | None:
     candidates = sorted(models_dir.glob(f"{model_name}*.pth")) + sorted(models_dir.glob(f"{model_name}*.pt"))
     return candidates[0] if candidates else None
+
+
+def _normalize_model_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def _list_model_zoo_targets() -> list[str]:
+    try:
+        from furiosa.models import vision
+    except Exception:
+        return []
+
+    items: list[str] = []
+    for name in dir(vision):
+        if name.startswith("_"):
+            continue
+        candidate = getattr(vision, name, None)
+        if callable(candidate):
+            items.append(name)
+    return sorted(set(items))
+
+
+def _resolve_model_zoo_target(model_name: str) -> str | None:
+    normalized = _normalize_model_name(model_name)
+    for candidate in _list_model_zoo_targets():
+        if _normalize_model_name(candidate) == normalized:
+            return candidate
+    return None
 
 
 def _load_state_dict(path: Path, torch_module) -> dict:
@@ -230,6 +273,36 @@ def _make_resnet50(torch_module):
     return ResNet(_Bottleneck, [3, 4, 6, 3])
 
 
+def _load_model_factory(factory_ref: str):
+    if ":" not in factory_ref:
+        raise ValueError("--model-factory must be in 'package.module:callable' format")
+    module_name, attr_name = factory_ref.split(":", 1)
+    module = importlib.import_module(module_name)
+    factory = getattr(module, attr_name, None)
+    if factory is None or not callable(factory):
+        raise ValueError(f"Model factory not found or not callable: {factory_ref}")
+    return factory
+
+
+def _make_model_for_pth(torch_module, model_name: str, model_factory_ref: str | None):
+    if model_factory_ref:
+        factory = _load_model_factory(model_factory_ref)
+        model = factory()
+        resolved_name = model_factory_ref
+    else:
+        normalized = _normalize_model_name(model_name)
+        if normalized != "resnet50":
+            raise ValueError(
+                "--source pth for non-built-in architectures requires --model-factory "
+                "(example: mypkg.models:create_model)."
+            )
+        model = _make_resnet50(torch_module)
+        resolved_name = "builtin:resnet50"
+    if not hasattr(model, "load_state_dict"):
+        raise TypeError(f"Resolved model factory did not return a torch.nn.Module-compatible object: {type(model)!r}")
+    return resolved_name, model
+
+
 def _center_crop_resize_pil(image, size: int):
     width, height = image.size
     scale = 256 / min(width, height)
@@ -268,6 +341,16 @@ def _load_and_infer_onnx(onnx_module, onnx_path: Path):
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
+    if args.list_model_zoo:
+        items = _list_model_zoo_targets()
+        if not items:
+            print("furiosa.models.vision model zoo 목록을 찾지 못했습니다.")
+            sys.exit(1)
+        print("== Available Furiosa model zoo targets ==")
+        for name in items:
+            print(name)
+        sys.exit(0)
+
     try:
         import numpy as np
         import onnx
@@ -283,6 +366,7 @@ if __name__ == "__main__":
     models_dir.mkdir(parents=True, exist_ok=True)
 
     weights_path = args.weights.expanduser().resolve() if args.weights else _find_weights(models_dir, args.model_name)
+    onnx_input_path = args.onnx.expanduser().resolve() if args.onnx else None
     if args.source == "pth":
         if weights_path is None and not args.allow_random_init:
             raise FileNotFoundError(
@@ -292,6 +376,11 @@ if __name__ == "__main__":
             )
         if weights_path is not None and not weights_path.is_file():
             raise FileNotFoundError(f"weights file not found: {weights_path}")
+    if args.source == "onnx":
+        if onnx_input_path is None:
+            raise FileNotFoundError("--source onnx requires --onnx <floating_model.onnx>")
+        if not onnx_input_path.is_file():
+            raise FileNotFoundError(f"ONNX file not found: {onnx_input_path}")
 
     f32_onnx = (
         args.f32_onnx.expanduser().resolve()
@@ -308,7 +397,6 @@ if __name__ == "__main__":
     print(f"(repo_root={REPO_ROOT})")
     print(f"(models_dir={models_dir})")
 
-    model = _make_resnet50(torch)
     if args.source == "model-zoo":
         try:
             from furiosa.models import vision
@@ -323,14 +411,21 @@ if __name__ == "__main__":
                 "Use the pinned image setup with furiosa-models==0.10.2."
             )
 
-        if args.model_name != "resnet50":
-            raise ValueError("--source model-zoo currently supports only --model-name resnet50")
         if weights_path is not None:
             print(f"[WARN] --source model-zoo ignores local weights: {weights_path}")
+        if onnx_input_path is not None:
+            print(f"[WARN] --source model-zoo ignores provided ONNX: {onnx_input_path}")
         if args.calib_dir or args.calib_image != TESTS_DIR / "input.jpg":
             print("[WARN] --source model-zoo ignores calibration image arguments.")
 
-        zoo_model = vision.ResNet50()
+        resolved_name = _resolve_model_zoo_target(args.model_name)
+        if resolved_name is None:
+            raise ValueError(
+                f"Unsupported Furiosa model zoo model name: {args.model_name!r}. "
+                "Use --list-model-zoo to inspect available targets."
+            )
+
+        zoo_model = getattr(vision, resolved_name)()
         origin = getattr(zoo_model, "origin")
         if isinstance(origin, (bytes, bytearray)):
             f32 = onnx.load_from_string(origin)
@@ -343,12 +438,54 @@ if __name__ == "__main__":
 
         ranges = getattr(zoo_model, "tensor_name_to_range")
         quantized = quantize(f32, ranges)
-        print("(source=model-zoo: vision.ResNet50 tensor_name_to_range)")
+        print(f"(source=model-zoo: vision.{resolved_name} tensor_name_to_range)")
+    elif args.source == "onnx":
+        if weights_path is not None:
+            print(f"[WARN] --source onnx ignores local weights: {weights_path}")
+        f32_onnx.parent.mkdir(parents=True, exist_ok=True)
+        if onnx_input_path != f32_onnx:
+            f32_onnx.write_bytes(onnx_input_path.read_bytes())
+        print("onnx(f32) =", f32_onnx)
+
+        calib_dir = args.calib_dir.expanduser().resolve() if args.calib_dir else None
+        calib_image = args.calib_image.expanduser().resolve()
+        image_candidates = _collect_image_candidates(calib_dir, calib_image)
+
+        f32 = _load_and_infer_onnx(onnx, f32_onnx)
+        method = getattr(CalibrationMethod, "MIN_MAX_ASYM", None) or list(CalibrationMethod)[0]
+        calibrator = Calibrator(f32, method)
+
+        if not image_candidates:
+            raise FileNotFoundError(
+                "Calibration image not found.\n"
+                "Use --calib-dir <dir> or --calib-image <path> with real image files.\n"
+                f"Default fallback path also does not exist: {calib_image}\n"
+                "Synthetic random calibration was removed because Furiosa quantizer may panic on non-representative inputs."
+            )
+
+        print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
+        for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
+            sample = _load_calibration_sample(image_path, args.input_shape, np)
+            print(
+                f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
+                f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
+            )
+            if float(np.max(np.abs(sample))) == 0.0:
+                raise ValueError(
+                    f"Calibration sample is all zeros after preprocessing: {image_path}. "
+                    "Use a normal RGB photo for calibration."
+                )
+            calibrator.collect_data([[sample]])
+
+        ranges = calibrator.compute_range()
+        quantized = quantize(f32, ranges)
     else:
+        resolved_name, model = _make_model_for_pth(torch, args.model_name, args.model_factory)
         if weights_path is not None:
             state_dict = _load_state_dict(weights_path, torch)
             load_result = model.load_state_dict(state_dict, strict=False)
             print(f"(weights={weights_path})")
+            print(f"(resolved_model={resolved_name})")
             print(
                 f"(load_state_dict: missing={len(load_result.missing_keys)}, "
                 f"unexpected={len(load_result.unexpected_keys)})"
