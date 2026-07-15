@@ -102,6 +102,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
     parser.add_argument("--product", default=os.getenv("MBLT_PRODUCT", "aries"))
     parser.add_argument(
+        "--list-model-zoo",
+        action="store_true",
+        help="설치된 mblt_model_zoo.vision 에서 사용 가능한 표준 fetch 모델 목록을 출력하고 종료합니다.",
+    )
+    parser.add_argument(
         "--target-device",
         default=os.getenv("MBLT_TARGET_DEVICE", ""),
         help="Mobilint compiler target device. 예: aries-rb, regulus-ra, regulus-rb. 기본은 --product 에서 추론.",
@@ -248,6 +253,29 @@ def _resolve_model_zoo_class(model_name: str):
     return matches[0]
 
 
+def _list_model_zoo_models() -> list[tuple[str, str]]:
+    try:
+        from mblt_model_zoo import vision
+    except Exception:
+        return []
+
+    seen: set[str] = set()
+    items: list[tuple[str, str]] = []
+    for attr_name in dir(vision):
+        if attr_name.startswith("_"):
+            continue
+        candidate = getattr(vision, attr_name, None)
+        if candidate is None or not callable(candidate):
+            continue
+        normalized = _normalize_model_zoo_name(attr_name)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        items.append((normalized, attr_name))
+    items.sort()
+    return items
+
+
 def _trigger_model_zoo_fetch(model_name: str, product: str, core_mode: str) -> Path | None:
     """Best-effort materialization of a standard MXQ via mblt_model_zoo.
 
@@ -332,6 +360,18 @@ def _trigger_model_zoo_fetch(model_name: str, product: str, core_mode: str) -> P
 
 if __name__ == "__main__":
     args = _build_parser().parse_args()
+
+    if args.list_model_zoo:
+        items = _list_model_zoo_models()
+        if not items:
+            print("mblt_model_zoo.vision 에서 조회 가능한 모델을 찾지 못했습니다.")
+            print("mblt-model-zoo 패키지 설치 상태를 확인하세요.")
+            sys.exit(1)
+        print("== Available model zoo fetch targets ==")
+        print("(normalized_name -> mblt_model_zoo.vision symbol)")
+        for normalized, symbol in items:
+            print(f"{normalized} -> {symbol}")
+        sys.exit(0)
 
     models_dir = args.models_dir.expanduser().resolve()
     out_dir = args.out_dir.expanduser().resolve()
