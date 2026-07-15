@@ -17,6 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PIP_NO_INPUT=1 \
+    PIP_DEFAULT_TIMEOUT=300 \
     PYTHONPATH=/workspace/unified-sdk/src
 
 # 1) 사용자 생성
@@ -30,15 +31,15 @@ RUN mkdir -p /workspace/unified-sdk \
 # 2) Python 의존성 (numpy / onnx / pycuda + ONNX 내보내기용 CPU torch)
 COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
+    pip install --no-cache-dir --retries 8 --timeout 300 \
         --index-url ${PYTORCH_INDEX_URL} \
         torch torchvision \
-    && pip install --no-cache-dir -r /tmp/requirements.txt
+    && pip install --no-cache-dir --retries 8 --timeout 300 -r /tmp/requirements.txt
 
 # 3) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir . \
+    pip install --no-cache-dir --retries 8 --timeout 300 . \
     && rm -f /tmp/requirements.txt
 
 ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.sh"]
