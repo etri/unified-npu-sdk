@@ -234,20 +234,6 @@ python3 examples/run_tensorrt_build.py \
   --input-name input \
   --input-shape 1,3,224,224
 
-# 4-c-2-a) 사용자 PTH/PT checkpoint를 torchvision 아키텍처에 로드 가능한지만 확인
-python3 examples/run_tensorrt_build.py \
-  --from-pth models/resnet50.pth \
-  --model-name resnet50 \
-  --validate-pth-only
-
-# 4-c-2-b) ONNX export까지만 확인
-python3 examples/run_tensorrt_build.py \
-  --from-pth models/resnet50.pth \
-  --model-name resnet50 \
-  --input-name input \
-  --input-shape 1,3,224,224 \
-  --export-only
-
 # 5) .engine 추론
 python3 examples/run_tensorrt_infer.py \
   --engine-path build_output/yolov7_FP32.engine \
