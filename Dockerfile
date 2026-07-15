@@ -9,6 +9,8 @@ FROM ${BASE_IMAGE}
 ARG USERNAME=etri
 ARG UID=1000
 ARG GID=1000
+ARG VIDEO_GID=44
+ARG RENDER_GID=110
 # TensorRT 엔진 빌드에는 CUDA torch 가 필요 없다 (ONNX 내보내기 용도).
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 
@@ -20,8 +22,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DEFAULT_TIMEOUT=300 \
     PYTHONPATH=/workspace/unified-sdk/src
 
-# 1) 사용자 생성
-RUN groupadd -g ${GID} ${USERNAME} 2>/dev/null || true \
+# 1) 사용자/런타임 그룹 생성
+RUN groupadd -g ${VIDEO_GID} video 2>/dev/null || true \
+ && groupadd -g ${RENDER_GID} render 2>/dev/null || true \
+ && groupadd -g ${GID} ${USERNAME} 2>/dev/null || true \
  && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} 2>/dev/null || true
 
 WORKDIR /workspace/unified-sdk

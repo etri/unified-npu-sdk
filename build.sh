@@ -13,6 +13,8 @@ BASE_IMAGE="${TRT_BASE_IMAGE:-nvcr.io/nvidia/tensorrt:24.03-py3}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
+RENDER_GID_VALUE="$(getent group render | cut -d: -f3 || true)"
+VIDEO_GID_VALUE="$(getent group video | cut -d: -f3 || true)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
@@ -85,6 +87,12 @@ echo "  워크스페이스   : ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
+if [ -n "${VIDEO_GID_VALUE}" ]; then
+  echo "  Video GID      : ${VIDEO_GID_VALUE}"
+fi
+if [ -n "${RENDER_GID_VALUE}" ]; then
+  echo "  Render GID     : ${RENDER_GID_VALUE}"
+fi
 
 cd "${PROJECT_ROOT}"
 
@@ -94,6 +102,8 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
   --build-arg UID="${UID_VALUE}" \
   --build-arg GID="${GID_VALUE}" \
+  --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
+  --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   .
 
