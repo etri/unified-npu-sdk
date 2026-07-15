@@ -361,6 +361,19 @@ def _extract_onnx_input_shape(onnx_model, input_name: str | None = None) -> tupl
     return tuple(dims)
 
 
+def _quantizer_failure_message(source: str, model_name: str, detail: Exception) -> str:
+    return (
+        f"Furiosa quantizer failed while processing {source} for model {model_name!r}: {detail}\n"
+        "This usually means the current floating-point ONNX is not handled cleanly by the vendor quantizer path "
+        "(for example detection/postprocess-heavy graphs or model-specific export differences).\n"
+        "Recommended next steps:\n"
+        "  1) Prefer Furiosa model zoo ENF fetch when the target model exists in furiosa.models.vision.\n"
+        "  2) If you must compile from ONNX, prepare a model-specific/export-validated quantized ONNX first.\n"
+        "  3) For custom checkpoints, export a model-specific ONNX via the original project code and retry.\n"
+        "If this is expected to be a supported model, collect the full traceback and raise it to the vendor."
+    )
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -498,20 +511,23 @@ if __name__ == "__main__":
             )
 
         print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
-        for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-            sample = _load_calibration_sample(image_path, input_shape, np)
-            print(
-                f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
-                f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
-            )
-            if float(np.max(np.abs(sample))) == 0.0:
-                raise ValueError(
-                    f"Calibration sample is all zeros after preprocessing: {image_path}. "
-                    "Use a normal RGB photo for calibration."
+        try:
+            for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
+                sample = _load_calibration_sample(image_path, input_shape, np)
+                print(
+                    f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
+                    f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
                 )
-            calibrator.collect_data([[sample]])
+                if float(np.max(np.abs(sample))) == 0.0:
+                    raise ValueError(
+                        f"Calibration sample is all zeros after preprocessing: {image_path}. "
+                        "Use a normal RGB photo for calibration."
+                    )
+                calibrator.collect_data([[sample]])
 
-        ranges = calibrator.compute_range()
+            ranges = calibrator.compute_range()
+        except Exception as exc:
+            raise RuntimeError(_quantizer_failure_message(f"ONNX {f32_onnx}", args.model_name, exc)) from exc
         quantized = quantize(f32, ranges)
     else:
         resolved_name, model = _make_model_for_pth(torch, args.model_name, args.model_factory)
@@ -561,20 +577,23 @@ if __name__ == "__main__":
             )
 
         print(f"(calibration=images x{args.calib_iters}, source_count={len(image_candidates)})")
-        for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
-            sample = _load_calibration_sample(image_path, args.input_shape, np)
-            print(
-                f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
-                f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
-            )
-            if float(np.max(np.abs(sample))) == 0.0:
-                raise ValueError(
-                    f"Calibration sample is all zeros after preprocessing: {image_path}. "
-                    "Use a normal RGB photo for calibration."
+        try:
+            for image_path in itertools.islice(itertools.cycle(image_candidates), args.calib_iters):
+                sample = _load_calibration_sample(image_path, args.input_shape, np)
+                print(
+                    f"(sample={image_path.name}, shape={sample.shape}, dtype={sample.dtype}, "
+                    f"min={sample.min():.6f}, max={sample.max():.6f}, mean={sample.mean():.6f})"
                 )
-            calibrator.collect_data([[sample]])
+                if float(np.max(np.abs(sample))) == 0.0:
+                    raise ValueError(
+                        f"Calibration sample is all zeros after preprocessing: {image_path}. "
+                        "Use a normal RGB photo for calibration."
+                    )
+                calibrator.collect_data([[sample]])
 
-        ranges = calibrator.compute_range()
+            ranges = calibrator.compute_range()
+        except Exception as exc:
+            raise RuntimeError(_quantizer_failure_message(f"weights {weights_path or '(random-init)'}", args.model_name, exc)) from exc
         quantized = quantize(f32, ranges)
     quant_onnx.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(quantized, (bytes, bytearray)):
