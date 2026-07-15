@@ -30,8 +30,8 @@
 ├── Dockerfile
 ├── build.sh
 ├── examples/
-│   ├── prepare_warboy_quantized_onnx.py  # 기본: model-zoo ResNet50 quantized ONNX 준비, 선택: .pth/.pt -> quantized ONNX
-│   ├── run_warboy_build.py         # .enf 확보(fetch) 또는 quantized ONNX→.enf 컴파일(furiosa-compiler)
+│   ├── prepare_warboy_quantized_onnx.py  # model-zoo / plain ONNX / .pth/.pt -> quantized ONNX 준비
+│   ├── run_warboy_build.py         # model zoo ENF fetch / provided .enf fetch / quantized ONNX→.enf 컴파일
 │   ├── run_warboy_infer.py         # .enf 모델 추론 (furiosa.runtime)
 │   └── inspect_warboy_model.py     # .enf 입출력 메타 확인
 └── src/unified_sdk/
@@ -142,23 +142,30 @@ docker version
 - 사전 컴파일된 `.enf`
 - `furiosa-compiler`로 컴파일할 **quantized ONNX**
 
-기본 권장 경로는 `furiosa-models`의 `vision.ResNet50()`가 제공하는 quantized ONNX를 사용하는 것입니다.
-즉 `examples/prepare_warboy_quantized_onnx.py`를 기본값(`--source model-zoo`)으로 실행해
-`quantized ONNX`를 만든 뒤 `--from-onnx`로 넘기는 흐름이 가장 안정적입니다.
+표준 fetch는 `furiosa-models` model zoo가 제공하는 ENF 바이너리를 그대로 사용하는 방식입니다.
+`examples/run_warboy_build.py --model-name <name>`는 먼저 `models/`에서 `.enf`를 찾고,
+없으면 `furiosa.models.vision` model zoo에서 대응 ENF를 받아 `models/<model>.enf`로 정규화합니다.
+
+추가로 `furiosa-models`는 원본 ONNX(`origin`)와 calibration 범위(`tensor_name_to_range`)도 제공하므로,
+`examples/prepare_warboy_quantized_onnx.py --source model-zoo`로 quantized ONNX를 만든 뒤
+`--from-onnx`로 넘기는 경로도 사용할 수 있습니다.
 
 `resnet50.pth` 같은 PyTorch weight 파일을 직접 쓰는 경로는 `--source pth`로 남겨두었지만,
-이 경우 `f32 ONNX export + calibration + quantization`을 직접 수행하므로 vendor package 조합에 따라
-추가 튜닝이 필요할 수 있습니다.
+bare `.pth/.pt`만으로는 계산 그래프를 복원할 수 없으므로, 기본 내장 예제 외의 아키텍처는
+`--model-factory package.module:callable`로 모델 복원 함수를 함께 넘겨야 합니다.
 
 예:
 
 ```bash
-python3 examples/prepare_warboy_quantized_onnx.py \
-  --source model-zoo
+# model zoo 목록 확인
+python3 examples/run_warboy_build.py --list-model-zoo
 
-python3 examples/run_warboy_build.py \
-  --from-onnx models/resnet50_quantized.onnx \
-  --model-name resnet50
+# 표준 fetch: Furiosa model zoo ENF를 바로 확보
+python3 examples/run_warboy_build.py --model-name resnet50
+
+# 또는 model zoo 원본 ONNX + calibration range를 사용해 quantized ONNX를 만든 뒤 컴파일
+python3 examples/prepare_warboy_quantized_onnx.py --source model-zoo --model-name resnet50
+python3 examples/run_warboy_build.py --from-onnx models/resnet50_quantized.onnx --model-name resnet50
 ```
 
 컨테이너 실행 예시:
@@ -208,29 +215,46 @@ furiosactl list && furiosactl info || true
 furiosa-compiler --version || true
 python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 
-# 4) quantized ONNX 준비
-#    기본 권장 경로: furiosa-models 의 vision.ResNet50() + tensor_name_to_range 사용
-python3 examples/prepare_warboy_quantized_onnx.py \
-  --source model-zoo
+# 4) 표준 fetching smoke (vendor model zoo ENF fetch)
+python3 examples/run_warboy_build.py --list-model-zoo
+python3 examples/run_warboy_build.py --model-name resnet50
 
-#    (선택) 로컬 ResNet50 weight(.pth/.pt)에서 직접 만들려면 calibration 이미지가 필요합니다.
-#    tests/input.jpg는 저장소에 항상 포함되는 자산이 아니므로, 보통 models/input.jpg 또는 별도 calib 디렉터리를 직접 준비합니다.
+# 4-b) custom fetching smoke (provided .enf)
+python3 examples/run_warboy_build.py --enf models/resnet50.enf --model-name resnet50
+
+# 4-c-1) custom compile smoke: plain ONNX -> quantized ONNX -> .enf
+#        quantization 단계는 calibration 이미지가 필요합니다.
+python3 examples/prepare_warboy_quantized_onnx.py \
+  --source onnx \
+  --onnx models/yolov7.onnx \
+  --model-name yolov7 \
+  --calib-image models/input.jpg
+
+python3 examples/run_warboy_build.py \
+  --from-onnx models/yolov7_quantized.onnx \
+  --model-name yolov7
+
+# 4-c-2) custom compile smoke: PTH/PT -> ONNX export -> quantized ONNX -> .enf
+#        기본 내장 예제는 resnet50 이고, 다른 아키텍처는 --model-factory 로 복원 함수를 넘깁니다.
 python3 examples/prepare_warboy_quantized_onnx.py \
   --source pth \
   --weights models/resnet50.pth \
+  --model-name resnet50 \
   --calib-image models/input.jpg
 
-# 5) .enf 확보 또는 컴파일
-#    주의: models/ 는 gitignore 대상이라 직접 생성/배치해야 할 수 있습니다.
-#    또한 build 단계는 .pth 를 직접 받지 않고, 사전 컴파일된 .enf 또는 quantized ONNX 만 지원합니다.
-#    (a) 사전 컴파일된 .enf 를 models/ 에 두었다면 그대로 확보(fetch):
-python3 examples/run_warboy_build.py --model-name resnet50
-#    (b) quantized ONNX 를 furiosa-compiler 로 컴파일(compile hook, 기본 2 PE):
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
   --model-name resnet50
 
-#    (c) 1 PE 환경이라면 target-npu 를 명시:
+# 예: 다른 아키텍처를 local checkpoint로 준비할 때
+# python3 examples/prepare_warboy_quantized_onnx.py \
+#   --source pth \
+#   --weights models/custom_model.pth \
+#   --model-name custom_model \
+#   --model-factory mypkg.models:create_model \
+#   --calib-image models/input.jpg
+
+# 5) 1 PE 환경이라면 target-npu 를 명시:
 python3 examples/run_warboy_build.py \
   --from-onnx models/resnet50_quantized.onnx \
   --target-npu warboy \
@@ -260,7 +284,20 @@ python3 examples/inspect_warboy_model.py builds/resnet50.enf
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
 
-# (a) quantized ONNX -> .enf (furiosa-compiler)
+# (a) standard fetch from model zoo ENF
+cfg = BuildConfig(
+    backend="warboy",
+    model_or_path="models/resnet50.enf",
+    out_dir="builds",
+    model_name="resnet50",
+    precision="int8",
+    input_name="input",
+    input_shape=(1, 3, 224, 224),
+)
+result = build_unified(cfg)
+print(result.compiled_model_path)
+
+# (b) quantized ONNX -> .enf (furiosa-compiler)
 cfg = BuildConfig(
     backend="warboy",
     model_or_path="models/resnet50_quantized.onnx",  # quantized ONNX 경로
@@ -276,9 +313,6 @@ print(result.compiled_model_path)
 
 # 1 PE 환경 예시:
 #     extra={"target_npu": "warboy", "target_ir": "enf"}
-
-# (b) 사전 컴파일된 .enf 확보(fetch): model_or_path 에 .enf 경로를 그대로 전달
-#     cfg = BuildConfig(backend="warboy", model_or_path="models/resnet50.enf", ...)
 ```
 
 ### 추론
@@ -318,11 +352,17 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 ## 📌 참고
 
 - 본 체크아웃은 Warboy 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
-- 컴파일러 `furiosa-compiler`는 **quantized ONNX**를 입력으로 받아 `.enf`(int8)를 생성합니다.
-  f32 ONNX 는 `furiosa.quantizer`(calibration)로 먼저 양자화해야 합니다 (host validation 참고).
+- `furiosa-compiler`는 ONNX(OpSet 13 이하)와 TFLite를 입력으로 받을 수 있지만, Warboy NPU 가속을 위해서는
+  실질적으로 **quantized ONNX**를 준비하는 흐름을 사용합니다. Furiosa 공식 문서도 NPU 가속용으로 quantized model 사용을 권장합니다.
+- `furiosa-models`는 Warboy용 open model zoo이며, `furiosa.models.vision` 또는 `furiosa-models list`로
+  지원 모델을 확인할 수 있습니다. 현재 확인 가능한 대표 vision 모델은 `ResNet50`, `EfficientNetB0`,
+  `EfficientNetV2s`, `SSDMobileNet`, `SSDResNet34`, `YOLOv5m`, `YOLOv5l`, `YOLOv7w6Pose` 입니다.
 - `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
+- plain ONNX 는 `prepare_warboy_quantized_onnx.py --source onnx --onnx ...` 로 quantized ONNX 를 먼저 준비한 뒤
+  `--from-onnx`로 넘깁니다.
 - `.pth`/`.pt` 가중치 파일은 build 입력으로 직접 쓰지 않고, 필요하면 `prepare_warboy_quantized_onnx.py --source pth`
-  로 quantized ONNX 를 먼저 준비한 뒤 `--from-onnx`로 넘깁니다.
+  로 quantized ONNX 를 먼저 준비한 뒤 `--from-onnx`로 넘깁니다. bare checkpoint만으로는 모델 구조를 복원할 수 없으므로,
+  기본 예제 외 아키텍처는 `--model-factory package.module:callable` 같이 복원 함수를 함께 넘겨야 합니다.
 - `.enf`의 입력 dtype/layout은 quantized ONNX 스펙에 따라 고정(보통 int8/uint8)되므로, 추론 입력을 이에 맞춰야 합니다.
 - 다중 장치 서버에서는 `FURIOSA_DEVICES`/`--device`(예: `warboy(0)*2`)로 장치를 고정하세요.
 - 장치/모델 점검용 CLI: `furiosactl list`, `furiosactl info`, `furiosa-smi info`.
