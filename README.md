@@ -170,10 +170,10 @@ docker version
 
 ```bash
 docker run --gpus all -it --security-opt seccomp=unconfined \
-  --name trt-only \
+  --name tensorrt-only \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
-  unified-sdk:trt
+  unified-sdk:tensorrt
 ```
 
 컨테이너 내부 점검:

@@ -6,7 +6,7 @@ set -e
 # =====================================
 
 IMAGE_NAME="unified-sdk"
-TAG="trt"
+TAG="tensorrt"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${TRT_BASE_IMAGE:-nvcr.io/nvidia/tensorrt:24.03-py3}"
@@ -23,7 +23,7 @@ print_usage() {
   echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>]"
   echo ""
   echo "옵션:"
-  echo "  -n, --name    컨테이너 이름 (기본: trt-only)"
+  echo "  -n, --name    컨테이너 이름 (기본: tensorrt-only)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: ${BASE_IMAGE})"
   echo "  --pytorch-index-url  torch/torchvision wheel 인덱스 (기본: ${PYTORCH_INDEX_URL})"
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="trt-only"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="tensorrt-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
