@@ -202,12 +202,36 @@ python3 -c "import tensorrt; print('tensorrt=', tensorrt.__version__)"
 nvidia-smi || true
 python3 -c "import tensorrt, pycuda; print('OK')"
 
-# 4) ONNX → .engine 컴파일 (models/ 에서 자동 탐색)
+# 4-a) 표준 fetching smoke (torchvision model zoo -> ONNX export -> .engine)
+python3 examples/run_tensorrt_build.py \
+  --model-name resnet50 \
+  --precision fp32 \
+  --input-name input \
+  --input-shape 1,3,224,224
+
+# 설치된 torchvision model zoo 이름 후보 확인
+python3 examples/run_tensorrt_build.py --list-model-zoo
+
+# 4-b) custom fetching smoke (provided .engine)
+python3 examples/run_tensorrt_build.py \
+  --engine /path/to/resnet50_FP32.engine \
+  --model-name resnet50 \
+  --precision fp32
+
+# 4-c-1) ONNX → .engine 컴파일 (models/ 에서 자동 탐색)
 python3 examples/run_tensorrt_build.py \
   --model-name yolov7 \
   --precision fp32 \
   --input-name images \
   --input-shape 1,3,640,640
+
+# 4-c-2) PTH/PT -> ONNX export -> .engine 컴파일
+python3 examples/run_tensorrt_build.py \
+  --from-pth models/resnet50.pth \
+  --model-name resnet50 \
+  --precision fp32 \
+  --input-name input \
+  --input-shape 1,3,224,224
 
 # 5) .engine 추론
 python3 examples/run_tensorrt_infer.py \
@@ -249,6 +273,14 @@ cfg = BuildConfig(
 result = build_unified(cfg)
 print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
 ```
+
+`run_tensorrt_build.py`는 현재 세 경로를 지원합니다.
+
+- 표준 fetch: `torchvision` pretrained model fetch -> ONNX export -> TensorRT compile
+- custom fetch: provided `.engine` copy/normalize
+- custom compile:
+  - `--onnx` 또는 `models/*.onnx`
+  - `--from-pth` (`torchvision` model zoo 이름과 맞는 `.pth/.pt` checkpoint)
 
 ### 추론
 

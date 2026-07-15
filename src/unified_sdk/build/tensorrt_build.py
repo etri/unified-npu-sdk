@@ -18,6 +18,7 @@ _BUILD_PIPELINE = (
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
+    "provided_artifact": "Path(src_engine).read_bytes() -> engine_path.write_bytes(...)",
     "parse_network": "trt.OnnxParser(network, logger).parse_from_file(str(onnx_path))",
     "builder_config": "builder.create_builder_config()",
     "optimization_profile": "builder.create_optimization_profile(); profile.set_shape(...)",
@@ -26,6 +27,7 @@ _VENDOR_API_MAP = {
     "artifact": ".engine",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
+    "Path(src_engine).read_bytes() -> engine_path.write_bytes(...)": "build_unified(cfg) for provided .engine",
     "trt.OnnxParser(...).parse_from_file(...)": "build_unified(cfg)",
     "builder.create_builder_config()": "build_unified(cfg)",
     "builder.create_optimization_profile(); profile.set_shape(...)": "BuildConfig.min/opt/max_input_shape",
@@ -78,6 +80,15 @@ def _ensure_onnx_path(model_or_path: str | Path) -> Path:
         raise FileNotFoundError(f"ONNX file not found: {p}")
     if p.suffix.lower() != ".onnx":
         raise ValueError(f"Expected an ONNX file, got: {p.suffix}")
+    return p.resolve()
+
+
+def _ensure_engine_path(model_or_path: str | Path) -> Path:
+    p = Path(model_or_path).expanduser()
+    if not p.exists():
+        raise FileNotFoundError(f"Engine file not found: {p}")
+    if p.suffix.lower() != ".engine":
+        raise ValueError(f"Expected a .engine file, got: {p.suffix}")
     return p.resolve()
 
 
@@ -220,8 +231,30 @@ class _TensorRTBuildAdapter:
                 "Pass BuildConfig.extra['int8_calibrator'] (trt.IInt8EntropyCalibrator2 등)."
             )
 
-        onnx_path = _ensure_onnx_path(cfg.model_or_path)
         engine_path = _build_output_path(cfg.out_dir, cfg.model_name, precision)
+
+        if isinstance(cfg.model_or_path, (str, Path)) and str(cfg.model_or_path).endswith(".engine"):
+            src_engine = _ensure_engine_path(cfg.model_or_path)
+            engine_path.parent.mkdir(parents=True, exist_ok=True)
+            if src_engine != engine_path.resolve():
+                engine_path.write_bytes(src_engine.read_bytes())
+            meta: Dict[str, Any] = {
+                "backend": self.name,
+                "model_name": cfg.model_name,
+                "precision": precision,
+                "source": "provided",
+                "origin_engine_path": str(src_engine),
+                "engine_path": str(engine_path),
+                "extra": extra,
+                **_capability_metadata(extra),
+            }
+            return BuildResult(
+                backend=self.name,
+                compiled_model_path=str(engine_path),
+                meta_data=meta,
+            )
+
+        onnx_path = _ensure_onnx_path(cfg.model_or_path)
 
         try:
             import tensorrt as trt
