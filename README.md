@@ -244,6 +244,12 @@ Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zo
 python3 examples/run_qb_build.py --model-name resnet50
 ```
 
+설치된 `mblt_model_zoo.vision` 안에서 표준 fetch에 쓸 수 있는 모델 이름 후보를 보고 싶으면:
+
+```bash
+python3 examples/run_qb_build.py --list-model-zoo
+```
+
 예를 들어 이름 정규화 기준으로 다음 같은 매칭을 기대합니다.
 - `resnet50` -> `mblt_model_zoo.vision.ResNet50`
 - `mobilenet_v2` -> `mblt_model_zoo.vision.MobileNetV2`
