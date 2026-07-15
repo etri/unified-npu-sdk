@@ -61,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--labels", type=Path, default=LABELS_PATH)
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--output-name", default="output")
-    parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
+    parser.add_argument("--input-shape", type=_parse_shape, default=(224, 224, 3)) # 이 .mxq 는 정규화/레이아웃 변환을 내부에 포함해 컴파일되어 원본 uint8 HWC 입력을 기대함
     parser.add_argument("--device", type=int, default=int(os.getenv("MBLT_DEVICE", "0")))
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
     parser.add_argument("--iters", type=int, default=50)
@@ -89,6 +89,33 @@ def _load_labels(labels_path: Path):
     return None
 
 
+def to_mxq_input(arr, layout: str):
+    """입력 배열을 이 .mxq 가 요구하는 HWC (H,W,C) uint8 로 정규화한다.
+
+    레이아웃은 추측하지 않고 호출자가 명시한다 (데이터를 만든 쪽이 자기 레이아웃을 안다).
+        layout: 'chw' | 'hwc' | 'nchw' | 'nhwc'
+    torchvision.read_image 는 CHW 이므로 'chw', cv2/PIL(numpy) 는 보통 'hwc'.
+    이 mxq 는 정규화가 내부에 포함되어 원본 uint8 을 기대하므로 dtype 은 uint8 로 맞춘다.
+    """
+    import numpy as np
+
+    a = np.asarray(arr)
+    key = layout.lower()
+    if key == "nchw":
+        a, key = a[0], "chw"
+    elif key == "nhwc":
+        a, key = a[0], "hwc"
+
+    if key == "chw":
+        a = np.transpose(a, (1, 2, 0))   # CHW -> HWC
+    elif key != "hwc":
+        raise ValueError(f"unknown layout: {layout!r} (use chw/hwc/nchw/nhwc)")
+
+    if a.dtype != np.uint8:
+        a = a.astype(np.uint8)
+    return np.ascontiguousarray(a)
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -114,24 +141,23 @@ if __name__ == "__main__":
     _check_files(engine_path)
     labels = _load_labels(labels_path)
 
+    # NOTE: 이 .mxq 는 qubee 컴파일 시 preprocess_dict(정규화 + CHW→HWC)를 모델에 포함한다.
+    # 따라서 runtime 에는 정규화하지 않은 원본 uint8 을 넘기고, 레이아웃 변환은
+    # to_mxq_input(arr, layout=...) 에 명시적으로 위임한다 (shape 추측 금지).
+    # (get_model_input_shape()=[(224,224,3)], get_model_input_data_type()=Uint8)
     if image_path.is_file():
         preprocess = transforms.Compose([
             transforms.Resize(256, antialias=True),
             transforms.CenterCrop(224),
-            transforms.ConvertImageDtype(torch.float32),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
         img = read_image(str(image_path))                 # [C,H,W], uint8
-        batch_t = preprocess(img).unsqueeze(0)
+        img = preprocess(img)                             # [3,224,224], uint8 유지
+        batch = to_mxq_input(img.numpy(), layout="chw")   # read_image 는 CHW -> HWC 로 변환
         input_source = str(image_path)
     else:
-        batch_t = torch.zeros(args.input_shape, dtype=torch.float32)
+        # 합성 입력은 이미 args.input_shape=(H,W,C) 이므로 layout='hwc' (변환 없음)
+        batch = to_mxq_input(torch.zeros(args.input_shape, dtype=torch.uint8).numpy(), layout="hwc")
         input_source = f"synthetic zeros {args.input_shape}"
-
-    # NOTE: .mxq 의 입력 layout/dtype 은 qubee 컴파일 시 preprocess_dict 로 결정된다.
-    # 아래는 float32 NCHW 입력을 qbruntime 로 그대로 전달한다.
-    # 실제 모델이 다른 layout(HWC)/dtype(uint8)을 기대하면 이 부분을 맞춰야 한다.
-    batch = batch_t.numpy()
 
     cfg = RuntimeConfig(
         backend="qb",
