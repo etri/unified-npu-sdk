@@ -51,11 +51,13 @@ RUN mkdir -p /workspace/unified-sdk \
  && chown -R ${UID}:${GID} /workspace
 
 # 4) Python 의존성 (공용). Warboy compile smoke 에는 CUDA wheel 이 필요 없다.
+#    furiosa-models 일부 vision model(YOLOv5/YOLOv7 계열)은 torchvision 을 사용하므로
+#    torch/torchvision 을 같은 PyTorch index 에서 함께 설치해 ABI/ops mismatch 를 피한다.
 COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
         --index-url ${PYTORCH_INDEX_URL} \
-        torch \
+        torch torchvision \
     && pip install --no-cache-dir \
         -r /tmp/requirements.txt
 
