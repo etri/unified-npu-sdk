@@ -14,6 +14,7 @@ PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC:-mobilint-qb-runtime}"
 MBLT_MODEL_ZOO_PIP_SPEC="${MBLT_MODEL_ZOO_PIP_SPEC:-mblt-model-zoo}"
 QB_DEVICE="${QB_DEVICE:-}"
+COMPILER_WHEEL="${QB_COMPILER_WHEEL:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 
@@ -58,6 +59,8 @@ print_usage() {
   echo "                (default: ${QB_RUNTIME_PIP_SPEC})"
   echo "  --model-zoo-pip-spec  pip spec used for Mobilint Model Zoo package"
   echo "                (default: ${MBLT_MODEL_ZOO_PIP_SPEC})"
+  echo "  --compiler-wheel  Specific vendor compiler wheel to install from vendor/"
+  echo "                (default: auto; error if multiple qbcompiler/qubee wheels are present)"
   echo "  --device      Mobilint device node, e.g. /dev/aries0"
   echo "                (default: auto-detect /dev/aries* and /dev/arise*)"
   echo "  -h, --help    Show this help message"
@@ -108,6 +111,9 @@ while [[ $# -gt 0 ]]; do
     --model-zoo-pip-spec)
       [ -z "$2" ] && { echo "[ERROR] --model-zoo-pip-spec requires a value"; exit 1; }
       MBLT_MODEL_ZOO_PIP_SPEC="$2"; shift 2 ;;
+    --compiler-wheel)
+      [ -z "$2" ] && { echo "[ERROR] --compiler-wheel requires a value"; exit 1; }
+      COMPILER_WHEEL="$2"; shift 2 ;;
     --device)
       [ -z "$2" ] && { echo "[ERROR] --device requires a value"; exit 1; }
       QB_DEVICE="$2"; shift 2 ;;
@@ -145,6 +151,24 @@ if [ ${#COMPILER_WHEELS[@]} -eq 0 ]; then
   exit 1
 fi
 
+if [ -n "${COMPILER_WHEEL}" ]; then
+  if [[ "${COMPILER_WHEEL}" != /* ]]; then
+    COMPILER_WHEEL="${VENDOR_DIR}/${COMPILER_WHEEL}"
+  fi
+  if [ ! -f "${COMPILER_WHEEL}" ]; then
+    echo "[ERROR] Selected compiler wheel not found: ${COMPILER_WHEEL}"
+    exit 1
+  fi
+  COMPILER_WHEELS=("${COMPILER_WHEEL}")
+elif [ ${#COMPILER_WHEELS[@]} -gt 1 ]; then
+  echo "[ERROR] Multiple Mobilint qb compiler wheels found under: ${VENDOR_DIR}"
+  printf '  - %s\n' "${COMPILER_WHEELS[@]##*/}"
+  echo ""
+  echo "Keep only one compiler wheel in vendor/, or select one explicitly:"
+  echo "  ./build.sh --compiler-wheel qbcompiler-1.1.2+aries2-py3-none-any.whl"
+  exit 1
+fi
+
 if [ -z "${BASE_IMAGE}" ]; then
   if ! BASE_IMAGE="$(infer_base_image_from_wheel)"; then
     echo "[ERROR] Could not infer Mobilint qbcompiler base image from vendor wheel name."
@@ -169,7 +193,7 @@ echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  Runtime (pip)  : ${QB_RUNTIME_PIP_SPEC}"
 echo "  Model Zoo (pip): ${MBLT_MODEL_ZOO_PIP_SPEC}"
-echo "  Compiler wheel : $(printf '%s\n' "${COMPILER_WHEELS[@]}" | xargs -n1 basename | paste -sd, -)"
+echo "  Compiler wheel : $(basename "${COMPILER_WHEELS[0]}")"
 echo "  Device         : ${QB_DEVICE:-auto}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 
@@ -184,6 +208,7 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   --build-arg QB_RUNTIME_PIP_SPEC="${QB_RUNTIME_PIP_SPEC}" \
   --build-arg MBLT_MODEL_ZOO_PIP_SPEC="${MBLT_MODEL_ZOO_PIP_SPEC}" \
+  --build-arg COMPILER_WHEEL_BASENAME="$(basename "${COMPILER_WHEELS[0]}")" \
   .
 
 detect_runtime_mounts
