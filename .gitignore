@@ -1,5 +1,6 @@
 # Models and build output
 models/
+models/labels.txt
 build_output/
 builds/
 tests/input.jpg
