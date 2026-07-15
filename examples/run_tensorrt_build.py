@@ -271,6 +271,10 @@ def _export_module_to_onnx(model, export_onnx_path: Path, input_name: str, input
 
     export_onnx_path.parent.mkdir(parents=True, exist_ok=True)
     dummy = torch.randn(input_shape, dtype=torch.float32)
+    # TensorRT 24.x 쪽에서는 torch.export 기반(dynamo=True) ONNX 보다
+    # legacy tracer(dynamo=False)로 내보낸 torchvision 분류 모델이 더 안정적으로 파싱된다.
+    # 특히 ResNet50의 global average pool -> flatten/view 구간에서
+    # opset down-conversion이 끼면 shape inference가 깨질 수 있어 legacy 경로를 기본으로 둔다.
     torch.onnx.export(
         model,
         dummy,
@@ -279,6 +283,7 @@ def _export_module_to_onnx(model, export_onnx_path: Path, input_name: str, input
         output_names=["output"],
         opset_version=13,
         do_constant_folding=True,
+        dynamo=False,
     )
     if not export_onnx_path.is_file():
         raise RuntimeError(f"ONNX export did not produce a file: {export_onnx_path}")
