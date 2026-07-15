@@ -39,8 +39,8 @@ if str(SRC_DIR) not in sys.path:
 
 # ====== 경로 설정 (checkout root 기준, 컨테이너에서는 현재 마운트된 repo root) ======
 ENGINE_PATH = REPO_ROOT / "builds" / "resnet50.mxq"   # <- builds 기준
-IMG_PATH = REPO_ROOT / "tests" / "input.jpg"
-LABELS_PATH = REPO_ROOT / "tests" / "imagenet_classes.txt"  # 있으면 사용, 없으면 cls_id만 출력
+IMG_PATH = REPO_ROOT / "models" / "input.jpg"
+LABELS_PATH = REPO_ROOT / "models" / "labels.txt"  # 있으면 사용, 없으면 cls_id만 출력
 
 
 def _parse_shape(value: str) -> tuple[int, ...]:
