@@ -11,6 +11,7 @@ ARG GID=1000
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG QB_RUNTIME_PIP_SPEC=mobilint-qb-runtime
 ARG MBLT_MODEL_ZOO_PIP_SPEC=mblt-model-zoo
+ARG COMPILER_WHEEL_BASENAME=
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -66,7 +67,9 @@ COPY --chown=${UID}:${GID} vendor/ /tmp/vendor/
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir "${QB_RUNTIME_PIP_SPEC}" "${MBLT_MODEL_ZOO_PIP_SPEC}" \
-    && if ls /tmp/vendor/qbcompiler-*.whl >/dev/null 2>&1; then \
+    && if [ -n "${COMPILER_WHEEL_BASENAME}" ] && [ -f "/tmp/vendor/${COMPILER_WHEEL_BASENAME}" ]; then \
+        pip install --no-cache-dir "/tmp/vendor/${COMPILER_WHEEL_BASENAME}" ; \
+    elif ls /tmp/vendor/qbcompiler-*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir /tmp/vendor/qbcompiler-*.whl ; \
     elif ls /tmp/vendor/qubee-*.whl >/dev/null 2>&1; then \
         pip install --no-cache-dir /tmp/vendor/qubee-*.whl ; \

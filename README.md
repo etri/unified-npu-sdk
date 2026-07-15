@@ -75,6 +75,8 @@ Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler
 
 > 권장: `vendor/`에는 `qbcompiler` wheel을 **한 버전만** 두세요. 여러 버전을 같이 두면 어떤 wheel 기준으로
 > base image를 추론할지 헷갈릴 수 있으므로, 테스트에 사용할 버전 하나만 남기는 것이 안전합니다.
+> 현재 `./build.sh`도 여러 버전이 있으면 그대로 진행하지 않고, 하나만 남기거나 `--compiler-wheel <filename>`로
+> 명시 선택하라고 에러를 냅니다.
 
 ```bash
 # 예시 1) 별도 worktree
@@ -82,6 +84,9 @@ Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler
 
 # Mobilint compiler wheel 배치 (docs.mobilint.com 참조)
 cp /path/to/qbcompiler-*.whl vendor/
+
+# 여러 버전이 같이 있으면 명시 선택 가능
+./build.sh --compiler-wheel qbcompiler-1.1.2+aries2-py3-none-any.whl
 ```
 
 ### 2. Docker 사전 준비

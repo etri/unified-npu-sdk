@@ -13,6 +13,13 @@ cp /path/to/qbcompiler-*.whl ./vendor/
 ./build.sh
 ```
 
+If you keep multiple compiler wheel versions under `vendor/`, `./build.sh` will stop and ask
+you to either keep only one or select one explicitly:
+
+```bash
+./build.sh --compiler-wheel qbcompiler-1.1.2+aries2-py3-none-any.whl
+```
+
 `Dockerfile` installs `qbcompiler-*.whl` from `vendor/` during the image build.
 QB runtime is installed separately via pip as `mobilint-qb-runtime`.
 See <https://docs.mobilint.com/v1.3/en/introduction.html> and
