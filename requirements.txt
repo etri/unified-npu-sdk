@@ -1,6 +1,6 @@
 numpy
-onnx
-onnxscript
+onnx==1.18.0
+onnxscript==0.4.0
 pillow
 opencv-python-headless==4.12.0.88
 torch
