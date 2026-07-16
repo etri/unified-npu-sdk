@@ -368,8 +368,9 @@ def _quantizer_failure_message(source: str, model_name: str, detail: Exception) 
         "(for example detection/postprocess-heavy graphs or model-specific export differences).\n"
         "Recommended next steps:\n"
         "  1) Prefer Furiosa model zoo ENF fetch when the target model exists in furiosa.models.vision.\n"
-        "  2) If you must compile from ONNX, prepare a model-specific/export-validated quantized ONNX first.\n"
-        "  3) For custom checkpoints, export a model-specific ONNX via the original project code and retry.\n"
+        "  2) For ONNX-based compile smoke, prefer model families that already appear in the Furiosa model zoo list.\n"
+        "  3) If you must compile from ONNX, prepare a model-specific/export-validated quantized ONNX first.\n"
+        "  4) For custom checkpoints, export a model-specific ONNX via the original project code and retry.\n"
         "If this is expected to be a supported model, collect the full traceback and raise it to the vendor."
     )
 
