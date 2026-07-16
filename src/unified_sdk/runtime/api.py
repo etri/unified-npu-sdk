@@ -15,7 +15,7 @@ def create_runtime(cfg: RuntimeConfig) -> RuntimeHandle:
     return adapter.create(cfg)
 
 
-def infer(rh: RuntimeHandle, input_array: "np.ndarray") -> "np.ndarray":
+def infer(rh: RuntimeHandle, input_array: "np.ndarray") -> Any:
     adapter = get_runtime(rh.backend)
     return adapter.infer(rh, input_array)
 

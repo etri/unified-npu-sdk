@@ -87,12 +87,9 @@ def _one_to_numpy(value: Any) -> np.ndarray:
 
 def _to_numpy(output: Any) -> np.ndarray:
     if isinstance(output, (list, tuple)):
-        if len(output) != 1:
-            raise TypeError(
-                "Warboy runtime returned multiple outputs; pass a single-output model "
-                "or handle the raw list output directly"
-            )
-        return _one_to_numpy(output[0])
+        if len(output) == 1:
+            return _one_to_numpy(output[0])
+        return [_one_to_numpy(item) for item in output]
     return _one_to_numpy(output)
 
 
