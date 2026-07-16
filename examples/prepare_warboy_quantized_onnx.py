@@ -526,7 +526,9 @@ if __name__ == "__main__":
                 calibrator.collect_data([[sample]])
 
             ranges = calibrator.compute_range()
-        except Exception as exc:
+        except BaseException as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             raise RuntimeError(_quantizer_failure_message(f"ONNX {f32_onnx}", args.model_name, exc)) from exc
         quantized = quantize(f32, ranges)
     else:
@@ -592,7 +594,9 @@ if __name__ == "__main__":
                 calibrator.collect_data([[sample]])
 
             ranges = calibrator.compute_range()
-        except Exception as exc:
+        except BaseException as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             raise RuntimeError(_quantizer_failure_message(f"weights {weights_path or '(random-init)'}", args.model_name, exc)) from exc
         quantized = quantize(f32, ranges)
     quant_onnx.parent.mkdir(parents=True, exist_ok=True)
