@@ -553,14 +553,22 @@ if __name__ == "__main__":
 
         dummy = torch.zeros(args.input_shape, dtype=torch.float32)
         f32_onnx.parent.mkdir(parents=True, exist_ok=True)
-        torch.onnx.export(
-            model,
-            dummy,
-            str(f32_onnx),
-            input_names=[args.input_name],
-            output_names=[args.output_name],
-            opset_version=13,
-        )
+        try:
+            torch.onnx.export(
+                model,
+                dummy,
+                str(f32_onnx),
+                input_names=[args.input_name],
+                output_names=[args.output_name],
+                opset_version=13,
+            )
+        except ModuleNotFoundError as exc:
+            if exc.name == "onnxscript":
+                raise RuntimeError(
+                    "PyTorch ONNX export requires the `onnxscript` package in this image. "
+                    "Rebuild the furiosa-only container after pulling the latest branch changes."
+                ) from exc
+            raise
         print("onnx(f32) =", f32_onnx)
 
         calib_dir = args.calib_dir.expanduser().resolve() if args.calib_dir else None
