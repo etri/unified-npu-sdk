@@ -177,6 +177,12 @@ def _extract_prediction_id(output_array, torch_module) -> int:
     return int(torch_module.argmax(flat, dim=1).item())
 
 
+def _format_output_shape(output) -> str:
+    if isinstance(output, list):
+        return "[" + ", ".join(str(tuple(arr.shape)) for arr in output) + "]"
+    return str(tuple(output.shape))
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -247,26 +253,36 @@ if __name__ == "__main__":
         t1 = timeit.default_timer()
         times.append((t1 - t0) * 1000)
 
-    y = np.ascontiguousarray(y)
+    if isinstance(y, list):
+        y = [np.ascontiguousarray(item) for item in y]
+    else:
+        y = np.ascontiguousarray(y)
     if model_helper is not None and contexts is not None:
         try:
-            result = model_helper.postprocess([y], contexts)
+            outputs_for_postprocess = y if isinstance(y, list) else [y]
+            result = model_helper.postprocess(outputs_for_postprocess, contexts)
             print(f"postprocess: {result}")
         except Exception as exc:
             print(f"postprocess skipped: {exc!r}")
+            if isinstance(y, list):
+                print(f"raw_output_shapes: {_format_output_shape(y)}")
+            else:
+                cls_id = _extract_prediction_id(y, torch)
+                if labels and 0 <= cls_id < len(labels):
+                    print(f"pred: {labels[cls_id]} (id={cls_id})")
+                else:
+                    print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
+    else:
+        if isinstance(y, list):
+            print(f"raw_output_shapes: {_format_output_shape(y)}")
+        else:
             cls_id = _extract_prediction_id(y, torch)
             if labels and 0 <= cls_id < len(labels):
                 print(f"pred: {labels[cls_id]} (id={cls_id})")
             else:
                 print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
-    else:
-        cls_id = _extract_prediction_id(y, torch)
-        if labels and 0 <= cls_id < len(labels):
-            print(f"pred: {labels[cls_id]} (id={cls_id})")
-        else:
-            print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
-    print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
+    print(f"Avg latency: {np.mean(times):.3f} ms, shape={_format_output_shape(y)}")
     print(f"(engine={engine_path}, input={input_source}, device={args.device})")
 
     destroy_runtime(rh)
