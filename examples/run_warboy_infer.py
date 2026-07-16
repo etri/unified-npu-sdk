@@ -211,8 +211,12 @@ if __name__ == "__main__":
             batch = _load_image_batch(image_path, args.input_shape, np)
             input_source = str(image_path)
     else:
-        batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
-        input_source = f"synthetic zeros {args.input_shape}"
+        if model_helper is not None:
+            batch = np.zeros(args.input_shape, dtype=np.uint8)
+            input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo fallback)"
+        else:
+            batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
+            input_source = f"synthetic zeros float32 {args.input_shape}"
 
     # NOTE: quantized ENF 의 입력 dtype/layout 은 컴파일 시 고정된다(int8/uint8 인 경우가 많음).
     # 정확한 정합이 필요하면 Furiosa Model Zoo 의 preprocess 를 쓰거나 ONNX 입력 스펙에 맞춰야 한다.
