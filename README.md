@@ -221,23 +221,26 @@ python3 -c "import unified_sdk; from furiosa.runtime import sync; print('OK')"
 python3 examples/run_warboy_build.py --list-model-zoo
 python3 examples/run_warboy_build.py --model-name resnet50
 
-# 참고: 목록에 보이는 일부 detection/pose 계열 모델은 현재 이미지의 선택 의존성 조합에 따라
-# zoo 객체 import 단계에서 추가 Python 패키지를 요구할 수 있습니다.
+# 참고: 표준 fetch / plain ONNX quantization smoke 는 우선 `--list-model-zoo`에 보이는
+# 모델 계열을 기준으로 잡습니다. 목록 밖의 generic ONNX 는 현재 vendor quantizer 지원 범위에 따라
+# 실패할 수 있으므로 표준 smoke 대상으로 보지 않습니다.
 
 # 4-b) custom fetching smoke (provided .enf)
 python3 examples/run_warboy_build.py --enf models/resnet50.enf --model-name resnet50
 
 # 4-c-1) custom compile smoke: plain ONNX -> quantized ONNX -> .enf
+#        표준 기준은 `--list-model-zoo`에 보이는 모델 계열의 floating ONNX 입니다.
+#        아래 예시는 user-prepared `models/yolov5l.onnx`를 사용하는 경우입니다.
 #        quantization 단계는 calibration 이미지가 필요합니다.
 python3 examples/prepare_warboy_quantized_onnx.py \
   --source onnx \
-  --onnx models/yolov7.onnx \
-  --model-name yolov7 \
+  --onnx models/yolov5l.onnx \
+  --model-name yolov5l \
   --calib-image models/input.jpg
 
 python3 examples/run_warboy_build.py \
-  --from-onnx models/yolov7_quantized.onnx \
-  --model-name yolov7
+  --from-onnx models/yolov5l_quantized.onnx \
+  --model-name yolov5l
 
 # 4-c-2) custom compile smoke: PTH/PT -> ONNX export -> quantized ONNX -> .enf
 #        기본 내장 예제는 resnet50 이고, 다른 아키텍처는 --model-factory 로 복원 함수를 넘깁니다.
@@ -379,7 +382,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   컨테이너에서는 `torch`/`torchvision`을 같은 PyTorch wheel index에서 함께 설치한 이미지를 기준으로 검증합니다.
 - `models/` 디렉터리는 저장소에 포함되지 않을 수 있습니다(gitignore). 없으면 직접 만들면 됩니다.
 - plain ONNX 는 `prepare_warboy_quantized_onnx.py --source onnx --onnx ...` 로 quantized ONNX 를 먼저 준비한 뒤
-  `--from-onnx`로 넘깁니다.
+  `--from-onnx`로 넘깁니다. 이 경로의 표준 smoke 기준은 `--list-model-zoo`에 보이는 모델 계열이며,
+  그 밖의 generic ONNX 는 vendor quantizer 지원 범위에 따라 실패할 수 있습니다.
 - `.pth`/`.pt` 가중치 파일은 build 입력으로 직접 쓰지 않고, 필요하면 `prepare_warboy_quantized_onnx.py --source pth`
   로 quantized ONNX 를 먼저 준비한 뒤 `--from-onnx`로 넘깁니다. bare checkpoint만으로는 모델 구조를 복원할 수 없으므로,
   기본 예제 외 아키텍처는 `--model-factory package.module:callable` 같이 복원 함수를 함께 넘겨야 합니다.
