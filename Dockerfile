@@ -62,10 +62,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         -r /tmp/requirements.txt
 
 # 5) FuriosaAI SDK (Python): quantizer + runtime + Model Zoo
+#    별도 pip invocation 에서 furiosa-models 의존성 resolver 가 OpenCV 후보를 다시 backtracking 하지 않도록
+#    공용 requirements.txt 를 constraint 로 재사용한다.
 RUN --mount=type=cache,target=/root/.cache/pip \
     EXTRA_INDEX_ARG="" ; \
     if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
-    pip install --no-cache-dir ${EXTRA_INDEX_ARG} \
+    pip install --no-cache-dir ${EXTRA_INDEX_ARG} -c /tmp/requirements.txt \
         "furiosa-sdk[quantizer]==${FURIOSA_SDK_VERSION}" \
         "furiosa-models==${FURIOSA_SDK_VERSION}"
 
