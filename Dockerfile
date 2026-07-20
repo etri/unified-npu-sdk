@@ -21,6 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PIP_NO_INPUT=1 \
+    PIP_DEFAULT_TIMEOUT=300 \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PYTHONPATH=/workspace/unified-sdk/src
 
@@ -55,10 +56,10 @@ RUN mkdir -p /workspace/unified-sdk \
 #    torch/torchvision 을 같은 PyTorch index 에서 함께 설치해 ABI/ops mismatch 를 피한다.
 COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir \
+    pip install --no-cache-dir --retries 8 --timeout 300 \
         --index-url ${PYTORCH_INDEX_URL} \
         torch torchvision \
-    && pip install --no-cache-dir \
+    && pip install --no-cache-dir --retries 8 --timeout 300 \
         -r /tmp/requirements.txt
 
 # 5) FuriosaAI SDK (Python): quantizer + runtime + Model Zoo
@@ -67,14 +68,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     EXTRA_INDEX_ARG="" ; \
     if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
-    pip install --no-cache-dir ${EXTRA_INDEX_ARG} -c /tmp/requirements.txt \
+    pip install --no-cache-dir --retries 8 --timeout 300 ${EXTRA_INDEX_ARG} -c /tmp/requirements.txt \
         "furiosa-sdk[quantizer]==${FURIOSA_SDK_VERSION}" \
         "furiosa-models==${FURIOSA_SDK_VERSION}"
 
 # 6) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir . \
+    pip install --no-cache-dir --retries 8 --timeout 300 . \
     && rm -f /tmp/requirements.txt
 
 CMD ["/bin/bash"]
