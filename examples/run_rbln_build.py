@@ -4,18 +4,12 @@ from pathlib import Path
 import sys
 import os
 
+
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
 
 
 def _resolve_repo_root() -> Path:
-    """
-    기준:
-      1) 환경 변수 UNIFIED_SDK_REPO_ROOT 가 있으면 우선 사용
-      2) 현재 작업 디렉터리가 repo root 구조면 그걸 사용
-      3) 현재 파일 위치(.../examples/run_rbln_build.py) 기준으로 checkout root 추론
-      4) 마지막 fallback 으로 알려진 컨테이너 경로를 확인
-    """
     env_root = os.getenv("UNIFIED_SDK_REPO_ROOT")
     if env_root:
         candidate = Path(env_root).resolve()
@@ -49,9 +43,16 @@ try:
 except ImportError:
     print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
     sys.exit(1)
-EXAMPLES_DIR = REPO_ROOT / "examples"
+
 MODELS_DIR = REPO_ROOT / "models"
 BUILDS_DIR = REPO_ROOT / "builds"
+
+_MODEL_ZOO_TARGETS = {
+    "resnet50": {
+        "symbol": "torchvision.models.resnet50",
+        "note": "official RBLN PyTorch ResNet50 tutorial baseline",
+    },
+}
 
 
 def _parse_shape(value: str) -> tuple[int, ...]:
@@ -72,16 +73,23 @@ def _parse_bucketing_shapes(value: str | None) -> list[tuple[int, ...]] | None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Compile torchvision ResNet50 to an RBLN model.")
-    parser.add_argument("--weights", type=Path, default=None, help="Path to resnet50 .pth/.pt weights.")
-    parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find weights.")
-    parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="Directory for compiled .rbln output.")
-    parser.add_argument("--model-name", default="resnet50", help="Output model name without extension.")
-    parser.add_argument(
-        "--require-weights",
-        action="store_true",
-        help="Fail if no local ResNet50 weights are found. Default smoke mode uses random weights.",
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build/fetch an RBLN vision artifact. Supports official tutorial/model-zoo-style "
+            "ResNet50 compile, provided .rbln fetch, PTH/PT restore, and experimental ONNX restore."
+        )
     )
+    parser.add_argument("--list-model-zoo", action="store_true", help="Print supported RBLN model-zoo reference targets and exit.")
+    parser.add_argument("--model-zoo-model", default=None, help="Reference model-zoo target name, e.g. resnet50.")
+    parser.add_argument("--pretrained", action="store_true", help="Use pretrained torchvision weights for the selected model-zoo target.")
+    parser.add_argument("--weights", type=Path, default=None, help="Legacy alias for --from-pth.")
+    parser.add_argument("--from-pth", type=Path, default=None, help="Compile from a local .pth/.pt checkpoint by restoring a torchvision model.")
+    parser.add_argument("--from-onnx", type=Path, default=None, help="Experimental: restore a torch model from ONNX and compile to .rbln.")
+    parser.add_argument("--rbln", type=Path, default=None, help="Fetch a precompiled .rbln from a local path into the build output directory.")
+    parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find local model/checkpoint files.")
+    parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="Directory for compiled/fetched .rbln output.")
+    parser.add_argument("--model-name", default="resnet50", help="Output model name without extension.")
+    parser.add_argument("--require-weights", action="store_true", help="Fail if no local ResNet50 weights are found for checkpoint-based build.")
     parser.add_argument("--precision", choices=("fp32", "fp16"), default="fp32")
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
@@ -100,20 +108,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _check_repo_layout(models_dir: Path, out_dir: Path):
-    missing = []
-    if not EXAMPLES_DIR.is_dir():
-        missing.append(str(EXAMPLES_DIR))
-
+def _check_repo_layout(models_dir: Path, out_dir: Path) -> None:
     models_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    if missing:
-        raise FileNotFoundError(
-            "필수 폴더가 없습니다:\n"
-            + "\n".join(f"- {p}" for p in missing)
-            + f"\n\n(현재 기준 REPO_ROOT = {REPO_ROOT})"
-        )
 
 
 def _find_weights(models_dir: Path) -> Path | None:
@@ -144,40 +141,100 @@ def _load_state_dict(path: Path, torch_module) -> dict:
     return cleaned
 
 
+def _build_torchvision_resnet50(*, pretrained: bool):
+    import torch
+    from torchvision.models import ResNet50_Weights, resnet50
+
+    weights = ResNet50_Weights.IMAGENET1K_V2 if pretrained else None
+    model = resnet50(weights=weights)
+    model.eval()
+    return model
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
-    try:
-        import torch
-        from torchvision.models import resnet50
-    except ImportError:
-        print("Error: 'torch' and 'torchvision' are required for the RBLN build example.")
-        sys.exit(1)
+    selected_modes = sum(
+        1
+        for value in (
+            bool(args.rbln),
+            bool(args.from_onnx),
+            bool(args.from_pth or args.weights),
+            bool((args.model_zoo_model or "").strip()),
+        )
+        if value
+    )
+    if selected_modes > 1:
+        raise SystemExit(
+            "Choose only one build source at a time: "
+            "--rbln, --from-onnx, --from-pth/--weights, or --model-zoo-model."
+        )
+
+    if args.list_model_zoo:
+        print("== Supported RBLN model-zoo reference targets ==")
+        for key, value in sorted(_MODEL_ZOO_TARGETS.items()):
+            print(f"{key}: {value['symbol']} ({value['note']})")
+        raise SystemExit(0)
 
     models_dir = args.models_dir.expanduser().resolve()
     out_dir = args.out_dir.expanduser().resolve()
-
     _check_repo_layout(models_dir, out_dir)
 
-    weights_path = args.weights.expanduser().resolve() if args.weights else _find_weights(models_dir)
-    if args.require_weights and weights_path is None:
-        raise FileNotFoundError(
-            f"{models_dir} 에서 resnet50 가중치 파일을 찾지 못했습니다.\n"
-            f"예) {models_dir/'resnet50.pth'} 또는 {models_dir/'resnet50_state_dict.pth'}"
-        )
-    if weights_path is not None and not weights_path.is_file():
-        raise FileNotFoundError(f"weights file not found: {weights_path}")
-
-    # 기본 smoke는 외부 다운로드 없이 ResNet50 random weight 모델로 컴파일 경로를 검증합니다.
-    model = resnet50(weights=None)
+    weights_path = args.from_pth or args.weights
     if weights_path is not None:
-        sd = _load_state_dict(weights_path, torch)
-        model.load_state_dict(sd, strict=False)
-    model.eval()
+        weights_path = weights_path.expanduser().resolve()
+
+    build_input = None
+    source_note = ""
+
+    if args.rbln:
+        build_input = str(args.rbln.expanduser().resolve())
+        source_note = f"provided .rbln fetch: {build_input}"
+    elif args.from_onnx:
+        build_input = str(args.from_onnx.expanduser().resolve())
+        source_note = f"experimental ONNX restore -> .rbln: {build_input}"
+    else:
+        try:
+            import torch
+        except ImportError:
+            print("Error: 'torch' is required for RBLN build example.")
+            sys.exit(1)
+
+        model_zoo_target = (args.model_zoo_model or "").strip().lower()
+        if model_zoo_target:
+            if model_zoo_target not in _MODEL_ZOO_TARGETS:
+                raise SystemExit(
+                    f"Unsupported model-zoo target: {args.model_zoo_model!r}. "
+                    f"Try one of: {', '.join(sorted(_MODEL_ZOO_TARGETS))}"
+                )
+            if model_zoo_target == "resnet50":
+                build_input = _build_torchvision_resnet50(pretrained=args.pretrained)
+                source_note = (
+                    "official RBLN model-zoo/tutorial reference: torchvision ResNet50 pretrained"
+                    if args.pretrained
+                    else "official RBLN model-zoo/tutorial reference: torchvision ResNet50 local/random-init"
+                )
+        else:
+            # 3-b) user PTH/PT -> torch restore -> .rbln
+            if weights_path is None:
+                weights_path = _find_weights(models_dir)
+            if args.require_weights and weights_path is None:
+                raise FileNotFoundError(
+                    f"{models_dir} 에서 resnet50 가중치 파일을 찾지 못했습니다.\n"
+                    f"예) {models_dir/'resnet50.pth'} 또는 {models_dir/'resnet50_state_dict.pth'}"
+                )
+
+            build_input = _build_torchvision_resnet50(pretrained=False)
+            if weights_path is not None:
+                sd = _load_state_dict(weights_path, torch)
+                build_input.load_state_dict(sd, strict=False)
+                source_note = f"user PTH/PT -> torch restore -> .rbln: {weights_path}"
+            else:
+                source_note = "local torchvision ResNet50 random-init -> .rbln"
 
     cfg = BuildConfig(
         backend="rbln",
-        model_or_path=model,
+        model_or_path=build_input,
         out_dir=str(out_dir),
         model_name=args.model_name,
         precision=args.precision,
@@ -197,4 +254,4 @@ if __name__ == "__main__":
     result = build_unified(cfg)
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
-    print(f"(weights={weights_path if weights_path else 'random-init smoke'})")
+    print(f"(source={source_note})")

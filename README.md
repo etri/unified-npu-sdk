@@ -3,7 +3,8 @@
 이 체크아웃(`rbln-only` 브랜치)은 **Rebellions(RBLN) NPU 전용**으로 단일 백엔드만 노출합니다.
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 RBLN 1종으로 좁힌 버전입니다.
 
-`main`의 멀티 백엔드(TRT + RBLN) 코드와 동일한 API 표면을 갖되, `trt-only`와 동일한 단일-백엔드 패턴을 따릅니다.
+`main`의 멀티 백엔드(TRT + RBLN) 코드와 동일한 기본 골격을 갖되, 이 브랜치에서는
+**vision direct-python compiler/runtime** 와 **LLM high-level serving wrapper** 를 함께 다룹니다.
 
 ---
 
@@ -30,22 +31,27 @@
 ├── .secrets/                       # (gitignore) Rebellions SDK 인증
 │   └── netrc                       # 사용자가 직접 생성
 ├── examples/
-│   ├── run_rbln_build.py           # torchvision resnet50 → .rbln 컴파일
+│   ├── run_rbln_build.py           # model-zoo reference / provided .rbln / PTH / ONNX -> .rbln
 │   ├── run_rbln_infer.py           # .rbln 모델 추론
 │   └── inspect_rbln_model.py       # .rbln 입출력 메타 확인
+│   ├── run_rbln_llm_build.py       # model id/local path fetch or optimum-rbln compile
+│   ├── run_rbln_llm_infer.py       # LLM generate (vllm-rbln wrapped)
+│   └── inspect_rbln_llm_model.py   # LLM model/precompiled dir inspect
 └── src/unified_sdk/
     ├── __init__.py
     ├── types.py                    # 공통 데이터 구조 (RBLN 슬림화)
     ├── build/
     │   ├── __init__.py
-    │   ├── api.py                  # build_unified
+    │   ├── api.py                  # build_unified / build_unified_LLM
     │   ├── registry.py
     │   └── rbln_build.py           # RBLN 빌드 어댑터
+    │   └── rbln_llm_build.py       # RBLN LLM 빌드 어댑터 (optimum-rbln)
     └── runtime/
         ├── __init__.py
-        ├── api.py                  # create_runtime / infer / destroy_runtime
+        ├── api.py                  # create_runtime / infer / destroy_runtime / create_runtime_LLM / generate_LLM
         ├── registry.py
         └── rbln_runtime.py         # RBLN 런타임 어댑터
+        └── rbln_llm_runtime.py     # RBLN LLM 런타임 어댑터 (vllm-rbln)
 ```
 
 ---
@@ -220,7 +226,8 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py
 
 아래 흐름은 **RBLN 장치가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `rbln-only`
 백엔드를 검증하는 표준 smoke 절차입니다. 추가 wrapper 계층 없이 Unified SDK의
-RBLN adapter가 vendor SDK(`rebel`)를 직접 호출합니다.
+RBLN adapter가 vendor SDK(`rebel`)를 직접 호출합니다. LLM track은 추가로
+`optimum-rbln` / `vllm-rbln` 설치가 필요하며, 아래 vision smoke 뒤에 별도 실행합니다.
 
 ```bash
 # 1) 이미지 빌드
@@ -234,15 +241,47 @@ python3 -c "import unified_sdk, rebel; print('OK')"
 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
-# 4) ResNet50 -> .rbln 컴파일
-#    기본 smoke는 외부 weight 없이 ResNet50 random-init 모델로 컴파일 경로를 검증합니다.
+# 4) vision 표준 fetching smoke: official model-zoo/tutorial baseline
+python3 examples/run_rbln_build.py --list-model-zoo
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --model-zoo-model resnet50 \
+  --pretrained \
   --model-name resnet50 \
   --precision fp32 \
   --input-shape 1,3,224,224 \
   --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
-# 5) .rbln 추론
+# 5) vision custom fetching smoke: provided .rbln
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --rbln builds/resnet50.rbln \
+  --model-name resnet50
+
+# 6) vision custom compile smoke
+# 6-a) torchvision pretrained/local model -> .rbln
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --model-zoo-model resnet50 \
+  --model-name resnet50_local \
+  --precision fp32 \
+  --input-shape 1,3,224,224 \
+  --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
+
+# 6-b) user PTH/PT -> torch restore -> .rbln
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --from-pth models/resnet50.pth \
+  --model-name resnet50_pth \
+  --precision fp32 \
+  --input-shape 1,3,224,224 \
+  --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
+
+# 6-c) experimental ONNX -> torch restore -> .rbln
+RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
+  --from-onnx models/resnet50.onnx \
+  --model-name resnet50_onnx \
+  --precision fp32 \
+  --input-shape 1,3,224,224 \
+  --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
+
+# 7) .rbln 추론
 #    tests/input.jpg가 없으면 synthetic zeros 입력으로 런타임 경로를 검증합니다.
 RBLN_DEVICES=0 python3 examples/run_rbln_infer.py \
   --engine-path builds/resnet50.rbln \
@@ -250,8 +289,39 @@ RBLN_DEVICES=0 python3 examples/run_rbln_infer.py \
   --tensor-type pt \
   --iters 50
 
-# 6) 모델 메타 best-effort 확인
+# 8) 모델 메타 best-effort 확인
 python3 examples/inspect_rbln_model.py builds/resnet50.rbln --device 0
+
+# ---- LLM track (optional packages required) ----
+# pip install --extra-index-url https://pypi.rbln.ai/simple optimum-rbln
+# pip install --extra-index-url https://wheels.vllm.ai/0.22.0/cpu \
+#            --extra-index-url https://download.pytorch.org/whl/cpu vllm-rbln==0.11.0
+
+# 1) (LLM) model id -> generate
+python3 examples/run_rbln_llm_build.py \
+  --model meta-llama/Llama-3.2-1B \
+  --build-mode fetch
+python3 examples/run_rbln_llm_infer.py \
+  --engine-path meta-llama/Llama-3.2-1B \
+  --prompt "What is the capital of South Korea?"
+
+# 2) (LLM) local model path + compatible precompiled RBLN artifact -> generate
+python3 examples/run_rbln_llm_infer.py \
+  --engine-path artifacts/llama32_1b_rbln \
+  --prompt "What is the capital of South Korea?"
+python3 examples/inspect_rbln_llm_model.py artifacts/llama32_1b_rbln
+
+# 3) (LLM) local model path -> optimum-rbln compile -> generate
+python3 examples/run_rbln_llm_build.py \
+  --model meta-llama/Llama-3.2-1B \
+  --build-mode optimum_compile \
+  --model-name llama32_1b_rbln \
+  --max-model-len 512 \
+  --num-devices 1
+python3 examples/run_rbln_llm_infer.py \
+  --engine-path artifacts/llama32_1b_rbln \
+  --prompt "What is the capital of South Korea?"
+python3 examples/inspect_rbln_llm_model.py artifacts/llama32_1b_rbln --load
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
@@ -260,6 +330,21 @@ python3 examples/inspect_rbln_model.py builds/resnet50.rbln --device 0
 ---
 
 ## 🚀 사용 예시
+
+### API 대응
+
+`rbln-only`는 vision 트랙과 LLM 트랙을 모두 노출합니다.
+
+| 용도 | 단계 | Unified SDK | 내부 vendor |
+| --- | --- | --- | --- |
+| Vision `.rbln` | 빌드 | `build_unified(cfg)` | `rebel.compile_from_torch(...)` 또는 experimental `onnx2torch -> compile_from_torch(...)` 또는 provided `.rbln` 복사 |
+| Vision `.rbln` | 생성 | `create_runtime(cfg)` | `rebel.Runtime(str(path), device=..., tensor_type=...)` |
+| Vision `.rbln` | 추론 | `infer(rh, input_array)` | `runtime(input_array)` |
+| Vision `.rbln` | 종료 | `destroy_runtime(rh)` | `RuntimeHandle.ctx.clear()` |
+| LLM | 빌드 | `build_unified_LLM(cfg)` | `optimum.rbln.RBLNAutoModelForCausalLM.from_pretrained(..., export=True)` 또는 model ref fetch |
+| LLM | 생성 | `create_runtime_LLM(cfg)` | `vllm.LLM(model=..., tensor_parallel_size=..., max_model_len=...)` |
+| LLM | 추론 | `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
+| LLM | 종료 | `destroy_runtime_LLM(rh)` | best-effort release of vLLM runtime handle |
 
 ### 컴파일 (.rbln 생성)
 

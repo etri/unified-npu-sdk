@@ -1,3 +1,7 @@
 numpy
 torch
 torchvision
+onnx
+onnx2torch
+transformers
+huggingface_hub

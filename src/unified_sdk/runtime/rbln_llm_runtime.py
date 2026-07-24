@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict, List
+
+from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle
+
+
+_CAPABILITY_FAMILY = "llm.high-level-generation-runtime"
+_RUNTIME_PIPELINE = (
+    "validate_runtime_config",
+    "select_runtime_impl",
+    "load_vendor_llm",
+    "resolve_sampling_params",
+    "run_text_generation",
+    "extract_text",
+    "destroy_runtime",
+)
+_VENDOR_API_MAP = {
+    "create_runtime_LLM": "vllm.LLM(model=..., tensor_parallel_size=..., max_model_len=..., ...)",
+    "sampling": "vllm.SamplingParams(**params)",
+    "generate_LLM": "llm.generate(prompts, sampling_params)",
+    "destroy_runtime_LLM": "best-effort release of runtime handle",
+}
+_VENDOR_TO_UNIFIED_API_MAP = {
+    "vllm.LLM(model=..., tensor_parallel_size=..., max_model_len=..., ...)": "create_runtime_LLM(cfg)",
+    "vllm.SamplingParams(**params)": "generate_LLM(rh, prompt, **overrides)",
+    "llm.generate(prompts, sampling_params)": "generate_LLM(rh, prompt, **overrides)",
+}
+
+_SAMPLING_KEYS = ("max_tokens", "temperature", "top_p", "top_k", "min_tokens")
+
+
+def describe_api_mapping() -> Dict[str, Any]:
+    return {
+        "unified_api": {
+            "create": "create_runtime_LLM(cfg)",
+            "generate": "generate_LLM(rh, prompt, **overrides)",
+            "infer": "infer_LLM(rh, prompt, **overrides)",
+            "destroy": "destroy_runtime_LLM(rh)",
+        },
+        "backend": "rbln",
+        "capability_family": _CAPABILITY_FAMILY,
+        "mapping_direction": "vendor_api ==> unified_api",
+        "pipeline": _RUNTIME_PIPELINE,
+        "vendor_api_map": _VENDOR_API_MAP,
+        "vendor_to_unified_api_map": _VENDOR_TO_UNIFIED_API_MAP,
+    }
+
+
+def _extract_text(output: Any) -> str:
+    outputs = getattr(output, "outputs", None)
+    if outputs:
+        text = getattr(outputs[0], "text", None)
+        if text is not None:
+            return text
+    text = getattr(output, "text", None)
+    if text is not None:
+        return text
+    return str(output)
+
+
+def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
+    if cfg.backend != "rbln":
+        raise ValueError(f"RBLN LLM runtime adapter received backend={cfg.backend!r}")
+
+    extra = dict(cfg.extra or {})
+    runtime_impl = str(extra.get("runtime_impl", "vllm")).strip().lower()
+    if runtime_impl != "vllm":
+        raise ValueError(
+            "Currently supported RBLN LLM runtime_impl is only 'vllm'. "
+            "Use extra={'runtime_impl': 'vllm'} or omit the option."
+        )
+
+    try:
+        from vllm import LLM
+    except Exception as exc:
+        raise RuntimeError(
+            "vllm-rbln is required for RBLN LLM runtime smoke. "
+            "Install vllm-rbln first (see docs.rbln.ai)."
+        ) from exc
+
+    engine = str(cfg.engine_path)
+    llm_kwargs: Dict[str, Any] = {
+        "model": engine,
+        "tensor_parallel_size": cfg.tensor_parallel_size,
+        "max_model_len": cfg.max_model_len,
+    }
+    if "trust_remote_code" in extra:
+        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
+    if "block_size" in extra and extra["block_size"] is not None:
+        llm_kwargs["block_size"] = int(extra["block_size"])
+    if "enforce_eager" in extra:
+        llm_kwargs["enforce_eager"] = bool(extra["enforce_eager"])
+    if "dtype" in extra and extra["dtype"]:
+        llm_kwargs["dtype"] = str(extra["dtype"])
+    if "gpu_memory_utilization" in extra and extra["gpu_memory_utilization"] is not None:
+        llm_kwargs["gpu_memory_utilization"] = float(extra["gpu_memory_utilization"])
+    if "additional_config" in extra and isinstance(extra["additional_config"], dict):
+        llm_kwargs["additional_config"] = dict(extra["additional_config"])
+
+    try:
+        llm = LLM(**llm_kwargs)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to create RBLN LLM runtime for {engine!r}: {exc}") from exc
+
+    sampling_defaults = {
+        "max_tokens": cfg.max_tokens,
+        "temperature": cfg.temperature,
+        "top_p": cfg.top_p,
+        "top_k": cfg.top_k,
+        "min_tokens": cfg.min_tokens,
+    }
+
+    return LLMRuntimeHandle(
+        backend="rbln",
+        engine_path=engine,
+        ctx={
+            "llm": llm,
+            "runtime_impl": runtime_impl,
+            "sampling_defaults": sampling_defaults,
+            "extra": extra,
+            "capability_family": _CAPABILITY_FAMILY,
+            "runtime_pipeline": _RUNTIME_PIPELINE,
+            "vendor_api_map": _VENDOR_API_MAP,
+            "llm_kwargs": llm_kwargs,
+        },
+    )
+
+
+def generate_llm(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
+    if not rh.ctx or "llm" not in rh.ctx:
+        raise RuntimeError("RBLN LLM RuntimeHandle is closed or invalid")
+
+    llm = rh.ctx["llm"]
+    params = dict(rh.ctx.get("sampling_defaults", {}))
+    for key, value in overrides.items():
+        if key in _SAMPLING_KEYS and value is not None:
+            params[key] = value
+
+    try:
+        from vllm import SamplingParams
+    except Exception as exc:
+        raise RuntimeError("vllm-rbln SamplingParams is not available") from exc
+
+    sampling = SamplingParams(**params)
+    single = isinstance(prompt, str)
+    prompts = [prompt] if single else list(prompt)
+    if not prompts:
+        raise ValueError("prompt must be a non-empty string or list of strings")
+
+    try:
+        outputs = llm.generate(prompts, sampling)
+    except Exception as exc:
+        raise RuntimeError(f"RBLN LLM generate failed: {exc}") from exc
+
+    texts = [_extract_text(item) for item in outputs]
+    return texts[0] if single else texts
+
+
+def destroy_llm(rh: LLMRuntimeHandle) -> None:
+    llm = rh.ctx.get("llm") if rh.ctx else None
+    if llm is not None:
+        for attr in ("llm_engine", "engine"):
+            engine = getattr(llm, attr, None)
+            shutdown = getattr(engine, "shutdown", None)
+            if callable(shutdown):
+                try:
+                    shutdown()
+                except Exception:
+                    pass
+                break
+    rh.ctx.clear()
