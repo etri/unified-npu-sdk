@@ -133,8 +133,8 @@ docker version
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-`./build.sh`는 `torch`와 `torchvision`을 같은 CPU wheel index에서 함께 설치하고, `opencv-python-headless==4.12.0.88`
-도 미리 고정한 뒤, `warboy-jammy` APT suite와
+`./build.sh`는 `torch`와 `torchvision`을 같은 CPU wheel index에서 함께 설치하고, `numpy==1.24.4`,
+`opencv-python-headless==4.10.0.84`도 미리 고정한 뒤, `warboy-jammy` APT suite와
 `furiosa-runtime`, `furiosa-optimizer`, `furiosa-quantizer`, `furiosa-models` 등
 이 브랜치가 실제로 사용하는 Furiosa Python 패키지를 `0.10.2` 축으로 이미지에 설치합니다. Furiosa pip 인덱스가
 따로 필요하면 `FURIOSA_PIP_INDEX=... ./build.sh` 또는 `./build.sh --furiosa-pip-index <url>`로 지정합니다.
