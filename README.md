@@ -239,7 +239,7 @@ furiosa-smi info || true
 python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; print('OK')"
 fxb --help || true
 
-# 4-A) 표준 smoke: model id -> generate
+# 1) 표준 fetching smoke: vendor/HF model id -> generate
 python3 examples/run_rngd_build.py --model furiosa-ai/Qwen2.5-0.5B-Instruct
 python3 examples/run_rngd_infer.py \
   --engine-path furiosa-ai/Qwen2.5-0.5B-Instruct \
@@ -247,7 +247,7 @@ python3 examples/run_rngd_infer.py \
   --chat
 python3 examples/inspect_rngd_model.py furiosa-ai/Qwen2.5-0.5B-Instruct
 
-# 4-B) custom runtime smoke: local model path + explicit compatible FXB -> generate
+# 2) custom fetching smoke: local model path + explicit compatible FXB -> generate
 python3 examples/prepare_rngd_local_model.py \
   --model Qwen/Qwen3-8B-FP8
 python3 examples/prepare_rngd_compatible_fxb.py \
@@ -263,15 +263,18 @@ python3 examples/run_rngd_infer.py \
 python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
   --fxb-path /root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb
 
-# 4-C) custom build smoke (vendor/toolchain 상태에 따라 실패 가능)
-#      예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
-#      `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
-#      이 경로는 Dockerfile 의 build toolchain 변경이 반영된 이미지를 전제로 합니다.
+# 3) custom build smoke: local model path -> fxb build -> generate
+#    주의: 이 브랜치의 compile 기준은 ONNX/PTH 가 아니라 FXB build 입니다.
+#    예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
+#    `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
+#    이 경로는 Dockerfile 의 build toolchain 변경이 반영된 이미지를 전제로 합니다.
+#    FuriosaAI 답변(2026-07-14) 기준 Qwen3-8B-FP8 는 TP=1 이 지원되지 않으며,
+#    RNGD 1장 smoke 는 TP=8 을 권장합니다.
 python3 examples/run_rngd_build.py \
   --model models/Qwen3-8B-FP8 \
   --fxb-build \
   --model-name qwen3_8b_fp8 \
-  --tensor-parallel-size 1
+  --tensor-parallel-size 8
 python3 examples/run_rngd_infer.py \
   --engine-path models/Qwen3-8B-FP8 \
   --fxb-path artifacts/qwen3_8b_fp8.fxb \
@@ -279,6 +282,10 @@ python3 examples/run_rngd_infer.py \
   --chat
 python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
   --fxb-path artifacts/qwen3_8b_fp8.fxb
+
+# 4) vendor model inference smoke 는 위 1)~3) 예제의 run_rngd_infer.py 단계가 해당합니다.
+
+# 5) model inspect smoke 는 위 1)~3) 예제의 inspect_rngd_model.py 단계가 해당합니다.
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
@@ -305,7 +312,7 @@ cfg = BuildConfig(
     model_or_path="models/Qwen3-8B-FP8",
     out_dir="artifacts",
     model_name="qwen3_8b_fp8",
-    tensor_parallel_size=1,
+    tensor_parallel_size=8,
     extra={"build_mode": "fxb_build"},
 )
 result = build_unified(cfg)
@@ -362,11 +369,16 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 RNGD(LLM) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - RNGD는 **LLM 스택**이라 `runtime.infer`가 텍스트 생성(프롬프트 → 텍스트)입니다. numpy 추론이 아닙니다.
   가독성을 위해 `generate`를 `infer`의 별칭으로 제공합니다.
-- 표준 smoke 는 **model id -> generate** 입니다. 공식 quick start 도 이 경로를 기준으로 합니다.
-- custom runtime smoke 는 **local model path + explicit compatible FXB -> LLM(..., fxb=...) -> generate** 입니다.
-- custom build smoke 는 **local model path -> fxb build -> LLM(..., fxb=...) -> generate** 입니다.
+- 이 브랜치의 smoke 구조는 LLM 전용이라 vision 브랜치와 다릅니다.
+- 1) 표준 fetching smoke 는 **model id -> generate** 입니다. 공식 quick start 도 이 경로를 기준으로 합니다.
+- 2) custom fetching smoke 는 **local model path + explicit compatible FXB -> LLM(..., fxb=...) -> generate** 입니다.
+- 3) custom build smoke 는 **local model path -> fxb build -> LLM(..., fxb=...) -> generate** 입니다.
+- 4) infer smoke 는 `run_rngd_infer.py` 가 담당합니다.
+- 5) inspect smoke 는 `inspect_rngd_model.py` 가 담당합니다.
+- ONNX -> vendor model, PTH/PT -> ONNX -> vendor model 경로는 현재 `furiosa-llm`의 공식 smoke 기준이 아니며, 이 브랜치도 이를 직접 래핑하지 않습니다.
 - custom smoke 에서는 `furiosa-ai/...` prebuilt artifact repo 대신 upstream/raw model snapshot 을 사용해야 합니다.
 - 현재 custom smoke 예시는 Furiosa 공식 FXB 문서의 `Qwen/Qwen3-8B-FP8` / `furiosa-ai/Qwen3-8B-FP8` 예시를 따릅니다.
+- FuriosaAI 답변(2026-07-14) 기준 `Qwen3-8B-FP8`의 `fxb build`는 TP=1 이 아니라 TP=8 (RNGD 1장) 사용이 권장됩니다.
 - custom local model 은 repo 내부 `models/` 같은 gitignored 경로에 별도 준비해야 합니다. 저장소에는 포함되지 않습니다.
 - `examples/prepare_rngd_local_model.py`는 custom smoke 전용 local snapshot 준비 예제입니다.
 - `examples/prepare_rngd_compatible_fxb.py`는 compatible prebuilt FXB를 cache에 내려받고 추천 경로를 확인하는 예제입니다.
