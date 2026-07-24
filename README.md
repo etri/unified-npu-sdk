@@ -266,6 +266,22 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
 #   2) Docker 안에서 안정적으로 확인 가능한 경로는 5) provided .rbln fetch -> 7) infer -> 8) inspect
 #   3) host native compile은 필요 시 원인 분리용 임시 우회일 뿐, branch의 기본 smoke 기준은 아님
 # 으로 해석합니다. 관련 vendor 문의는 진행 중입니다.
+#
+# 참고: 필요 시 host native 환경에서 원인 분리용 compile만 따로 시도할 수 있습니다.
+# 아래는 branch 기본 smoke 절차가 아니라, container compile 이슈 비교용 예시입니다.
+#
+# Host native debug example (not the primary Docker-first smoke path):
+#   python3 examples/run_rbln_build.py \
+#     --model-zoo-model resnet50 \
+#     --pretrained \
+#     --model-name resnet50
+#
+#   python3 examples/run_rbln_build.py \
+#     --from-pth models/resnet50.pth \
+#     --model-name resnet50_pth \
+#     --precision fp32 \
+#     --input-shape 1,3,224,224 \
+#     --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
 # 6) vision custom compile smoke
 
