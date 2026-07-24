@@ -303,6 +303,17 @@ python3 examples/run_warboy_infer.py \
 
 ## 🚀 사용 예시
 
+### API 대응
+
+`furiosa-only`는 Warboy vision 브랜치이므로 public API는 vision 기준으로 유지합니다.
+
+| 용도 | 단계 | Unified SDK | 내부 vendor |
+| --- | --- | --- | --- |
+| Vision `.enf` | 빌드 | `build_unified(cfg)` | provided `.enf` 복사 또는 `furiosa-compiler <quantized_onnx> -o <enf>` |
+| Vision `.enf` | 생성 | `create_runtime(cfg)` | `furiosa.runtime.sync.create_runner(str(enf_path), device=...)` |
+| Vision `.enf` | 추론 | `infer(rh, input_array)` | `runner.run([input_array])` |
+| Vision `.enf` | 종료 | `destroy_runtime(rh)` | `runner.close()` / `runner.__exit__(...)` best-effort |
+
 ### 컴파일 (.enf 생성)
 
 ```python
