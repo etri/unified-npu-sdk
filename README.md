@@ -243,7 +243,7 @@ fxb --help || true
 python3 examples/run_rngd_build.py --model furiosa-ai/Qwen2.5-0.5B-Instruct
 python3 examples/run_rngd_infer.py \
   --engine-path furiosa-ai/Qwen2.5-0.5B-Instruct \
-  --prompt "What is the capital of France?" \
+  --prompt "What is the capital of South Korea?" \
   --chat
 python3 examples/inspect_rngd_model.py furiosa-ai/Qwen2.5-0.5B-Instruct
 
@@ -258,7 +258,7 @@ python3 examples/prepare_rngd_compatible_fxb.py \
 python3 examples/run_rngd_infer.py \
   --engine-path models/Qwen3-8B-FP8 \
   --fxb-path /root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb \
-  --prompt "What is the capital of France?" \
+  --prompt "What is the capital of South Korea?" \
   --chat
 python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
   --fxb-path /root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb
@@ -278,7 +278,7 @@ python3 examples/run_rngd_build.py \
 python3 examples/run_rngd_infer.py \
   --engine-path models/Qwen3-8B-FP8 \
   --fxb-path artifacts/qwen3_8b_fp8.fxb \
-  --prompt "What is the capital of France?" \
+  --prompt "What is the capital of South Korea?" \
   --chat
 python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
   --fxb-path artifacts/qwen3_8b_fp8.fxb
@@ -345,7 +345,7 @@ cfg = RuntimeConfig(
     top_k=100,
 )
 rh = create_runtime_LLM(cfg)
-text = generate_LLM(rh, "What is the capital of France?")
+text = generate_LLM(rh, "What is the capital of South Korea?")
 print(text)
 destroy_runtime_LLM(rh)
 ```
@@ -361,7 +361,7 @@ cfg = RuntimeConfig(
     max_tokens=128,
 )
 rh = create_runtime_LLM(cfg)
-text = generate_LLM(rh, "What is the capital of France?")
+text = generate_LLM(rh, "What is the capital of South Korea?")
 print(text)
 destroy_runtime_LLM(rh)
 ```

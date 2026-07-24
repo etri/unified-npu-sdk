@@ -46,7 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="HF 모델 id 또는 로컬 모델 경로.")
     parser.add_argument("--fxb-path", default=None,
                         help="선택 기능: 명시적으로 사용할 FXB 파일 경로. custom smoke 에서 사용.")
-    parser.add_argument("--prompt", default="What is the capital of France?")
+    parser.add_argument("--prompt", default="What is the capital of South Korea?")
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", type=float, default=1.0)
