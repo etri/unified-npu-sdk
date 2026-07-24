@@ -84,6 +84,29 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
 
 
+def _dtype_to_numpy(data_type, np):
+    name = str(data_type).lower()
+    if "uint8" in name:
+        return np.uint8
+    if "int8" in name:
+        return np.int8
+    if "float16" in name:
+        return np.float16
+    return np.float32
+
+
+def _prepare_image_batch_for_dtype(img_hwc_uint8, np, np_dtype):
+    batch = np.ascontiguousarray(img_hwc_uint8)
+    if np_dtype in (np.uint8, np.int8):
+        return batch.astype(np_dtype, copy=False)
+
+    # float 입력 모델은 smoke 기준으로 torchvision ImageNet 표준 정규화를 적용한다.
+    batch = batch.astype(np_dtype) / np_dtype(255.0)
+    mean = np.asarray(IMAGENET_MEAN, dtype=np_dtype)
+    std = np.asarray(IMAGENET_STD, dtype=np_dtype)
+    return np.ascontiguousarray((batch - mean) / std)
+
+
 def _load_labels(labels_path: Path):
     if labels_path.is_file():
         labels = [l.strip() for l in labels_path.read_text().splitlines() if l.strip()]
@@ -143,24 +166,6 @@ if __name__ == "__main__":
     _check_files(engine_path)
     labels = _load_labels(labels_path)
 
-    # NOTE: 이 .mxq 는 qubee 컴파일 시 preprocess_dict(정규화 + CHW→HWC)를 모델에 포함한다.
-    # 따라서 runtime 에는 정규화하지 않은 원본 uint8 을 넘기고, 레이아웃 변환은
-    # to_mxq_input(arr, layout=...) 에 명시적으로 위임한다 (shape 추측 금지).
-    # (get_model_input_shape()=[(224,224,3)], get_model_input_data_type()=Uint8)
-    if image_path.is_file():
-        preprocess = transforms.Compose([
-            transforms.Resize(256, antialias=True),
-            transforms.CenterCrop(224),
-        ])
-        img = read_image(str(image_path))                 # [C,H,W], uint8
-        img = preprocess(img)                             # [3,224,224], uint8 유지
-        batch = to_mxq_input(img.numpy(), layout="chw")   # read_image 는 CHW -> HWC 로 변환
-        input_source = str(image_path)
-    else:
-        # 합성 입력은 이미 args.input_shape=(H,W,C) 이므로 layout='hwc' (변환 없음)
-        batch = to_mxq_input(torch.zeros(args.input_shape, dtype=torch.uint8).numpy(), layout="hwc")
-        input_source = f"synthetic zeros {args.input_shape}"
-
     cfg = RuntimeConfig(
         backend="qb",
         engine_path=str(engine_path),
@@ -175,6 +180,25 @@ if __name__ == "__main__":
     )
 
     rh = create_runtime(cfg)
+
+    model = rh.ctx.get("model")
+    input_dtype = getattr(model, "get_model_input_data_type", lambda: "Float32")()
+    np_dtype = _dtype_to_numpy(input_dtype, np)
+
+    if image_path.is_file():
+        preprocess = transforms.Compose([
+            transforms.Resize(256, antialias=True),
+            transforms.CenterCrop(224),
+        ])
+        img = read_image(str(image_path))                   # [C,H,W], uint8
+        img = preprocess(img)                               # [3,224,224], uint8 유지
+        batch_hwc = to_mxq_input(img.numpy(), layout="chw") # read_image 는 CHW -> HWC 로 변환
+        batch = _prepare_image_batch_for_dtype(batch_hwc, np, np_dtype)
+        input_source = f"{image_path} ({np_dtype.__name__})"
+    else:
+        # 합성 입력은 args.input_shape=(H,W,C) 기준으로 만들고, dtype 만 MXQ 메타에 맞춘다.
+        batch = np.zeros(args.input_shape, dtype=np_dtype)
+        input_source = f"synthetic zeros {args.input_shape} ({np_dtype.__name__})"
 
     x = batch
     _ = infer(rh, x)  # warmup
@@ -197,6 +221,6 @@ if __name__ == "__main__":
         print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
-    print(f"(engine={engine_path}, input={input_source}, core_mode={args.core_mode}, device={args.device})")
+    print(f"(engine={engine_path}, input={input_source}, core_mode={args.core_mode}, device={args.device}, input_dtype={input_dtype})")
 
     destroy_runtime(rh)
