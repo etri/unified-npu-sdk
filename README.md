@@ -260,12 +260,12 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
 # container 내부에서는 export / graph optimization 이후 RuntimeError로 실패할 수 있습니다.
 # 또한 `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 RBLN compiler backend를 사용하므로,
 # 동일 환경에서는 같은 종류의 compile 실패가 재현될 수 있습니다.
-# 이 경우 현재 branch 기준 권장 workflow는:
-#   1) 표준 fetching smoke는 optimum-rbln 경로를 우선 시도
-#   2) custom compile(6-a/6-b) 가 direct rebel.compile_from_torch(...)에 걸리면 host native 에서 .rbln compile
-#   3) container 에서는 host에서 생성한 .rbln을 5) fetch 경로로 artifact setup
-#   4) container 에서 infer / inspect
-# 입니다. 관련 vendor 문의는 진행 중입니다.
+# Unified SDK 관리 목적상 본 branch의 기준 workflow는 Docker-first 입니다.
+# 따라서 vendor 답변 전까지는:
+#   1) 4) 표준 fetching과 6) custom compile은 container compile known issue로 메모
+#   2) Docker 안에서 안정적으로 확인 가능한 경로는 5) provided .rbln fetch -> 7) infer -> 8) inspect
+#   3) host native compile은 필요 시 원인 분리용 임시 우회일 뿐, branch의 기본 smoke 기준은 아님
+# 으로 해석합니다. 관련 vendor 문의는 진행 중입니다.
 
 # 6) vision custom compile smoke
 
@@ -414,9 +414,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 RBLN 어댑터만 노출합니다. 다중 백엔드(TRT+RBLN)는 `main` 브랜치에서 사용하세요.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
 - 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
-- 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 compiler backend를 사용하므로 같은 종류의 compile failure가 재현될 수 있습니다. 반면 host에서 생성한 `.rbln`의 container inference는 정상 동작했습니다. 따라서 vendor 답변 전까지는:
-  `host native compile -> container provided .rbln fetch -> infer / inspect`
-  흐름을 실무 권장 우회 경로로 봅니다.
+- 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 compiler backend를 사용하므로 같은 종류의 compile failure가 재현될 수 있습니다. Unified SDK 관리 목적상 본 branch의 기준 흐름은 Docker-first로 두고, vendor 답변 전까지는 `4) 표준 fetching`과 `6) custom compile`을 container compile known issue로 메모합니다. 현재 Docker 안에서 안정적으로 확인 가능한 vision 경로는 `5) provided .rbln fetch -> 7) infer -> 8) inspect`입니다. `host native compile -> container provided .rbln fetch`는 필요 시 원인 분리용 임시 우회로만 봅니다.
 - 현재 README에서 `표준 fetching`은 **허브/model-zoo에서 원본 pretrained 모델을 받아 `./models` 아래에 준비하고, 이후 `.rbln` compile까지 이어지는 경로**를 뜻합니다. 반면 `provided .rbln fetch`는 이미 컴파일된 artifact를 직접 받아 셋업하는 별도 경로입니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
 - `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
