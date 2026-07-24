@@ -62,6 +62,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="*.mxq",
         help="snapshot 내부에서 찾을 MXQ glob 패턴 (기본: *.mxq)",
     )
+    parser.add_argument(
+        "--full-snapshot",
+        action="store_true",
+        help="generate preview에 필요한 모든 파일까지 받습니다 (느리지만 로컬 generate helper 성공 가능성이 높음).",
+    )
     return parser
 
 
@@ -107,11 +112,12 @@ if __name__ == "__main__":
     local_dir.parent.mkdir(parents=True, exist_ok=True)
     output_mxq.parent.mkdir(parents=True, exist_ok=True)
 
+    allow_patterns = None if args.full_snapshot else [args.pattern, "*.json", "*.md", "*.txt", "*.py"]
     snapshot_download(
         repo_id=args.model_id,
         local_dir=str(local_dir),
         local_dir_use_symlinks=False,
-        allow_patterns=[args.pattern, "*.json", "*.md", "*.txt"],
+        allow_patterns=allow_patterns,
     )
 
     mxq_path = _find_mxq(local_dir, args.pattern)
@@ -124,3 +130,4 @@ if __name__ == "__main__":
     print(f"(local_snapshot={local_dir})")
     print(f"(resolved_mxq={mxq_path})")
     print(f"(normalized_mxq={output_mxq})")
+    print(f"(full_snapshot={args.full_snapshot})")

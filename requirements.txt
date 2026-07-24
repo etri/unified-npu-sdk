@@ -3,3 +3,5 @@ onnx
 torch
 torchvision
 huggingface_hub
+transformers>=4.45,<4.47
+safetensors
