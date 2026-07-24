@@ -6,7 +6,7 @@
 `rbln-only`·`qb-only`·`furiosa-only`와 동일한 단일-백엔드 골격을 따르되, **RNGD는 LLM 스택**이라
 빌드/추론의 의미가 다릅니다. **공식 smoke 기준점은 `furiosa_llm.LLM` 기반 fetch + generate** 이며,
 custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합니다. 서빙은 **`furiosa_llm.LLM`**을 사용하며,
-`runtime.infer`는 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)**입니다(`generate` 별칭 제공).
+`infer_LLM`은 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)**입니다(`generate_LLM` 별칭 제공).
 (vision 워크로드인 Warboy는 `furiosa-only` 브랜치에서 다룹니다.)
 
 ---
@@ -46,7 +46,7 @@ custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합
     │   └── rngd_build.py           # RNGD 빌드 어댑터 (fetch 기본, 선택적 FXB build)
     └── runtime/
         ├── __init__.py
-        ├── api.py                  # create_runtime / infer / generate / destroy_runtime
+        ├── api.py                  # create_runtime_LLM / infer_LLM / generate_LLM / destroy_runtime_LLM
         ├── registry.py
         └── rngd_runtime.py         # RNGD 런타임 어댑터 (furiosa_llm.LLM / LLM(..., fxb=...))
 ```
@@ -319,11 +319,22 @@ result = build_unified(cfg)
 print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
 ```
 
+### Runtime API 분리
+
+`furiosa-llm-only`는 LLM 전용 브랜치이므로 runtime wrapping API도 LLM 기준으로 구분해 사용합니다.
+README와 smoke 예제는 아래 LLM API를 기준으로 설명합니다.
+
+| 용도 | 단계 | Unified SDK | 내부 vendor |
+| --- | --- | --- | --- |
+| LLM / FXB | 생성 | `create_runtime_LLM(cfg)` | `furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)` |
+| LLM / FXB | 추론 | `infer_LLM(rh, prompt, **overrides)` 또는 `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
+| LLM / FXB | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
+
 ### 텍스트 생성
 
 ```python
 from unified_sdk.types import RuntimeConfig
-from unified_sdk.runtime import create_runtime, generate, destroy_runtime
+from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
 
 cfg = RuntimeConfig(
     backend="rngd",
@@ -333,15 +344,15 @@ cfg = RuntimeConfig(
     top_p=0.3,
     top_k=100,
 )
-rh = create_runtime(cfg)
-text = generate(rh, "What is the capital of France?")   # infer 의 LLM 별칭
+rh = create_runtime_LLM(cfg)
+text = generate_LLM(rh, "What is the capital of France?")
 print(text)
-destroy_runtime(rh)
+destroy_runtime_LLM(rh)
 ```
 
 ```python
 from unified_sdk.types import RuntimeConfig
-from unified_sdk.runtime import create_runtime, generate, destroy_runtime
+from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
 
 cfg = RuntimeConfig(
     backend="rngd",
@@ -349,10 +360,10 @@ cfg = RuntimeConfig(
     fxb_path="/root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb",
     max_tokens=128,
 )
-rh = create_runtime(cfg)
-text = generate(rh, "What is the capital of France?")
+rh = create_runtime_LLM(cfg)
+text = generate_LLM(rh, "What is the capital of France?")
 print(text)
-destroy_runtime(rh)
+destroy_runtime_LLM(rh)
 ```
 
 ---
@@ -367,8 +378,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 ## 📌 참고
 
 - 본 체크아웃은 RNGD(LLM) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
-- RNGD는 **LLM 스택**이라 `runtime.infer`가 텍스트 생성(프롬프트 → 텍스트)입니다. numpy 추론이 아닙니다.
-  가독성을 위해 `generate`를 `infer`의 별칭으로 제공합니다.
+- RNGD는 **LLM 스택**이라 `infer_LLM`이 텍스트 생성(프롬프트 → 텍스트)입니다. numpy 추론이 아닙니다.
+- 이 브랜치의 권장 public API는 `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 입니다.
 - 이 브랜치의 smoke 구조는 LLM 전용이라 vision 브랜치와 다릅니다.
 - 1) 표준 fetching smoke 는 **model id -> generate** 입니다. 공식 quick start 도 이 경로를 기준으로 합니다.
 - 2) custom fetching smoke 는 **local model path + explicit compatible FXB -> LLM(..., fxb=...) -> generate** 입니다.
