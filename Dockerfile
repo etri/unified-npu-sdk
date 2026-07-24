@@ -32,21 +32,21 @@ WORKDIR /workspace/unified-sdk
 RUN mkdir -p /workspace/unified-sdk \
  && chown -R ${UID}:${GID} /workspace
 
-# 2) Python 의존성 (vision + LLM)
+# 2) Python 의존성
 COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --retries 8 --timeout 300 \
+    pip install --retries 8 --timeout 300 \
         --index-url ${PYTORCH_INDEX_URL} \
         torch torchvision \
-    && pip install --no-cache-dir --retries 8 --timeout 300 -r /tmp/requirements.txt \
-    && pip install --no-cache-dir --retries 8 --timeout 300 \
-        --extra-index-url https://pypi.nvidia.com \
-        tensorrt_llm
+    && pip install --retries 8 --timeout 300 -r /tmp/requirements.txt \
+    && pip install --retries 8 --timeout 300 \
+         --extra-index-url https://pypi.nvidia.com \
+         tensorrt_llm
 
 # 3) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --retries 8 --timeout 300 . \
+    pip install --retries 8 --timeout 300 . \
     && rm -f /tmp/requirements.txt
 
 ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.sh"]
