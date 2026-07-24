@@ -61,10 +61,14 @@
 `qb-only`는 runtime wrapping API를 **vision**과 **LLM**으로 구분하며,
 실제로는 아래처럼 `qbruntime` 함수에 매핑됩니다.
 
-| 용도 | Unified SDK | 내부 vendor |
-| --- | --- | --- |
-| Vision `.mxq` | `create_runtime(cfg)` / `infer(rh, input_array)` / `destroy_runtime(rh)` | `qbruntime.model.load(...)` / `model.infer([input_array])` / `model.dispose/release/unload/close` |
-| LLM / Transformer `.mxq` | `create_runtime_LLM(cfg)` / `infer_LLM(rh, input_array, cache_size=..., batch_params=...)` / `destroy_runtime_LLM(rh)` | `qbruntime.model.load(...)` / `model.infer([input_array], cache_size=..., params=...)` / `model.dispose/release/unload/close` |
+| 용도 | 단계 | Unified SDK | 내부 vendor |
+| --- | --- | --- | --- |
+| Vision `.mxq` | 생성 | `create_runtime(cfg)` | `qbruntime.model.load(...)` |
+| Vision `.mxq` | 추론 | `infer(rh, input_array)` | `model.infer([input_array])` |
+| Vision `.mxq` | 종료 | `destroy_runtime(rh)` | `model.dispose/release/unload/close` |
+| LLM / Transformer `.mxq` | 생성 | `create_runtime_LLM(cfg)` | `qbruntime.model.load(...)` |
+| LLM / Transformer `.mxq` | 추론 | `infer_LLM(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
+| LLM / Transformer `.mxq` | 종료 | `destroy_runtime_LLM(rh)` | `model.dispose/release/unload/close` |
 
 원칙:
 - 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
