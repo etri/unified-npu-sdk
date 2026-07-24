@@ -383,16 +383,18 @@ python3 examples/run_qb_build.py \
 # 형태로 감싼 cache-aware runtime smoke 입니다.
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
+  --core-mode global8 \
   --iters 5
 
 # Batch LLM smoke 예시
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
+  --core-mode global8 \
   --batch-seq-lens 10,80 \
   --iters 3
 
 # 7-e) cache/meta inspect
-python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq
+python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core-mode global8
 ```
 
 주의:
@@ -400,6 +402,8 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq
 - 다만 preview helper도 이제 vendor direct API 대신 Unified SDK runtime API
   `create_runtime(cfg) -> infer(rh, input_array, cache_size=..., batch_params=...) -> destroy_runtime(rh)`
   경로를 우선 검증합니다.
+- transformer/LLM MXQ는 여러 코어 모드를 함께 담는 경우가 있어, preview helper는 기본 `core_mode=global8`을 사용합니다.
+  `CoreMode::Auto` 오류가 나면 명시적으로 `--core-mode global8` 또는 MXQ가 지원하는 모드를 지정하세요.
 - `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
 - Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 

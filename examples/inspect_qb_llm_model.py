@@ -36,11 +36,20 @@ def _resolve_repo_root() -> Path:
 
 REPO_ROOT = _resolve_repo_root()
 DEFAULT_MODEL = REPO_ROOT / "models" / "Llama-3.2-1B-Instruct.mxq"
+SRC_DIR = REPO_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect cache-aware metadata of a QB LLM/transformer MXQ.")
     parser.add_argument("model_path", nargs="?", default=str(DEFAULT_MODEL))
+    parser.add_argument(
+        "--core-mode",
+        default=os.getenv("MBLT_CORE_MODE", "global8"),
+        help="LLM/transformer MXQ load core mode. Multi-core-mode MXQ는 auto 대신 explicit mode가 필요할 수 있습니다.",
+    )
     return parser
 
 
@@ -63,15 +72,26 @@ if __name__ == "__main__":
         raise SystemExit(f"Error: expected a .mxq file - {p}")
 
     try:
-        from qbruntime import model as qb_model
+        from unified_sdk.runtime import create_runtime, destroy_runtime
+        from unified_sdk.types import RuntimeConfig
         from qbruntime import type as qb_type
     except Exception as exc:
-        raise SystemExit(f"Error: qbruntime is required ({type(exc).__name__}: {exc})")
+        raise SystemExit(f"Error: unified_sdk runtime and qbruntime are required ({type(exc).__name__}: {exc})")
 
-    model = qb_model.load(str(p), None)
+    cfg = RuntimeConfig(
+        backend="qb",
+        engine_path=str(p),
+        input_name="input",
+        output_name="output",
+        input_shape=(1,),
+        extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
+    )
+    rh = create_runtime(cfg)
+    model = rh.ctx["model"]
     try:
         print("== QB LLM model inspect ==")
         print(f"path = {p}")
+        print("core_mode_arg =", args.core_mode)
         print("available_devices =", _safe_call(qb_type, "get_available_device_numbers"))
         print("core_mode =", _safe_call(model, "get_core_mode"))
         print("target_cores =", _safe_call(model, "get_target_cores"))
@@ -83,9 +103,4 @@ if __name__ == "__main__":
         print("output_buffer_info =", _safe_call(model, "get_output_buffer_info"))
         print("cache_infos =", _safe_call(model, "get_cache_infos"))
     finally:
-        dispose = getattr(model, "dispose", None)
-        if callable(dispose):
-            try:
-                dispose()
-            except Exception:
-                pass
+        destroy_runtime(rh)

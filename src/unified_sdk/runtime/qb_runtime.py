@@ -239,7 +239,13 @@ class _QBRuntime:
         try:
             model = qb_model.load(str(p), model_config)
         except Exception as exc:
-            raise RuntimeError(f"Failed to load QB model for {p}: {exc}") from exc
+            detail = str(exc)
+            if "CoreMode::Auto" in detail:
+                detail += (
+                    " Multi-core-mode MXQ cannot be loaded with core_mode=auto. "
+                    "Pass an explicit core mode such as 'single', 'global4', or 'global8'."
+                )
+            raise RuntimeError(f"Failed to load QB model for {p}: {detail}") from exc
 
         return RuntimeHandle(
             backend=self.name,
