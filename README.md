@@ -47,7 +47,7 @@
     │   └── qb_build.py             # QB 빌드 어댑터 (qubee/qbcompiler mxq_compile)
     └── runtime/
         ├── __init__.py
-        ├── api.py                  # create_runtime / infer / destroy_runtime
+        ├── api.py                  # vision: create_runtime/infer/destroy_runtime, LLM: create_runtime_LLM/infer_LLM/destroy_runtime_LLM
         ├── registry.py
         └── qb_runtime.py           # QB 런타임 어댑터 (qbruntime)
 ```
@@ -55,6 +55,20 @@
 > `builds/host_validation_tools/`는 벤더 에스컬레이션용 로컬 재현 팩입니다. `builds/`는 gitignore
 > 대상이라 저장소에는 포함되지 않습니다. `rbln-only`와 동일한 흐름(env → smoke → resnet50
 > compile → infer)을 compiler Python API(qubee/qbcompiler) / qbruntime / mobilint-cli 기준으로 구성했습니다.
+
+### Runtime API 분리
+
+`qb-only`는 runtime wrapping API를 **vision**과 **LLM**으로 구분합니다.
+
+| 용도 | 생성 | 추론 | 종료 |
+| --- | --- | --- | --- |
+| Vision `.mxq` | `create_runtime(cfg)` | `infer(rh, input_array)` | `destroy_runtime(rh)` |
+| LLM / Transformer `.mxq` | `create_runtime_LLM(cfg)` | `infer_LLM(rh, input_array, cache_size=..., batch_params=...)` | `destroy_runtime_LLM(rh)` |
+
+원칙:
+- 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
+- LLM preview는 별도 `*_LLM` API를 통해 cache-aware runtime path를 검증합니다.
+- 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
 
 ---
 
