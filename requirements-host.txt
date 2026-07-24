@@ -1,0 +1,28 @@
+# Host-native Python requirements for running rbln-only examples outside Docker.
+#
+# This file is intentionally broader than the minimum set for a single command:
+# it covers the vision and LLM examples in this branch.
+#
+# Notes:
+# - `rebel-compiler` and `optimum-rbln` require access to `https://pypi.rbln.ai/simple`
+#   (for example via ~/.netrc or another authenticated pip setup).
+# - `vllm-rbln` requires the vLLM CPU wheels index.
+# - `torch` / `torchvision` are typically installed from the PyTorch CPU index.
+#
+# Example:
+#   python3 -m pip install \
+#     --extra-index-url https://download.pytorch.org/whl/cpu \
+#     --extra-index-url https://pypi.rbln.ai/simple \
+#     --extra-index-url https://wheels.vllm.ai/0.22.0/cpu \
+#     -r requirements-host.txt
+
+numpy
+torch
+torchvision
+onnx
+onnx2torch
+transformers
+huggingface_hub
+rebel-compiler==0.11.0
+optimum-rbln==0.11.0.post1
+vllm-rbln==0.11.0
