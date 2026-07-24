@@ -20,13 +20,16 @@ _BUILD_PIPELINE = (
 _VENDOR_API_MAP = {
     "provided_artifact": "shutil.copyfile(src_rbln, dst_rbln)",
     "source_model": "torch.nn.Module-like object",
+    "optimum_source_model": "RBLNAutoModelForImageClassification.from_pretrained(model_id, export=True, ...)",
     "onnx_restore": "onnx2torch.convert(onnx.load(path))",
     "compile": "rebel.compile_from_torch(model, input_info, **compile_kwargs)",
+    "optimum_save": "compiled_optimum.save_pretrained(compiled_dir)",
     "save_artifact": "compiled.save(str(rbln_path))",
     "artifact": ".rbln",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
     "shutil.copyfile(src_rbln, dst_rbln)": "build_unified(cfg) for provided .rbln",
+    "RBLNAutoModelForImageClassification.from_pretrained(model_id, export=True, ...)": "build_unified(cfg) for model-zoo/source fetch via optimum-rbln",
     "onnx2torch.convert(onnx.load(path))": "build_unified(cfg) for experimental ONNX -> torch restore",
     "rebel.compile_from_torch(model, input_info, **compile_kwargs)": "build_unified(cfg)",
     "compiled.save(str(rbln_path))": "BuildResult.compiled_model_path",
@@ -62,6 +65,18 @@ def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
             "BuildConfig.extra['model_trace_method'] must be one of: "
             "'export', 'export_strict', 'jittrace'"
         )
+    compile_frontend = extra.get("compile_frontend")
+    if compile_frontend is not None and compile_frontend not in (
+        "rebel",
+        "optimum_image_classification",
+    ):
+        raise ValueError(
+            "BuildConfig.extra['compile_frontend'] must be one of: "
+            "'rebel', 'optimum_image_classification'"
+        )
+    source_cache_dir = extra.get("source_cache_dir")
+    if source_cache_dir is not None and not isinstance(source_cache_dir, (str, Path)):
+        raise ValueError("BuildConfig.extra['source_cache_dir'] must be a string or Path when provided")
     return extra
 
 
@@ -99,6 +114,7 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
         "compile_options": {
             "npu": extra.get("npu"),
             "model_trace_method": extra.get("model_trace_method"),
+            "compile_frontend": extra.get("compile_frontend", "rebel"),
         },
     }
 
@@ -150,6 +166,65 @@ class _RBLNBuildAdapter:
                     "backend": self.name,
                     "source": origin_type,
                     "origin": str(src),
+                    "rbln_path": str(rbln_path),
+                    "extra": extra,
+                    **_capability_metadata(extra),
+                },
+            )
+
+        compile_frontend = extra.get("compile_frontend", "rebel")
+        if isinstance(cfg.model_or_path, str) and compile_frontend == "optimum_image_classification":
+            model_id = cfg.model_or_path.strip()
+            if not model_id:
+                raise ValueError("BuildConfig.model_or_path must be a non-empty model id for optimum-rbln compile")
+
+            try:
+                from optimum.rbln import RBLNAutoModelForImageClassification
+            except Exception as exc:
+                raise RuntimeError(
+                    "optimum-rbln vision compile requires `optimum.rbln`. Install it first."
+                ) from exc
+
+            input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
+            batch_size = int(input_shape[0])
+            image_size = int(input_shape[-1])
+            compiled_dir = rbln_path.parent / f"{rbln_path.stem}_compiled"
+            if compiled_dir.exists():
+                shutil.rmtree(compiled_dir)
+
+            compile_kwargs: Dict[str, Any] = {
+                "export": True,
+                "rbln_batch_size": batch_size,
+                "rbln_image_size": image_size,
+                "rbln_create_runtimes": False,
+            }
+            source_cache_dir = extra.get("source_cache_dir")
+            if source_cache_dir:
+                compile_kwargs["cache_dir"] = str(Path(source_cache_dir).expanduser().resolve())
+            device = extra.get("device")
+            if device is not None:
+                compile_kwargs["rbln_device"] = device
+
+            try:
+                compiled_optimum = RBLNAutoModelForImageClassification.from_pretrained(
+                    model_id,
+                    **compile_kwargs,
+                )
+                compiled_optimum.save_pretrained(str(compiled_dir))
+            except Exception as exc:
+                raise RuntimeError(f"optimum-rbln image classification compile failed: {exc}") from exc
+
+            src = _resolve_compiled_dir(compiled_dir)
+            if src != rbln_path.resolve():
+                shutil.copyfile(src, rbln_path)
+            return BuildResult(
+                backend=self.name,
+                compiled_model_path=str(rbln_path),
+                meta_data={
+                    "backend": self.name,
+                    "source": "optimum_source_model",
+                    "origin": model_id,
+                    "compiled_dir": str(compiled_dir),
                     "rbln_path": str(rbln_path),
                     "extra": extra,
                     **_capability_metadata(extra),
