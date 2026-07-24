@@ -78,6 +78,7 @@ print_run_hint() {
   for ((i=0; i<${#DOCKER_DEVICE_ARGS[@]}; i+=2)); do
     echo "  ${DOCKER_DEVICE_ARGS[i]} ${DOCKER_DEVICE_ARGS[i+1]} \\"
   done
+  echo "  --user ${UID_VALUE}:${GID_VALUE} \\"
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
   echo "  ${IMAGE_NAME}:${TAG}"
