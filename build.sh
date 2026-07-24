@@ -18,6 +18,7 @@ CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 CDI_SPEC_DETECTED=0
+CDI_SPEC_HINT=""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
@@ -52,12 +53,21 @@ detect_runtime_mounts() {
     return
   fi
 
-  if [ -f /var/run/cdi/rbln.yaml ]; then
-    CDI_SPEC_DETECTED=1
-    CDI_DEVICE="rebellions.ai/npu=all"
-    DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
-    return
+  for spec in /var/run/cdi/rbln.yaml /etc/cdi/rbln.yaml; do
+    if [ -f "${spec}" ]; then
+      CDI_SPEC_DETECTED=1
+      CDI_SPEC_HINT="${spec}"
+      break
+    fi
+  done
+
+  if [ "${CDI_SPEC_DETECTED}" -eq 0 ] && command -v rbln-ctk >/dev/null 2>&1; then
+    if rbln-ctk cdi list >/dev/null 2>&1; then
+      CDI_SPEC_DETECTED=1
+      CDI_SPEC_HINT="rbln-ctk cdi list"
+    fi
   fi
+
   CDI_DEVICE="rebellions.ai/npu=all"
   DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
 }
@@ -162,7 +172,7 @@ detect_runtime_mounts
 echo "Build complete!"
 echo ""
 if [ "${CDI_SPEC_DETECTED}" -eq 0 ] && [ -z "${RBLN_CDI_DEVICE:-}" ]; then
-  echo "[WARN] CDI spec file was not detected at /var/run/cdi/rbln.yaml."
+  echo "[WARN] CDI spec was not detected under /var/run/cdi or /etc/cdi."
   echo "       RBLN official user guide recommends Container Toolkit CDI:"
   echo "         sudo rbln-ctk cdi generate"
   echo "         sudo rbln-ctk runtime configure --runtime docker"
@@ -172,6 +182,9 @@ if [ "${CDI_SPEC_DETECTED}" -eq 0 ] && [ -z "${RBLN_CDI_DEVICE:-}" ]; then
   echo ""
 fi
 echo "[INFO] Using RBLN CDI device handle: ${CDI_DEVICE}"
+if [ "${CDI_SPEC_DETECTED}" -eq 1 ] && [ -n "${CDI_SPEC_HINT}" ]; then
+  echo "[INFO] Detected CDI configuration via: ${CDI_SPEC_HINT}"
+fi
 echo ""
 
 echo "Run container with:"
