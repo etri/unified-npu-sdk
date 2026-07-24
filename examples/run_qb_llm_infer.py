@@ -33,6 +33,10 @@ def _resolve_repo_root() -> Path:
 
 REPO_ROOT = _resolve_repo_root()
 DEFAULT_ENGINE = REPO_ROOT / "models" / "Llama-3.2-1B-Instruct.mxq"
+SRC_DIR = REPO_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -78,16 +82,25 @@ if __name__ == "__main__":
 
     try:
         import numpy as np
-        import qbruntime
-        from qbruntime import model as qb_model
+        from unified_sdk.runtime import create_runtime, destroy_runtime, infer
+        from unified_sdk.types import BatchParam, RuntimeConfig
     except Exception as exc:
-        raise SystemExit(f"Error: qbruntime and numpy are required ({type(exc).__name__}: {exc})")
+        raise SystemExit(f"Error: unified_sdk runtime and numpy are required ({type(exc).__name__}: {exc})")
 
     engine_path = args.engine_path.expanduser().resolve()
     if not engine_path.is_file():
         raise SystemExit(f"Error: file not found - {engine_path}")
 
-    model = qb_model.load(str(engine_path), None)
+    cfg = RuntimeConfig(
+        backend="qb",
+        engine_path=str(engine_path),
+        input_name="input",
+        output_name="output",
+        input_shape=(1,),
+        extra={"core_mode": "auto", "allow_dynamic_shape": True},
+    )
+    rh = create_runtime(cfg)
+    model = rh.ctx["model"]
     try:
         input_shapes = model.get_model_input_shape()
         input_dtype = model.get_model_input_data_type()
@@ -108,31 +121,25 @@ if __name__ == "__main__":
 
         params = None
         if seq_lens:
-            params = [qbruntime.BatchParam(seq_len, args.cache_size, idx) for idx, seq_len in enumerate(seq_lens)]
+            params = [BatchParam(sequence_length=seq_len, cache_size=args.cache_size, cache_id=idx) for idx, seq_len in enumerate(seq_lens)]
 
         # warmup
-        if params is not None:
-            _ = model.infer([x], params=params)
-        elif args.cache_size > 0:
-            _ = model.infer([x], cache_size=args.cache_size)
-        else:
-            _ = model.infer([x])
+        _ = infer(rh, x, cache_size=args.cache_size, batch_params=params)
 
         times = []
         outputs = None
         for _ in range(args.iters):
             t0 = timeit.default_timer()
-            if params is not None:
-                outputs = model.infer([x], params=params)
-            elif args.cache_size > 0:
-                outputs = model.infer([x], cache_size=args.cache_size)
-            else:
-                outputs = model.infer([x])
+            outputs = infer(rh, x, cache_size=args.cache_size, batch_params=params)
             times.append((timeit.default_timer() - t0) * 1000)
 
-        output_shapes = [tuple(getattr(out, "shape", ())) for out in (outputs or [])]
+        if isinstance(outputs, list):
+            output_shapes = [tuple(getattr(out, "shape", ())) for out in outputs]
+        else:
+            output_shapes = [tuple(getattr(outputs, "shape", ()))]
         print("== QB LLM infer smoke ==")
         print("engine =", engine_path)
+        print("runtime_api =", "infer(rh, input_array, cache_size=..., batch_params=...)")
         print("input_dtype =", input_dtype)
         print("input_shape =", tuple(shape))
         print("cache_size =", args.cache_size)
@@ -140,9 +147,4 @@ if __name__ == "__main__":
         print("output_shapes =", output_shapes)
         print(f"avg_latency_ms = {sum(times) / len(times):.3f}")
     finally:
-        dispose = getattr(model, "dispose", None)
-        if callable(dispose):
-            try:
-                dispose()
-            except Exception:
-                pass
+        destroy_runtime(rh)

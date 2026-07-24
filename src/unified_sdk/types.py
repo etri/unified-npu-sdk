@@ -38,6 +38,12 @@ class RuntimeConfig:
     input_shape: Tuple[int, ...]
     extra: Optional[Dict[str, Any]] = None  # device, core_mode, dev, allow_dynamic_shape 등
 
+@dataclass(frozen=True)
+class BatchParam:
+    sequence_length: int
+    cache_size: int = 0
+    cache_id: int = 0
+
 @dataclass
 class RuntimeHandle:
     backend: str
