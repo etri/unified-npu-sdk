@@ -44,3 +44,43 @@ class RuntimeHandle:
     output_name: str
     input_shape: Tuple[int, ...]
     ctx: Dict[str, Any] = field(default_factory=dict)
+
+
+# RBLN LLM track
+
+LLMBuildBackendName = Literal["rbln"]
+LLMRuntimeBackendName = Literal["rbln"]
+
+
+@dataclass
+class LLMBuildConfig:
+    backend: LLMBuildBackendName
+    model_or_path: str | Path
+    out_dir: str | Path = "artifacts"
+    model_name: str = "model"
+    batch_size: int = 1
+    max_model_len: int = 512
+    num_devices: int = 1
+    extra: Optional[Dict[str, Any]] = None  # build_mode(fetch|optimum_compile), trust_remote_code, revision 등
+
+
+@dataclass
+class LLMRuntimeConfig:
+    backend: LLMRuntimeBackendName
+    engine_path: str | Path                    # model id, local HF path, or precompiled RBLN dir
+    tokenizer_path: Optional[str | Path] = None
+    tensor_parallel_size: int = 1
+    max_model_len: int = 512
+    max_tokens: int = 128
+    temperature: float = 0.7
+    top_p: float = 1.0
+    top_k: int = -1
+    min_tokens: int = 0
+    extra: Optional[Dict[str, Any]] = None     # runtime_impl(vllm|optimum), block_size, trust_remote_code 등
+
+
+@dataclass
+class LLMRuntimeHandle:
+    backend: str
+    engine_path: str
+    ctx: Dict[str, Any] = field(default_factory=dict)
