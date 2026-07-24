@@ -443,6 +443,9 @@ python3 examples/generate_qb_llm.py \
   `infer_LLM(...)` 기반 low-level smoke이며, high-level generation은 vendor 경로 의존성이 남아 있습니다.
 - 따라서 generate preview는 벤더 미지원/제약으로 인해 동작 범위가 제한될 수 있으며,
   향후 vendor 공식 지원/가이드가 명확해지면 업데이트 예정입니다.
+- 2026-07-24 기준 `mobilint/Llama-3.2-1B-Instruct` generate preview에서는
+  vendor custom code 경로에서 `AttributeError: can't set attribute 'batch_size'`가 재현되었습니다.
+  따라서 현재 브랜치에서는 low-level LLM smoke 통과를 우선 완료 기준으로 봅니다.
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
 `/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
