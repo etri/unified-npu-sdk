@@ -82,6 +82,21 @@ def _dtype_to_numpy(data_type, np):
     return np.float32
 
 
+def _resolve_dynamic_shape(shape: list[int], seq_lens: list[int]) -> list[int]:
+    resolved = list(shape)
+    if seq_lens:
+        if len(resolved) < 2:
+            raise RuntimeError(
+                "Batch LLM smoke expects an input shape with at least 2 dimensions "
+                "(e.g. (1, seq_len, hidden_dim))"
+            )
+        resolved[1] = sum(seq_lens)
+
+    # LLM MXQ 는 종종 (1, -1, hidden_dim) 처럼 dynamic seq_len 을 보고한다.
+    # 단일-step smoke 에서는 -1/0 같은 동적 축을 1 token 으로 치환해 low-level runtime path만 검증한다.
+    return [dim if dim > 0 else 1 for dim in resolved]
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -114,14 +129,8 @@ if __name__ == "__main__":
 
         if not input_shapes:
             raise RuntimeError("Model did not report any input shapes")
-        shape = list(input_shapes[0])
-        if seq_lens:
-            if len(shape) < 2:
-                raise RuntimeError(
-                    "Batch LLM smoke expects an input shape with at least 2 dimensions "
-                    "(e.g. (1, seq_len, hidden_dim))"
-                )
-            shape[1] = sum(seq_lens)
+        raw_shape = list(input_shapes[0])
+        shape = _resolve_dynamic_shape(raw_shape, seq_lens)
         x = np.zeros(shape, dtype=np_dtype)
 
         params = None
@@ -147,6 +156,7 @@ if __name__ == "__main__":
         print("runtime_api =", "infer(rh, input_array, cache_size=..., batch_params=...)")
         print("core_mode =", args.core_mode)
         print("input_dtype =", input_dtype)
+        print("raw_input_shape =", tuple(raw_shape))
         print("input_shape =", tuple(shape))
         print("cache_size =", args.cache_size)
         print("batch_seq_lens =", seq_lens or None)

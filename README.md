@@ -405,6 +405,8 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 - transformer/LLM MXQ는 여러 코어 모드를 함께 담는 경우가 있어, preview helper는 기본 `core_mode=global8`을 사용합니다.
   `CoreMode::Auto` 오류가 나면 명시적으로 `--core-mode global8` 또는 MXQ가 지원하는 모드를 지정하세요.
 - `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
+- 단일-step smoke에서 MXQ 입력 shape가 `(1, -1, hidden_dim)`처럼 동적 시퀀스 길이를 보고하면,
+  preview helper는 `-1` 축을 `1 token`으로 치환해 runtime path만 검증합니다.
 - Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
