@@ -54,6 +54,8 @@ _MODEL_ZOO_TARGETS = {
     },
 }
 
+_LOCAL_COMPILED_DIR_PREFIXES = {"artifacts", "builds", "models", ".", ".."}
+
 
 def _parse_shape(value: str) -> tuple[int, ...]:
     parts = value.replace("x", ",").split(",")
@@ -164,6 +166,14 @@ def _build_torchvision_resnet50(*, pretrained: bool):
     return model
 
 
+def _looks_like_local_compiled_ref(value: str) -> bool:
+    if not value:
+        return False
+    path = Path(value)
+    first_part = path.parts[0] if path.parts else ""
+    return path.is_absolute() or first_part in _LOCAL_COMPILED_DIR_PREFIXES
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -207,6 +217,14 @@ if __name__ == "__main__":
         if ref_path.exists():
             build_input = str(ref_path.resolve())
             source_note = f"standard fetch from local compiled RBLN directory: {build_input}"
+        elif _looks_like_local_compiled_ref(compiled_model_ref):
+            raise FileNotFoundError(
+                "compiled-model-ref was interpreted as a local compiled RBLN directory, "
+                f"but it does not exist: {ref_path.resolve()}\n"
+                "If you intended a Hugging Face repo id, pass an explicit repo id like "
+                "'org/repo-name'. If you intended a local directory, ensure it contains "
+                "*.rbln and rbln_config.json."
+            )
         else:
             try:
                 from huggingface_hub import snapshot_download
