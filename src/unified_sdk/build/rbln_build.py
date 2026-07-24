@@ -77,6 +77,20 @@ def _looks_like_path(model_or_path: Any, suffix: str) -> bool:
     return isinstance(model_or_path, (str, Path)) and str(model_or_path).lower().endswith(suffix.lower())
 
 
+def _resolve_compiled_dir(path: Path) -> Path:
+    candidates = sorted(path.rglob("*.rbln"))
+    if not candidates:
+        raise FileNotFoundError(f"No .rbln file found under compiled model directory: {path}")
+    if len(candidates) > 1:
+        listing = "\n".join(f"- {candidate}" for candidate in candidates)
+        raise RuntimeError(
+            "Multiple .rbln files were found under the compiled model directory. "
+            "Please pass a single .rbln path instead.\n"
+            f"{listing}"
+        )
+    return candidates[0]
+
+
 def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
@@ -112,8 +126,19 @@ class _RBLNBuildAdapter:
         rbln_path = _build_output_path(cfg.out_dir, cfg.model_name)
         rbln_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if _looks_like_path(cfg.model_or_path, ".rbln"):
-            src = Path(cfg.model_or_path).expanduser().resolve()
+        if isinstance(cfg.model_or_path, (str, Path)):
+            candidate_path = Path(cfg.model_or_path).expanduser().resolve()
+        else:
+            candidate_path = None
+
+        if _looks_like_path(cfg.model_or_path, ".rbln") or (candidate_path is not None and candidate_path.is_dir()):
+            src = candidate_path
+            origin_type = "provided"
+            if src is None:
+                raise FileNotFoundError("Provided RBLN artifact path is invalid")
+            if src.is_dir():
+                src = _resolve_compiled_dir(src)
+                origin_type = "compiled_dir"
             if not src.is_file():
                 raise FileNotFoundError(f"Provided .rbln not found: {src}")
             if src != rbln_path.resolve():
@@ -123,7 +148,7 @@ class _RBLNBuildAdapter:
                 compiled_model_path=str(rbln_path),
                 meta_data={
                     "backend": self.name,
-                    "source": "provided",
+                    "source": origin_type,
                     "origin": str(src),
                     "rbln_path": str(rbln_path),
                     "extra": extra,
