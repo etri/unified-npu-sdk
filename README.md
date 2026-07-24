@@ -157,7 +157,10 @@ docker version
   자세한 절차는 <https://docs.mobilint.com/v1.3/en/introduction.html> 및
   <https://docs.mobilint.com/v1.3/en/installing_runtime_library.html> 참조.
 - 컨테이너 실행 시 실제로 존재하는 장치 노드(`/dev/aries*` 또는 `/dev/arise*`)만 `--device`로 전달합니다.
-- 코어 모드는 참조 검증 기준 `global8`을 기본값으로 사용하며, `MBLT_CORE_MODE`로 바꿀 수 있습니다.
+- 표준 model zoo fetch helper는 참조 검증 기준 경로(`~/.mblt_model_zoo/vision/<product>/<core_mode>`)를 찾기 위해
+  기본 `core_mode=global8`을 사용합니다.
+- 반면 `.mxq` 추론 helper(`run_qb_infer.py`)는 로컬/직접 컴파일된 산출물이 `Single`만 지원하는 경우가 있어
+  기본 `core_mode=auto`를 사용합니다. 필요할 때만 `--core-mode global4|global8|single`로 고정하세요.
 
 ### 4. Docker 빌드 & 실행
 
@@ -324,7 +327,6 @@ python3 examples/run_qb_build.py \
 python3 examples/run_qb_infer.py \
   --engine-path builds/resnet50.mxq \
   --device 0 \
-  --core-mode global8 \
   --iters 50
 ```
 
@@ -443,7 +445,7 @@ cfg = RuntimeConfig(
     input_name="input",
     output_name="output",
     input_shape=(1, 3, 224, 224),
-    extra={"device": 0, "core_mode": "global8"},
+    extra={"device": 0, "core_mode": "auto"},
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 224, 224), dtype=np.float32))
@@ -466,7 +468,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - compiler Python API(`qubee` 또는 `qbcompiler`)는 **ONNX**를 입력으로 받아 int8 양자화 `.mxq`를 생성합니다. calibration 데이터셋이
   없으면 `use_random_calib=True`로 smoke 컴파일할 수 있습니다.
 - `.mxq`의 입력 layout/dtype은 컴파일 시 결정(compiler `preprocess_dict`)되므로, 추론 입력을 이에 맞춰야 합니다.
-- 다중 장치 서버에서는 `MBLT_DEVICE`/`--device`로 장치 ID를, `MBLT_CORE_MODE`/`--core-mode`로 코어 모드를 고정하세요.
+- 다중 장치 서버에서는 `MBLT_DEVICE`/`--device`로 장치 ID를 고정하고,
+  `MBLT_CORE_MODE`/`--core-mode`는 MXQ 가 실제로 지원하는 모드(`single`, `global4`, `global8`, `auto`)에 맞춰 지정하세요.
 - 장치/모델 점검용 CLI: `mobilint-cli status`, `mobilint-cli mxqtool show <mxq>`,
   `mobilint-cli testinfer ...`, `mobilint-cli benchmark ...`.
 - `qb Runtime`은 문서상 `Batch LLM`을 지원하며, `cache_size`, `BatchParam`, `get_cache_infos()` 같은 low-level LLM primitive 를 제공합니다.
