@@ -174,7 +174,7 @@ docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
   이 경우 위 예시처럼 `--runtime docker`를 명시하면 됩니다.
 
 - `./build.sh`는 CDI를 기준으로 `--device rebellions.ai/npu=all` 실행 예시를 출력합니다.
-- `/var/run/cdi/rbln.yaml`이 없으면 build 완료 후 경고를 출력하며, 이 경우 먼저
+- `/var/run/cdi/rbln.yaml` 또는 `/etc/cdi/rbln.yaml`이 없고, `rbln-ctk cdi list`로도 CDI 구성이 확인되지 않으면 build 완료 후 경고를 출력하며, 이 경우 먼저
   `rbln-ctk cdi generate`, `rbln-ctk runtime configure --runtime docker`,
   `sudo systemctl restart docker`를 완료한 뒤 다시 컨테이너를 띄우는 것이 맞습니다.
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
