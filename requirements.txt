@@ -2,3 +2,4 @@ numpy
 onnx
 torch
 torchvision
+huggingface_hub

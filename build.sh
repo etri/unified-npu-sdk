@@ -233,3 +233,6 @@ echo "  python3 -c \"import qbruntime; from qbruntime import type as t; print('d
 echo "  python3 -c \"import mblt_model_zoo; print('mblt_model_zoo=', getattr(mblt_model_zoo, '__version__', 'unknown'))\""
 echo "  python3 -c \"import importlib, pkgutil; m = next((importlib.import_module(n) for n in ('qubee', 'qbcompiler') if pkgutil.find_loader(n)), None); print('compiler_pkg=', getattr(m, '__name__', 'missing'), 'version=', getattr(m, '__version__', 'unknown') if m else 'n/a')\""
 echo "  python3 examples/run_qb_build.py --help"
+echo "  python3 examples/prepare_qb_transformer_model.py --help"
+echo "  python3 examples/run_qb_llm_infer.py --help"
+echo "  python3 examples/inspect_qb_llm_model.py --help"

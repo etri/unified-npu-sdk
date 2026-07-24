@@ -33,7 +33,10 @@
 ├── examples/
 │   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(compiler Python API)
 │   ├── run_qb_infer.py             # .mxq 모델 추론 (qbruntime)
-│   └── inspect_qb_model.py         # .mxq 요약 정보 확인
+│   ├── inspect_qb_model.py         # .mxq 요약 정보 확인
+│   ├── prepare_qb_transformer_model.py  # Mobilint HF group 의 transformer/LLM MXQ snapshot 준비
+│   ├── run_qb_llm_infer.py         # low-level cache-aware LLM infer smoke
+│   └── inspect_qb_llm_model.py     # LLM MXQ의 cache/meta 정보 확인
 └── src/unified_sdk/
     ├── __init__.py
     ├── types.py                    # 공통 데이터 구조 (QB 슬림화)
@@ -331,6 +334,66 @@ python3 examples/run_qb_infer.py \
 python3 examples/inspect_qb_model.py builds/resnet50.mxq
 ```
 
+### 7) 선택: LLM smoke (preview)
+
+Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지원하며,
+`CacheInfo`, `BatchParam`, `cache_size` 기반의 low-level LLM inference primitive를 제공합니다.
+또한 Mobilint Model Zoo는 transformer / language / multimodal `.mxq`를 Hugging Face group을 통해 제공합니다.
+
+다만 현재 `qb-only`는 vision branch가 기본이며, **LLM custom compile wrapper는 아직 공식 smoke 대상으로 일반화하지 않았습니다.**
+즉 아래 preview는:
+
+- `1) model zoo LLM fetch`
+- `2) local precompiled LLM .mxq fetch`
+- `4) low-level runtime smoke`
+- `5) cache/meta inspect`
+
+를 우선 제공합니다.  
+반면 `3) local model/checkpoint -> qb compiler -> LLM .mxq`는 **지원 예정/추가 검토 대상**으로 남겨둡니다.
+
+참고 문서:
+- Batch LLM support added in qb Runtime v1.2.0
+- Mobilint Model Zoo provides transformer models as precompiled `.mxq`
+
+```bash
+# 7-a) 표준 fetching smoke (Mobilint HF group 의 precompiled transformer/LLM MXQ 확보)
+python3 examples/prepare_qb_transformer_model.py \
+  --model-id mobilint/Llama-3.2-1B-Instruct
+
+# 위 helper는 snapshot을 models/Llama-3.2-1B-Instruct/ 아래에 받고,
+# 최종적으로 ./models/Llama-3.2-1B-Instruct.mxq 로 정규화합니다.
+
+# 7-b) custom fetching smoke (로컬 .mxq 직접 fetch)
+python3 examples/run_qb_build.py \
+  --mxq models/Llama-3.2-1B-Instruct.mxq \
+  --model-name Llama-3.2-1B-Instruct
+
+# 7-c) custom compile smoke (LLM) — planned
+# 현재 qb-only는 vision 컴파일 흐름(ONNX / torchvision .pth -> .mxq)을 우선 지원합니다.
+# Transformer/LLM custom compile 은 compiler transformer workflow 와
+# model-specific export pipeline 정리가 더 필요해 현재는 공식 smoke 에서 제외합니다.
+
+# 7-d) low-level runtime smoke
+# 실제 generate API 가 아니라 qbruntime cache_size / BatchParam 기반 infer smoke 입니다.
+python3 examples/run_qb_llm_infer.py \
+  --engine-path models/Llama-3.2-1B-Instruct.mxq \
+  --iters 5
+
+# Batch LLM smoke 예시
+python3 examples/run_qb_llm_infer.py \
+  --engine-path models/Llama-3.2-1B-Instruct.mxq \
+  --batch-seq-lens 10,80 \
+  --iters 3
+
+# 7-e) cache/meta inspect
+python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq
+```
+
+주의:
+- 위 LLM smoke는 `generate(text)` 수준의 고수준 serving wrapper가 아니라, 문서에 나온 **cache-aware infer primitive** 기준 smoke 입니다.
+- `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
+- Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
+
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
 `/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
 
@@ -406,6 +469,12 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 다중 장치 서버에서는 `MBLT_DEVICE`/`--device`로 장치 ID를, `MBLT_CORE_MODE`/`--core-mode`로 코어 모드를 고정하세요.
 - 장치/모델 점검용 CLI: `mobilint-cli status`, `mobilint-cli mxqtool show <mxq>`,
   `mobilint-cli testinfer ...`, `mobilint-cli benchmark ...`.
+- `qb Runtime`은 문서상 `Batch LLM`을 지원하며, `cache_size`, `BatchParam`, `get_cache_infos()` 같은 low-level LLM primitive 를 제공합니다.
+- Mobilint Model Zoo는 vision 외에도 transformer / language / multimodal `.mxq`를 제공하지만,
+  현재 `qb-only`가 **공식 smoke로 일반화한 custom compile 경로는 vision 우선**입니다.
+- 따라서 `qb-only`의 LLM smoke는 현재 **precompiled MXQ fetch + low-level cache-aware infer + cache/meta inspect** 위주로 제공합니다.
 - 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_qb_build.py --help`,
-  `python3 examples/run_qb_infer.py --help`, `python3 examples/inspect_qb_model.py --help`로 확인하세요.
+  `python3 examples/run_qb_infer.py --help`, `python3 examples/inspect_qb_model.py --help`,
+  `python3 examples/prepare_qb_transformer_model.py --help`, `python3 examples/run_qb_llm_infer.py --help`,
+  `python3 examples/inspect_qb_llm_model.py --help`로 확인하세요.
 - 다른 백엔드는 각 vendor 브랜치(`rbln-only`, `furiosa-only`, `furiosa-llm-only`)에서 작업하세요.
