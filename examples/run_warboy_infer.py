@@ -62,7 +62,7 @@ if str(SRC_DIR) not in sys.path:
 
 # ====== 경로 설정 (checkout root 기준, 컨테이너에서는 현재 마운트된 repo root) ======
 ENGINE_PATH = REPO_ROOT / "builds" / "resnet50.enf"   # <- builds 기준
-IMG_PATH = REPO_ROOT / "tests" / "input.jpg"
+IMG_PATH = REPO_ROOT / "models" / "input.jpg"
 LABELS_PATH = REPO_ROOT / "tests" / "imagenet_classes.txt"  # 있으면 사용, 없으면 cls_id만 출력
 
 
@@ -135,6 +135,12 @@ def _resolve_model_zoo_target(model_name: str) -> str | None:
         if _normalize_model_name(candidate) == normalized:
             return candidate
     return None
+
+
+def _prefers_uint8_fallback(model_name: str) -> bool:
+    normalized = _normalize_model_name(model_name)
+    # Detection / pose 계열 model zoo helper는 이미지가 없을 때도 uint8 입력 계약인 경우가 많다.
+    return normalized.startswith(("yolov5", "yolov7", "ssd"))
 
 
 def _maybe_create_model_zoo_helper(engine_path: Path):
@@ -218,8 +224,12 @@ if __name__ == "__main__":
             input_source = str(image_path)
     else:
         if model_helper is not None:
-            batch = np.zeros(args.input_shape, dtype=np.uint8)
-            input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo fallback)"
+            if _prefers_uint8_fallback(engine_path.stem):
+                batch = np.zeros(args.input_shape, dtype=np.uint8)
+                input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo fallback)"
+            else:
+                batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
+                input_source = f"synthetic zeros float32 {args.input_shape} (model-zoo fallback)"
         else:
             batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
             input_source = f"synthetic zeros float32 {args.input_shape}"
