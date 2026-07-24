@@ -131,11 +131,17 @@ if __name__ == "__main__":
         )
         text = _extract_generated_text(tokenizer, inputs, outputs)
     except Exception as exc:
+        detail = f"{type(exc).__name__}: {exc}"
+        if "batch_size" in str(exc):
+            detail += (
+                " Current Mobilint trust_remote_code generate path appears to hit a vendor-side "
+                "attribute handling issue (`can't set attribute 'batch_size'`)."
+            )
         raise SystemExit(
             "QB generate preview failed while running the vendor-provided generate path. "
             "This helper is intentionally minimal and vendor-dependent; future updates may improve it "
             "when more official support or guidance becomes available. "
-            f"({type(exc).__name__}: {exc})"
+            f"({detail})"
         )
 
     print("== QB LLM generate preview ==")
