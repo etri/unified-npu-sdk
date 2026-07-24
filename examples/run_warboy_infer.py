@@ -158,12 +158,20 @@ def _maybe_create_model_zoo_helper(engine_path: Path):
         return None
 
 
-def _load_with_model_zoo_preprocess(model_helper, image_path: Path):
+def _load_with_model_zoo_preprocess(model_helper, image_path: Path, prefer_uint8: bool = False):
     preprocess_error = None
-    for kwargs in ({"with_scaling": True}, {}):
+    kwargs_candidates = ({}, {"with_scaling": True}) if prefer_uint8 else ({"with_scaling": True}, {})
+    for kwargs in kwargs_candidates:
         for candidate in ([str(image_path)], str(image_path)):
             try:
                 inputs, contexts = model_helper.preprocess(candidate, **kwargs)
+                arr = inputs[0] if isinstance(inputs, (list, tuple)) and len(inputs) == 1 else inputs
+                dtype = getattr(arr, "dtype", None)
+                if prefer_uint8 and dtype is not None and dtype != "uint8" and str(dtype) != "uint8":
+                    preprocess_error = RuntimeError(
+                        f"Model Zoo preprocess produced dtype={dtype!r} with kwargs={kwargs}, expected uint8-compatible input"
+                    )
+                    continue
                 return inputs, contexts, kwargs
             except Exception as exc:
                 preprocess_error = exc
@@ -212,7 +220,11 @@ if __name__ == "__main__":
 
     if image_path.is_file():
         if model_helper is not None:
-            batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(model_helper, image_path)
+            batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(
+                model_helper,
+                image_path,
+                prefer_uint8=_prefers_uint8_fallback(engine_path.stem),
+            )
             input_source = f"{image_path} (model-zoo preprocess {preprocess_kwargs})"
         else:
             batch = _load_image_batch(image_path, args.input_shape, np)
