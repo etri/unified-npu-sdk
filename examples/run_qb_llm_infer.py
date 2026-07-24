@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     try:
         import numpy as np
-        from unified_sdk.runtime import create_runtime, destroy_runtime, infer
+        from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, infer_LLM
         from unified_sdk.types import BatchParam, RuntimeConfig
     except Exception as exc:
         raise SystemExit(f"Error: unified_sdk runtime and numpy are required ({type(exc).__name__}: {exc})")
@@ -119,7 +119,7 @@ if __name__ == "__main__":
         input_shape=(1,),
         extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
     )
-    rh = create_runtime(cfg)
+    rh = create_runtime_LLM(cfg)
     model = rh.ctx["model"]
     try:
         input_shapes = model.get_model_input_shape()
@@ -138,13 +138,13 @@ if __name__ == "__main__":
             params = [BatchParam(sequence_length=seq_len, cache_size=args.cache_size, cache_id=idx) for idx, seq_len in enumerate(seq_lens)]
 
         # warmup
-        _ = infer(rh, x, cache_size=args.cache_size, batch_params=params)
+        _ = infer_LLM(rh, x, cache_size=args.cache_size, batch_params=params)
 
         times = []
         outputs = None
         for _ in range(args.iters):
             t0 = timeit.default_timer()
-            outputs = infer(rh, x, cache_size=args.cache_size, batch_params=params)
+            outputs = infer_LLM(rh, x, cache_size=args.cache_size, batch_params=params)
             times.append((timeit.default_timer() - t0) * 1000)
 
         if isinstance(outputs, list):
@@ -153,7 +153,7 @@ if __name__ == "__main__":
             output_shapes = [tuple(getattr(outputs, "shape", ()))]
         print("== QB LLM infer smoke ==")
         print("engine =", engine_path)
-        print("runtime_api =", "infer(rh, input_array, cache_size=..., batch_params=...)")
+        print("runtime_api =", "infer_LLM(rh, input_array, cache_size=..., batch_params=...)")
         print("core_mode =", args.core_mode)
         print("input_dtype =", input_dtype)
         print("raw_input_shape =", tuple(raw_shape))
@@ -163,4 +163,4 @@ if __name__ == "__main__":
         print("output_shapes =", output_shapes)
         print(f"avg_latency_ms = {sum(times) / len(times):.3f}")
     finally:
-        destroy_runtime(rh)
+        destroy_runtime_LLM(rh)

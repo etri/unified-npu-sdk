@@ -49,6 +49,19 @@ def describe_api_mapping() -> dict[str, Any]:
     }
 
 
+def _mark_runtime_kind(cfg: RuntimeConfig, kind: str) -> RuntimeConfig:
+    extra = dict(cfg.extra or {})
+    extra["runtime_kind"] = kind
+    return RuntimeConfig(
+        backend=cfg.backend,
+        engine_path=cfg.engine_path,
+        input_name=cfg.input_name,
+        output_name=cfg.output_name,
+        input_shape=cfg.input_shape,
+        extra=extra,
+    )
+
+
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"RuntimeConfig.{field_name} must be a non-empty string")
@@ -205,6 +218,9 @@ class _QBRuntime:
 
     name = "qb"
 
+    def create_llm(self, cfg: RuntimeConfig) -> RuntimeHandle:
+        return self.create(_mark_runtime_kind(cfg, "llm"))
+
     def create(self, cfg: RuntimeConfig) -> RuntimeHandle:
         if cfg.backend != self.name:
             raise ValueError(f"QB runtime adapter received backend={cfg.backend!r}")
@@ -258,12 +274,23 @@ class _QBRuntime:
                 "qbruntime": qbruntime,
                 "device": device,
                 "core_mode": core_mode,
+                "runtime_kind": extra.get("runtime_kind", "vision"),
                 "extra": extra,
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
             },
         )
+
+    def infer_llm(
+        self,
+        rh: RuntimeHandle,
+        input_array: np.ndarray,
+        *,
+        cache_size: int = 0,
+        batch_params: Optional[Sequence[BatchParam]] = None,
+    ) -> Any:
+        return self.infer(rh, input_array, cache_size=cache_size, batch_params=batch_params)
 
     def infer(
         self,
@@ -301,6 +328,9 @@ class _QBRuntime:
             raise RuntimeError(f"QB inference failed: {exc}") from exc
 
         return _to_numpy(out)
+
+    def destroy_llm(self, rh: RuntimeHandle) -> None:
+        self.destroy(rh)
 
     def destroy(self, rh: RuntimeHandle) -> None:
         model = rh.ctx.get("model") if rh.ctx else None

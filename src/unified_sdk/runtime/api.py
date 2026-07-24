@@ -15,6 +15,17 @@ def create_runtime(cfg: RuntimeConfig) -> RuntimeHandle:
     return adapter.create(cfg)
 
 
+def create_runtime_LLM(cfg: RuntimeConfig) -> RuntimeHandle:
+    adapter = get_runtime(cfg.backend)
+    create_llm = getattr(adapter, "create_llm", None)
+    if callable(create_llm):
+        return create_llm(cfg)
+    return adapter.create(cfg)
+
+
+create_runtime_llm = create_runtime_LLM
+
+
 def infer(
     rh: RuntimeHandle,
     input_array: "np.ndarray",
@@ -26,9 +37,37 @@ def infer(
     return adapter.infer(rh, input_array, cache_size=cache_size, batch_params=batch_params)
 
 
+def infer_LLM(
+    rh: RuntimeHandle,
+    input_array: "np.ndarray",
+    *,
+    cache_size: int = 0,
+    batch_params: Optional[Sequence[BatchParam]] = None,
+) -> Any:
+    adapter = get_runtime(rh.backend)
+    infer_llm = getattr(adapter, "infer_llm", None)
+    if callable(infer_llm):
+        return infer_llm(rh, input_array, cache_size=cache_size, batch_params=batch_params)
+    return adapter.infer(rh, input_array, cache_size=cache_size, batch_params=batch_params)
+
+
+infer_llm = infer_LLM
+
+
 def destroy_runtime(rh: RuntimeHandle) -> None:
     adapter = get_runtime(rh.backend)
     return adapter.destroy(rh)
+
+
+def destroy_runtime_LLM(rh: RuntimeHandle) -> None:
+    adapter = get_runtime(rh.backend)
+    destroy_llm = getattr(adapter, "destroy_llm", None)
+    if callable(destroy_llm):
+        return destroy_llm(rh)
+    return adapter.destroy(rh)
+
+
+destroy_runtime_llm = destroy_runtime_LLM
 
 
 def describe_runtime_api_mapping() -> Dict[str, Any]:

@@ -72,7 +72,7 @@ if __name__ == "__main__":
         raise SystemExit(f"Error: expected a .mxq file - {p}")
 
     try:
-        from unified_sdk.runtime import create_runtime, destroy_runtime
+        from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM
         from unified_sdk.types import RuntimeConfig
         from qbruntime import type as qb_type
     except Exception as exc:
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         input_shape=(1,),
         extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
     )
-    rh = create_runtime(cfg)
+    rh = create_runtime_LLM(cfg)
     model = rh.ctx["model"]
     try:
         print("== QB LLM model inspect ==")
@@ -103,4 +103,4 @@ if __name__ == "__main__":
         print("output_buffer_info =", _safe_call(model, "get_output_buffer_info"))
         print("cache_infos =", _safe_call(model, "get_cache_infos"))
     finally:
-        destroy_runtime(rh)
+        destroy_runtime_LLM(rh)
