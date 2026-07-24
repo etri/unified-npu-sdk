@@ -33,7 +33,7 @@ def _resolve_repo_root() -> Path:
 REPO_ROOT = _resolve_repo_root()
 DEFAULT_MODEL_DIR = REPO_ROOT / "models" / "Llama-3.2-1B-Instruct"
 DEFAULT_MODEL_ID = os.getenv("QB_LLM_MODEL_ID", "mobilint/Llama-3.2-1B-Instruct")
-DEFAULT_PROMPT = "대한민국의 수도는 어디인가요?"
+DEFAULT_PROMPT = "What is the capital of South Korea?"
 
 
 def _build_parser() -> argparse.ArgumentParser:
