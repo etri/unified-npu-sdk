@@ -50,7 +50,7 @@ BUILDS_DIR = REPO_ROOT / "builds"
 _MODEL_ZOO_TARGETS = {
     "resnet50": {
         "symbol": "torchvision.models.resnet50",
-        "note": "official RBLN PyTorch ResNet50 tutorial baseline",
+        "note": "official RBLN PyTorch ResNet50 tutorial/reference compile baseline",
     },
 }
 
@@ -75,11 +75,24 @@ def _parse_bucketing_shapes(value: str | None) -> list[tuple[int, ...]] | None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Build/fetch an RBLN vision artifact. Supports official tutorial/model-zoo-style "
-            "ResNet50 compile, provided .rbln fetch, PTH/PT restore, and experimental ONNX restore."
+            "Build/fetch an RBLN vision artifact. Supports compiled artifact fetch by model ref/local dir, "
+            "provided .rbln fetch, reference/tutorial compile, PTH/PT restore, and experimental ONNX restore."
         )
     )
-    parser.add_argument("--list-model-zoo", action="store_true", help="Print supported RBLN model-zoo reference targets and exit.")
+    parser.add_argument(
+        "--list-model-zoo",
+        action="store_true",
+        help="Print supported RBLN model-zoo/reference compile targets and exit.",
+    )
+    parser.add_argument(
+        "--compiled-model-ref",
+        default=None,
+        help=(
+            "Hub model id or local directory containing a precompiled RBLN artifact directory "
+            "(*.rbln + rbln_config.json). This is the standard fetch path when a compiled artifact "
+            "repository/directory is available."
+        ),
+    )
     parser.add_argument("--model-zoo-model", default=None, help="Reference model-zoo target name, e.g. resnet50.")
     parser.add_argument("--pretrained", action="store_true", help="Use pretrained torchvision weights for the selected model-zoo target.")
     parser.add_argument("--weights", type=Path, default=None, help="Legacy alias for --from-pth.")
@@ -157,6 +170,7 @@ if __name__ == "__main__":
     selected_modes = sum(
         1
         for value in (
+            bool((args.compiled_model_ref or "").strip()),
             bool(args.rbln),
             bool(args.from_onnx),
             bool(args.from_pth or args.weights),
@@ -167,11 +181,11 @@ if __name__ == "__main__":
     if selected_modes > 1:
         raise SystemExit(
             "Choose only one build source at a time: "
-            "--rbln, --from-onnx, --from-pth/--weights, or --model-zoo-model."
+            "--compiled-model-ref, --rbln, --from-onnx, --from-pth/--weights, or --model-zoo-model."
         )
 
     if args.list_model_zoo:
-        print("== Supported RBLN model-zoo reference targets ==")
+        print("== Supported RBLN reference compile targets ==")
         for key, value in sorted(_MODEL_ZOO_TARGETS.items()):
             print(f"{key}: {value['symbol']} ({value['note']})")
         raise SystemExit(0)
@@ -187,7 +201,28 @@ if __name__ == "__main__":
     build_input = None
     source_note = ""
 
-    if args.rbln:
+    compiled_model_ref = (args.compiled_model_ref or "").strip()
+    if compiled_model_ref:
+        ref_path = Path(compiled_model_ref).expanduser()
+        if ref_path.exists():
+            build_input = str(ref_path.resolve())
+            source_note = f"standard fetch from local compiled RBLN directory: {build_input}"
+        else:
+            try:
+                from huggingface_hub import snapshot_download
+            except Exception as exc:
+                raise RuntimeError(
+                    "compiled-model-ref hub fetch requires `huggingface_hub`. Install it first."
+                ) from exc
+
+            local_dir = models_dir / compiled_model_ref.split("/")[-1]
+            snapshot_path = snapshot_download(
+                repo_id=compiled_model_ref,
+                local_dir=str(local_dir),
+            )
+            build_input = str(Path(snapshot_path).resolve())
+            source_note = f"standard fetch from compiled RBLN artifact repo: {compiled_model_ref} -> {build_input}"
+    elif args.rbln:
         build_input = str(args.rbln.expanduser().resolve())
         source_note = f"provided .rbln fetch: {build_input}"
     elif args.from_onnx:
@@ -210,9 +245,9 @@ if __name__ == "__main__":
             if model_zoo_target == "resnet50":
                 build_input = _build_torchvision_resnet50(pretrained=args.pretrained)
                 source_note = (
-                    "official RBLN model-zoo/tutorial reference: torchvision ResNet50 pretrained"
+                    "reference compile from official RBLN model-zoo/tutorial baseline: torchvision ResNet50 pretrained"
                     if args.pretrained
-                    else "official RBLN model-zoo/tutorial reference: torchvision ResNet50 local/random-init"
+                    else "reference compile from official RBLN model-zoo/tutorial baseline: torchvision ResNet50 local/random-init"
                 )
         else:
             # 3-b) user PTH/PT -> torch restore -> .rbln
