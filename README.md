@@ -425,7 +425,7 @@ python3 examples/prepare_qb_transformer_model.py \
 
 python3 examples/generate_qb_llm.py \
   --model-ref models/Llama-3.2-1B-Instruct \
-  --prompt "What is the capital of France?"
+  --prompt "대한민국의 수도는 어디인가요?"
 ```
 
 주의:
