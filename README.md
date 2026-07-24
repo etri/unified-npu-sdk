@@ -378,8 +378,8 @@ python3 examples/run_qb_build.py \
 # model-specific export pipeline 정리가 더 필요해 현재는 공식 smoke 에서 제외합니다.
 
 # 7-d) low-level runtime smoke
-# 실제 generate API 가 아니라 Unified SDK infer(...)
-#   infer(rh, input_array, cache_size=..., batch_params=...)
+# 실제 generate API 가 아니라 Unified SDK LLM infer(...)
+#   infer_LLM(rh, input_array, cache_size=..., batch_params=...)
 # 형태로 감싼 cache-aware runtime smoke 입니다.
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
@@ -400,7 +400,7 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 주의:
 - 위 LLM smoke는 `generate(text)` 수준의 고수준 serving wrapper가 아니라, 문서에 나온 **cache-aware infer primitive** 기준 smoke 입니다.
 - 다만 preview helper도 이제 vendor direct API 대신 Unified SDK runtime API
-  `create_runtime(cfg) -> infer(rh, input_array, cache_size=..., batch_params=...) -> destroy_runtime(rh)`
+  `create_runtime_LLM(cfg) -> infer_LLM(rh, input_array, cache_size=..., batch_params=...) -> destroy_runtime_LLM(rh)`
   경로를 우선 검증합니다.
 - transformer/LLM MXQ는 여러 코어 모드를 함께 담는 경우가 있어, preview helper는 기본 `core_mode=global8`을 사용합니다.
   `CoreMode::Auto` 오류가 나면 명시적으로 `--core-mode global8` 또는 MXQ가 지원하는 모드를 지정하세요.

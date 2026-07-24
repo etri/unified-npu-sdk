@@ -5,6 +5,7 @@ from unified_sdk.types import BatchParam, RuntimeConfig, RuntimeHandle
 class RuntimeAdapter(Protocol):
     name: str
     def create(self, cfg: RuntimeConfig) -> RuntimeHandle: ...
+    def create_llm(self, cfg: RuntimeConfig) -> RuntimeHandle: ...
     def infer(
         self,
         rh: RuntimeHandle,
@@ -13,7 +14,16 @@ class RuntimeAdapter(Protocol):
         cache_size: int = 0,
         batch_params: Optional[Sequence[BatchParam]] = None,
     ) -> Any: ...
+    def infer_llm(
+        self,
+        rh: RuntimeHandle,
+        input_array,
+        *,
+        cache_size: int = 0,
+        batch_params: Optional[Sequence[BatchParam]] = None,
+    ) -> Any: ...
     def destroy(self, rh: RuntimeHandle) -> None: ...
+    def destroy_llm(self, rh: RuntimeHandle) -> None: ...
 
 _REGISTRY: Dict[str, RuntimeAdapter] = {}
 
