@@ -337,6 +337,8 @@ python3 examples/run_rbln_llm_infer.py \
   --engine-path Qwen/Qwen3-0.6B \
   --prompt "What is the capital of South Korea?"
 # note: if --block-size is omitted, the wrapper defaults it to max_model_len (512 here)
+# note: host native 환경에서는 이 경로가 auto-compile + generate까지 통과했습니다.
+#       CDI/container에서는 vendor-side compile backend 이슈로 같은 경로가 실패할 수 있습니다.
 
 # 2) (LLM) local model path + compatible precompiled RBLN artifact -> generate
 python3 examples/run_rbln_llm_infer.py \
@@ -358,6 +360,8 @@ python3 examples/run_rbln_llm_infer.py \
   --engine-path artifacts/qwen3_0_6b_rbln \
   --prompt "What is the capital of South Korea?"
 python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln --load
+# note: host native 환경에서는 optimum-rbln compile -> generate까지 통과했습니다.
+#       CDI/container에서는 이 단계가 same compiler backend known issue 영향권입니다.
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
