@@ -250,10 +250,22 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --input-shape 1,3,224,224 \
   --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
+# NOTE (2026-07-24):
+# 일부 RBLN-CA22 + rebel-compiler 0.11.0 + CDI/container 조합에서는
+# host native Python 환경에서는 성공하는 compile_from_torch(...)가
+# container 내부에서는 export / graph optimization 이후 RuntimeError로 실패할 수 있습니다.
+# 이 경우 현재 branch 기준 권장 workflow는:
+#   1) host native 에서 .rbln compile
+#   2) container 에서는 provided .rbln fetch + infer / inspect
+# 입니다. 관련 vendor 문의는 진행 중입니다.
+
 # 5) vision custom fetching smoke: provided .rbln
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --rbln builds/resnet50.rbln \
   --model-name resnet50
+
+# compile_from_torch가 container 안에서 막히면, host native 에서 만든 .rbln 경로를
+# 위 provided .rbln fetch smoke 입력으로 사용하세요.
 
 # 6) vision custom compile smoke
 # 6-a) torchvision pretrained/local model -> .rbln
@@ -401,6 +413,9 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 RBLN 어댑터만 노출합니다. 다중 백엔드(TRT+RBLN)는 `main` 브랜치에서 사용하세요.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
 - 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
+- 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. 반면 host에서 생성한 `.rbln`의 container inference는 정상 동작했습니다. 따라서 vendor 답변 전까지는:
+  `host native compile -> container provided .rbln fetch -> infer / inspect`
+  흐름을 실무 권장 우회 경로로 봅니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
 - `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
 - 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.

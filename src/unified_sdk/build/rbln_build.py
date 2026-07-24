@@ -185,7 +185,13 @@ class _RBLNBuildAdapter:
         try:
             compiled = rebel.compile_from_torch(model, input_info, **compile_kwargs)
         except Exception as exc:
-            raise RuntimeError(f"RBLN compile_from_torch failed: {exc}") from exc
+            hint = (
+                "RBLN compile_from_torch failed. If this happens inside a CDI/container environment "
+                "while host-native compile succeeds, treat it as a vendor/environment-dependent compile "
+                "issue first. The currently recommended workaround is host-native compile followed by "
+                "container inference/custom-fetch of the generated .rbln artifact."
+            )
+            raise RuntimeError(f"{hint} Original error: {exc}") from exc
 
         try:
             compiled.save(str(rbln_path))
