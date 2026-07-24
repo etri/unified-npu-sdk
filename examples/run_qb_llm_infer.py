@@ -48,6 +48,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--engine-path", type=Path, default=DEFAULT_ENGINE)
     parser.add_argument("--iters", type=int, default=5)
+    parser.add_argument(
+        "--core-mode",
+        default=os.getenv("MBLT_CORE_MODE", "global8"),
+        help="LLM/transformer MXQ load core mode. Multi-core-mode MXQ는 auto 대신 explicit mode가 필요할 수 있습니다.",
+    )
     parser.add_argument("--cache-size", type=int, default=0, help="KV cache token count for a single-step infer smoke.")
     parser.add_argument(
         "--batch-seq-lens",
@@ -97,7 +102,7 @@ if __name__ == "__main__":
         input_name="input",
         output_name="output",
         input_shape=(1,),
-        extra={"core_mode": "auto", "allow_dynamic_shape": True},
+        extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
     )
     rh = create_runtime(cfg)
     model = rh.ctx["model"]
@@ -140,6 +145,7 @@ if __name__ == "__main__":
         print("== QB LLM infer smoke ==")
         print("engine =", engine_path)
         print("runtime_api =", "infer(rh, input_array, cache_size=..., batch_params=...)")
+        print("core_mode =", args.core_mode)
         print("input_dtype =", input_dtype)
         print("input_shape =", tuple(shape))
         print("cache_size =", args.cache_size)

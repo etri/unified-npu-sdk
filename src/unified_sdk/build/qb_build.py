@@ -101,10 +101,9 @@ def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
 
 def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     name = _require_non_empty_string(model_name, "model_name")
-    path = Path(out_dir) / name
-    if path.suffix != ".mxq":
-        path = path.with_suffix(".mxq")
-    return path
+    if name.lower().endswith(".mxq"):
+        return Path(out_dir) / name
+    return Path(out_dir) / f"{name}.mxq"
 
 
 def _resolve_target_device(extra: Dict[str, Any]) -> str:

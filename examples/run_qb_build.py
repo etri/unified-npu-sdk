@@ -217,7 +217,8 @@ def _find_model_zoo_mxq(model_name: str, product: str, core_mode: str) -> Path |
 
 
 def _normalize_mxq_into_models(src_mxq: Path, models_dir: Path, model_name: str) -> Path:
-    target = (models_dir / model_name).with_suffix(".mxq")
+    target_name = model_name if model_name.lower().endswith(".mxq") else f"{model_name}.mxq"
+    target = models_dir / target_name
     models_dir.mkdir(parents=True, exist_ok=True)
     if src_mxq.resolve() != target.resolve():
         shutil.copyfile(src_mxq, target)
