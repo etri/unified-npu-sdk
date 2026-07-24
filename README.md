@@ -378,7 +378,9 @@ python3 examples/run_qb_build.py \
 # model-specific export pipeline 정리가 더 필요해 현재는 공식 smoke 에서 제외합니다.
 
 # 7-d) low-level runtime smoke
-# 실제 generate API 가 아니라 qbruntime cache_size / BatchParam 기반 infer smoke 입니다.
+# 실제 generate API 가 아니라 Unified SDK infer(...)
+#   infer(rh, input_array, cache_size=..., batch_params=...)
+# 형태로 감싼 cache-aware runtime smoke 입니다.
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
   --iters 5
@@ -395,6 +397,9 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq
 
 주의:
 - 위 LLM smoke는 `generate(text)` 수준의 고수준 serving wrapper가 아니라, 문서에 나온 **cache-aware infer primitive** 기준 smoke 입니다.
+- 다만 preview helper도 이제 vendor direct API 대신 Unified SDK runtime API
+  `create_runtime(cfg) -> infer(rh, input_array, cache_size=..., batch_params=...) -> destroy_runtime(rh)`
+  경로를 우선 검증합니다.
 - `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
 - Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 

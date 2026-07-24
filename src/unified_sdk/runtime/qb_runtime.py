@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Sequence, Tuple
 import numpy as np
 
 from unified_sdk.runtime.registry import register
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import BatchParam, RuntimeConfig, RuntimeHandle
 
 
 _CAPABILITY_FAMILY = "vision.direct-python-runtime"
@@ -21,14 +21,14 @@ _RUNTIME_PIPELINE = (
 _VENDOR_API_MAP = {
     "model_config": "qbruntime.type.ModelConfig / qbruntime.type.CoreMode",
     "create_runtime": "qbruntime.model.load(str(mxq_path), model_config)",
-    "infer": "model.infer([input_array])",
+    "infer": "model.infer([input_array], cache_size=..., params=...)",
     "destroy": "model.dispose/release/unload/close best-effort",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
     "qbruntime.type.ModelConfig / CoreMode": "RuntimeConfig.extra['core_mode']",
     "qbruntime.model.load(str(mxq_path), model_config)": "create_runtime(cfg)",
-    "model.infer([input_array])": "infer(rh, input_array)",
-    "qbruntime output tensor/list": "infer(...) return np.ndarray",
+    "model.infer([input_array], cache_size=..., params=...)": "infer(rh, input_array, cache_size=..., batch_params=...)",
+    "qbruntime output tensor/list": "infer(...) return np.ndarray or list[np.ndarray]",
     "model.dispose/release/unload/close": "destroy_runtime(rh)",
 }
 
@@ -37,7 +37,7 @@ def describe_api_mapping() -> dict[str, Any]:
     return {
         "unified_api": {
             "create": "create_runtime(cfg)",
-            "infer": "infer(rh, input_array)",
+            "infer": "infer(rh, input_array, cache_size=..., batch_params=...)",
             "destroy": "destroy_runtime(rh)",
         },
         "backend": "qb",
@@ -87,19 +87,63 @@ def _parse_bool(value: Any, field_name: str) -> bool:
     raise ValueError(f"RuntimeConfig.extra['{field_name}'] must be a boolean-like value, got {value!r}")
 
 
-def _to_numpy(output: Any) -> np.ndarray:
+def _to_numpy(output: Any) -> Any:
     if isinstance(output, np.ndarray):
         return output
     if hasattr(output, "detach") and callable(output.detach):
         return output.detach().cpu().numpy()
     if isinstance(output, (list, tuple)):
-        if len(output) != 1:
-            raise TypeError(
-                "QB runtime returned multiple outputs; pass a single-output model "
-                "or handle the raw list output directly"
-            )
-        return _to_numpy(output[0])
+        if len(output) == 1:
+            return _to_numpy(output[0])
+        return [_to_numpy(item) for item in output]
     return np.asarray(output)
+
+
+def _parse_non_negative_int(value: Any, field_name: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer, got {value!r}") from exc
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be >= 0")
+    return parsed
+
+
+def _normalize_batch_params(batch_params: Optional[Sequence[Any]], qbruntime_module: Any) -> Optional[list[Any]]:
+    if batch_params is None:
+        return None
+
+    BatchParamCls = getattr(qbruntime_module, "BatchParam", None)
+    if BatchParamCls is None:
+        raise RuntimeError("qbruntime.BatchParam is unavailable but batch_params were provided")
+
+    normalized = []
+    for idx, item in enumerate(batch_params):
+        if isinstance(item, BatchParamCls):
+            normalized.append(item)
+            continue
+
+        if isinstance(item, BatchParam):
+            sequence_length = item.sequence_length
+            cache_size = item.cache_size
+            cache_id = item.cache_id
+        elif isinstance(item, dict):
+            sequence_length = item.get("sequence_length")
+            cache_size = item.get("cache_size", 0)
+            cache_id = item.get("cache_id", idx)
+        else:
+            sequence_length = getattr(item, "sequence_length", None)
+            cache_size = getattr(item, "cache_size", 0)
+            cache_id = getattr(item, "cache_id", idx)
+
+        sequence_length = _parse_non_negative_int(sequence_length, f"batch_params[{idx}].sequence_length")
+        cache_size = _parse_non_negative_int(cache_size, f"batch_params[{idx}].cache_size")
+        cache_id = _parse_non_negative_int(cache_id, f"batch_params[{idx}].cache_id")
+        if sequence_length <= 0:
+            raise ValueError(f"batch_params[{idx}].sequence_length must be > 0")
+
+        normalized.append(BatchParamCls(sequence_length, cache_size, cache_id))
+    return normalized
 
 
 # core_mode 문자열 -> qbruntime.type.ModelConfig 의 전용 세터 이름.
@@ -205,6 +249,7 @@ class _QBRuntime:
             input_shape=input_shape,
             ctx={
                 "model": model,
+                "qbruntime": qbruntime,
                 "device": device,
                 "core_mode": core_mode,
                 "extra": extra,
@@ -214,13 +259,23 @@ class _QBRuntime:
             },
         )
 
-    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> np.ndarray:
+    def infer(
+        self,
+        rh: RuntimeHandle,
+        input_array: np.ndarray,
+        *,
+        cache_size: int = 0,
+        batch_params: Optional[Sequence[BatchParam]] = None,
+    ) -> Any:
         if not rh.ctx or "model" not in rh.ctx:
             raise RuntimeError("QB RuntimeHandle is closed or invalid")
 
         model = rh.ctx["model"]
+        qbruntime_module = rh.ctx.get("qbruntime")
         extra = rh.ctx.get("extra", {})
         allow_dynamic = _parse_bool(extra.get("allow_dynamic_shape", False), "allow_dynamic_shape")
+        cache_size = _parse_non_negative_int(cache_size, "cache_size")
+        normalized_batch_params = _normalize_batch_params(batch_params, qbruntime_module)
 
         input_shape = tuple(getattr(input_array, "shape", ()))
         if (not allow_dynamic) and input_shape != tuple(rh.input_shape):
@@ -230,7 +285,12 @@ class _QBRuntime:
 
         # qbruntime Model.infer 는 list[np.ndarray] 입력 -> list[np.ndarray] 출력.
         try:
-            out = model.infer([input_array])
+            if normalized_batch_params is not None:
+                out = model.infer([input_array], params=normalized_batch_params)
+            elif cache_size > 0:
+                out = model.infer([input_array], cache_size=cache_size)
+            else:
+                out = model.infer([input_array])
         except Exception as exc:
             raise RuntimeError(f"QB inference failed: {exc}") from exc
 
