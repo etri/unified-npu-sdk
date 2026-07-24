@@ -2,11 +2,11 @@
 Unified SDK (TensorRT-only worktree)
 ====================================
 
-A unified SDK for compiling and running AI models on NVIDIA GPUs via TensorRT.
+A unified SDK for compiling and running AI models on NVIDIA GPUs via TensorRT / TensorRT-LLM.
 
 Structure:
- - build:     Model compilation modules (ONNX -> TensorRT .engine)
- - runtime:   Runtime creation and inference modules (TensorRT + PyCUDA)
+ - build:     Model compilation modules (ONNX -> TensorRT .engine, model -> TensorRT-LLM artifact dir)
+ - runtime:   Runtime creation and inference modules (TensorRT + PyCUDA, TensorRT-LLM generate)
  - backends:  Backend adapters (TensorRT only in this worktree)
  - frontends: Model import and conversion (PyTorch, ONNX, etc.)
 

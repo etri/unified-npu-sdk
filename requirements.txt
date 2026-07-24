@@ -2,3 +2,5 @@ numpy
 onnx
 onnxscript
 pycuda
+transformers
+huggingface_hub
