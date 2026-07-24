@@ -50,7 +50,7 @@ BUILDS_DIR = REPO_ROOT / "builds"
 _MODEL_ZOO_TARGETS = {
     "resnet50": {
         "symbol": "torchvision.models.resnet50",
-        "note": "official RBLN PyTorch ResNet50 tutorial/reference compile baseline",
+        "note": "official RBLN PyTorch ResNet50 tutorial/model-zoo source fetch baseline",
     },
 }
 
@@ -77,22 +77,21 @@ def _parse_bucketing_shapes(value: str | None) -> list[tuple[int, ...]] | None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Build/fetch an RBLN vision artifact. Supports compiled artifact fetch by model ref/local dir, "
-            "provided .rbln fetch, reference/tutorial compile, PTH/PT restore, and experimental ONNX restore."
+            "Build/fetch an RBLN vision artifact. Supports model-zoo/source fetch, provided .rbln fetch, "
+            "reference/tutorial compile, PTH/PT restore, and experimental ONNX restore."
         )
     )
     parser.add_argument(
         "--list-model-zoo",
         action="store_true",
-        help="Print supported RBLN model-zoo/reference compile targets and exit.",
+        help="Print supported RBLN model-zoo/source-fetch targets and exit.",
     )
     parser.add_argument(
         "--compiled-model-ref",
         default=None,
         help=(
             "Hub model id or local directory containing a precompiled RBLN artifact directory "
-            "(*.rbln + rbln_config.json). This is the standard fetch path when a compiled artifact "
-            "repository/directory is available."
+            "(*.rbln + rbln_config.json). Advanced helper for a precompiled artifact repository/directory."
         ),
     )
     parser.add_argument("--model-zoo-model", default=None, help="Reference model-zoo target name, e.g. resnet50.")
@@ -166,6 +165,22 @@ def _build_torchvision_resnet50(*, pretrained: bool):
     return model
 
 
+def _materialize_model_zoo_weights(model_key: str, models_dir: Path) -> Path:
+    import torch
+    from torchvision.models import ResNet50_Weights
+
+    if model_key != "resnet50":
+        raise ValueError(f"Unsupported model-zoo fetch target: {model_key}")
+
+    dst = models_dir / "resnet50.pth"
+    if dst.is_file():
+        return dst
+
+    state_dict = ResNet50_Weights.IMAGENET1K_V2.get_state_dict(progress=True, check_hash=True)
+    torch.save(state_dict, dst)
+    return dst
+
+
 def _looks_like_local_compiled_ref(value: str) -> bool:
     if not value:
         return False
@@ -195,7 +210,7 @@ if __name__ == "__main__":
         )
 
     if args.list_model_zoo:
-        print("== Supported RBLN reference compile targets ==")
+        print("== Supported RBLN model-zoo/source-fetch targets ==")
         for key, value in sorted(_MODEL_ZOO_TARGETS.items()):
             print(f"{key}: {value['symbol']} ({value['note']})")
         raise SystemExit(0)
@@ -261,12 +276,20 @@ if __name__ == "__main__":
                     f"Try one of: {', '.join(sorted(_MODEL_ZOO_TARGETS))}"
                 )
             if model_zoo_target == "resnet50":
-                build_input = _build_torchvision_resnet50(pretrained=args.pretrained)
-                source_note = (
-                    "reference compile from official RBLN model-zoo/tutorial baseline: torchvision ResNet50 pretrained"
-                    if args.pretrained
-                    else "reference compile from official RBLN model-zoo/tutorial baseline: torchvision ResNet50 local/random-init"
-                )
+                build_input = _build_torchvision_resnet50(pretrained=False)
+                if args.pretrained:
+                    weights_path = _materialize_model_zoo_weights(model_zoo_target, models_dir)
+                    sd = _load_state_dict(weights_path, torch)
+                    build_input.load_state_dict(sd, strict=False)
+                    source_note = (
+                        "standard fetch from model-zoo/source hub -> local checkpoint -> .rbln: "
+                        f"{weights_path}"
+                    )
+                else:
+                    source_note = (
+                        "reference compile from official RBLN model-zoo/tutorial baseline: "
+                        "torchvision ResNet50 local/random-init"
+                    )
         else:
             # 3-b) user PTH/PT -> torch restore -> .rbln
             if weights_path is None:

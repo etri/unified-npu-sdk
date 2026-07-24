@@ -31,7 +31,7 @@
 ├── .secrets/                       # (gitignore) Rebellions SDK 인증
 │   └── netrc                       # 사용자가 직접 생성
 ├── examples/
-│   ├── run_rbln_build.py           # compiled-artifact fetch / reference compile / provided .rbln / PTH / ONNX -> .rbln
+│   ├── run_rbln_build.py           # model-zoo/source fetch / provided .rbln / PTH / ONNX -> .rbln
 │   ├── run_rbln_infer.py           # .rbln 모델 추론
 │   └── inspect_rbln_model.py       # .rbln 입출력 메타 확인
 │   ├── run_rbln_llm_build.py       # model id/local path fetch or optimum-rbln compile
@@ -242,10 +242,11 @@ python3 -c "import unified_sdk, rebel; print('OK')"
 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
-# 4) vision 표준 fetching smoke: hub/local compiled RBLN artifact fetch
-#    예: 허브나 사내 저장소에 이미 컴파일된 RBLN directory (*.rbln + rbln_config.json)가 있을 때
+# 4) vision 표준 fetching smoke: model-zoo/source hub -> ./models -> .rbln
+python3 examples/run_rbln_build.py --list-model-zoo
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
-  --compiled-model-ref artifacts/resnet50_rbln \
+  --model-zoo-model resnet50 \
+  --pretrained \
   --model-name resnet50
 
 # 5) vision custom fetching smoke: provided .rbln local file
@@ -259,23 +260,13 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
 # container 내부에서는 export / graph optimization 이후 RuntimeError로 실패할 수 있습니다.
 # 이 경우 현재 branch 기준 권장 workflow는:
 #   1) host native 에서 .rbln compile
-#   2) container 에서는 위 4) 또는 5) fetch 경로로 artifact setup
+#   2) container 에서는 host에서 생성한 .rbln을 5) fetch 경로로 artifact setup
 #   3) container 에서 infer / inspect
 # 입니다. 관련 vendor 문의는 진행 중입니다.
 
 # 6) vision custom compile smoke
-#    아래 list는 "fetch target"이 아니라 reference/tutorial compile target입니다.
-python3 examples/run_rbln_build.py --list-model-zoo
 
 # 6-a) reference/tutorial compile: torchvision pretrained/local model -> .rbln
-RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
-  --model-zoo-model resnet50 \
-  --pretrained \
-  --model-name resnet50 \
-  --precision fp32 \
-  --input-shape 1,3,224,224 \
-  --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
-
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --model-zoo-model resnet50 \
   --model-name resnet50_local \
@@ -423,7 +414,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. 반면 host에서 생성한 `.rbln`의 container inference는 정상 동작했습니다. 따라서 vendor 답변 전까지는:
   `host native compile -> container provided .rbln fetch -> infer / inspect`
   흐름을 실무 권장 우회 경로로 봅니다.
-- 현재 README에서 `표준 fetching`은 **허브/저장소에 이미 존재하는 compiled RBLN artifact directory를 받아 셋업하는 경로**를 뜻합니다. 반면 `model-zoo-model` 옵션은 **reference/tutorial compile** 용도이며, fetch가 아니라 compile smoke에 속합니다.
+- 현재 README에서 `표준 fetching`은 **허브/model-zoo에서 원본 pretrained 모델을 받아 `./models` 아래에 준비하고, 이후 `.rbln` compile까지 이어지는 경로**를 뜻합니다. 반면 `provided .rbln fetch`는 이미 컴파일된 artifact를 직접 받아 셋업하는 별도 경로입니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
 - `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
 - 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.
