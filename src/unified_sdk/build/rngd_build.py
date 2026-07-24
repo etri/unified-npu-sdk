@@ -68,6 +68,11 @@ def _detect_prebuilt_artifact_dir(model_ref: str) -> str | None:
     return ", ".join(markers)
 
 
+def _looks_like_qwen3_8b_fp8(model_ref: str, model_name: str) -> bool:
+    text = f"{model_ref} {model_name}".lower().replace("_", "-")
+    return "qwen3-8b-fp8" in text
+
+
 def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
@@ -138,6 +143,13 @@ class _RNGDBuildAdapter:
                 "or prepare an upstream model snapshot such as 'Qwen/Qwen3-8B-FP8' for custom FXB smoke."
             )
 
+        if _looks_like_qwen3_8b_fp8(model_ref, cfg.model_name) and tp == 1:
+            raise RuntimeError(
+                "FXB build for Qwen3-8B-FP8 with tensor_parallel_size=1 is vendor-confirmed as unsupported. "
+                "Use tensor_parallel_size=8 for RNGD 1-card smoke, or follow the model-specific TP combinations "
+                "documented by FuriosaAI."
+            )
+
         out_dir = Path(cfg.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = _fxb_output_path(out_dir, cfg.model_name)
@@ -174,6 +186,15 @@ class _RNGDBuildAdapter:
             stderr = (proc.stderr or "").strip()
             stdout = (proc.stdout or "").strip()
             detail = stderr or stdout or f"`fxb build` failed with exit code {proc.returncode}"
+            if (
+                _looks_like_qwen3_8b_fp8(model_ref, cfg.model_name)
+                and tp == 1
+                and "tcc subprocess failed" in detail
+            ):
+                detail += (
+                    " | Hint: FuriosaAI confirmed on July 14, 2026 that Qwen3-8B-FP8 does not support TP=1. "
+                    "Retry with --tensor-parallel-size 8 for RNGD 1-card smoke."
+                )
             raise RuntimeError(f"FXB build failed: {detail}")
 
         if not extra.get("dry_run") and not output_path.is_file():

@@ -69,7 +69,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="선택 기능: custom build smoke 경로에서 `fxb build`로 FXB 를 생성한다. vendor/toolchain 상태에 따라 실패할 수 있다.",
     )
-    parser.add_argument("--tensor-parallel-size", type=int, default=int(os.getenv("RNGD_TP", "1")))
+    parser.add_argument(
+        "--tensor-parallel-size",
+        type=int,
+        default=int(os.getenv("RNGD_TP", "1")),
+        help=(
+            "FXB build tensor parallel size. "
+            "모델별 지원 조합이 다르며, 예를 들어 Qwen3-8B-FP8 custom build 는 "
+            "vendor 답변 기준 TP=8 (RNGD 1장) 사용이 권장됩니다."
+        ),
+    )
     parser.add_argument("--pipeline-parallel-size", type=int, default=1)
     parser.add_argument("--max-model-len", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true", help="FXB 빌드 설정만 확인하고 실제 컴파일은 하지 않는다.")
