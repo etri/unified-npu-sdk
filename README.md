@@ -343,6 +343,9 @@ python3 examples/run_rbln_llm_infer.py \
   --engine-path artifacts/qwen3_0_6b_rbln \
   --prompt "What is the capital of South Korea?"
 python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln
+# note: Unified SDK wrapping 기준으로는 여기서 별도 compile API를 부르지 않습니다.
+#       다만 vllm-rbln runtime은 precompiled artifact가 있어도 sampler/warmup 경로에서
+#       vendor-side internal compile을 추가로 시도할 수 있습니다.
 
 # 3) (LLM) local model path -> optimum-rbln compile -> generate
 python3 examples/run_rbln_llm_build.py \
@@ -378,6 +381,13 @@ python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln --load
 | LLM | 생성 | `create_runtime_LLM(cfg)` | `vllm.LLM(model=..., tensor_parallel_size=..., max_model_len=...)` |
 | LLM | 추론 | `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
 | LLM | 종료 | `destroy_runtime_LLM(rh)` | best-effort release of vLLM runtime handle |
+
+LLM 메모:
+
+- Unified SDK wrapping 관점에서는 명시적 compile은 `build_unified_LLM(cfg)`에만 둡니다.
+- `create_runtime_LLM(cfg)`와 `generate_LLM(...)`는 runtime/generate 표면만 담당합니다.
+- 다만 `vllm-rbln` vendor runtime은 precompiled artifact를 써도 runtime warmup, sampler 준비, fallback 경로에서 내부 compile을 다시 유발할 수 있습니다.
+- 따라서 infer 중 compile 로그가 보여도, 현재 구현이 compile 책임을 runtime wrapper로 잘못 옮긴 것은 아닙니다.
 
 ### 컴파일 (.rbln 생성)
 
@@ -441,7 +451,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
 - 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
 - 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 compiler backend를 사용하므로 같은 종류의 compile failure가 재현될 수 있습니다. Unified SDK 관리 목적상 본 branch의 기준 흐름은 Docker-first로 두고, vendor 답변 전까지는 `4) 표준 fetching`과 `6) custom compile`을 container compile known issue로 메모합니다. 현재 Docker 안에서 안정적으로 확인 가능한 vision 경로는 `5) provided .rbln fetch -> 7) infer -> 8) inspect`입니다. `host native compile -> container provided .rbln fetch`는 필요 시 원인 분리용 임시 우회로만 봅니다.
-- 2026년 7월 24일 기준, LLM도 비슷한 경향을 보입니다. host native에서는 `1) model id -> generate`, `2) precompiled artifact -> generate`, `3) optimum-rbln compile -> generate`가 통과했지만, CDI/container에서는 `3)`의 `optimum-rbln` compile이 같은 compiler backend 이슈로 실패할 수 있습니다. 또한 host에서 미리 만든 artifact가 있어도 `2)` 런타임 warmup 중 `vllm-rbln` sampler 경로가 추가 compile을 시도할 수 있습니다. 이 경우 Docker 이미지에 작동하는 C++ compiler(`build-essential`, `g++`)가 없으면 PyTorch inductor CPU fallback이 `InvalidCxxCompiler`로 추가 실패할 수 있습니다.
+- 2026년 7월 24일 기준, LLM도 비슷한 경향을 보입니다. host native에서는 `1) model id -> generate`, `2) precompiled artifact -> generate`, `3) optimum-rbln compile -> generate`가 통과했지만, CDI/container에서는 `3)`의 `optimum-rbln` compile이 같은 compiler backend 이슈로 실패할 수 있습니다. 또한 host에서 미리 만든 artifact가 있어도 `2)`의 `create_runtime_LLM(...)` / `generate_LLM(...)` 경로에서 `vllm-rbln` runtime warmup, sampler 준비, fallback 처리 때문에 vendor-side internal compile이 다시 일어날 수 있습니다. 이 경우 Docker 이미지에 작동하는 C++ compiler(`build-essential`, `g++`)가 없으면 PyTorch inductor CPU fallback이 `InvalidCxxCompiler`로 추가 실패할 수 있습니다.
 - 현재 README에서 `표준 fetching`은 **허브/model-zoo에서 원본 pretrained 모델을 받아 `./models` 아래에 준비하고, 이후 `.rbln` compile까지 이어지는 경로**를 뜻합니다. 반면 `provided .rbln fetch`는 이미 컴파일된 artifact를 직접 받아 셋업하는 별도 경로입니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
 - `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
