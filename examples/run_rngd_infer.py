@@ -70,7 +70,7 @@ if __name__ == "__main__":
             )
 
     from unified_sdk.types import RuntimeConfig
-    from unified_sdk.runtime import create_runtime, generate, destroy_runtime
+    from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
 
     cfg = RuntimeConfig(
         backend="rngd",
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         min_tokens=args.min_tokens,
     )
 
-    rh = create_runtime(cfg)
+    rh = create_runtime_LLM(cfg)
 
     prompt = args.prompt
     if args.chat:
@@ -97,7 +97,7 @@ if __name__ == "__main__":
             )
 
     t0 = timeit.default_timer()
-    text = generate(rh, prompt)
+    text = generate_LLM(rh, prompt)
     dt = (timeit.default_timer() - t0) * 1000
 
     print("== RNGD generate ==")
@@ -109,4 +109,4 @@ if __name__ == "__main__":
     print("----------------")
     print(f"latency_ms = {dt:.1f}")
 
-    destroy_runtime(rh)
+    destroy_runtime_LLM(rh)

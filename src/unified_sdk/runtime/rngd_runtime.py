@@ -18,27 +18,27 @@ _RUNTIME_PIPELINE = (
     "destroy_runtime",
 )
 _VENDOR_API_MAP = {
-    "create_runtime": "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)",
+    "create_runtime_LLM": "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)",
     "sampling": "furiosa_llm.SamplingParams(**params)",
-    "generate": "llm.generate(prompts, sampling)",
-    "destroy": "llm.shutdown/close/dispose best-effort",
+    "generate_LLM": "llm.generate(prompts, sampling)",
+    "destroy_runtime_LLM": "llm.shutdown/close/dispose best-effort",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)": "create_runtime(cfg)",
-    "furiosa_llm.SamplingParams(**params)": "infer(rh, prompt, **overrides) / generate(...)",
-    "llm.generate(prompts, sampling)": "infer(rh, prompt, **overrides) / generate(...)",
-    "RequestOutput.outputs[0].text": "infer(...) return str or list[str]",
-    "llm.shutdown/close/dispose": "destroy_runtime(rh)",
+    "furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)": "create_runtime_LLM(cfg)",
+    "furiosa_llm.SamplingParams(**params)": "infer_LLM(rh, prompt, **overrides) / generate_LLM(...)",
+    "llm.generate(prompts, sampling)": "infer_LLM(rh, prompt, **overrides) / generate_LLM(...)",
+    "RequestOutput.outputs[0].text": "infer_LLM(...) return str or list[str]",
+    "llm.shutdown/close/dispose": "destroy_runtime_LLM(rh)",
 }
 
 
 def describe_api_mapping() -> Dict[str, Any]:
     return {
         "unified_api": {
-            "create": "create_runtime(cfg)",
-            "infer": "infer(rh, prompt, **overrides)",
-            "generate": "generate(rh, prompt, **overrides)",
-            "destroy": "destroy_runtime(rh)",
+            "create": "create_runtime_LLM(cfg)",
+            "infer": "infer_LLM(rh, prompt, **overrides)",
+            "generate": "generate_LLM(rh, prompt, **overrides)",
+            "destroy": "destroy_runtime_LLM(rh)",
         },
         "backend": "rngd",
         "capability_family": _CAPABILITY_FAMILY,
