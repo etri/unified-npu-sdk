@@ -17,12 +17,12 @@ PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
+CDI_SPEC_DETECTED=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
 DOCKER_DEVICE_ARGS=()
-DOCKER_TOOL_MOUNTS=()
 
 print_usage() {
   echo "Usage: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--compiler-version <version>] [--pytorch-index-url <url>]"
@@ -42,7 +42,7 @@ print_usage() {
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --cdi-device  RBLN CDI device handle, e.g. rebellions.ai/npu=all"
-  echo "                (default: auto-detect /var/run/cdi/rbln.yaml, then manual /dev/rbln*)"
+  echo "                (default: auto-detect /var/run/cdi/rbln.yaml, else use rebellions.ai/npu=all)"
   echo "  -h, --help    Show this help message"
 }
 
@@ -53,34 +53,13 @@ detect_runtime_mounts() {
   fi
 
   if [ -f /var/run/cdi/rbln.yaml ]; then
+    CDI_SPEC_DETECTED=1
     CDI_DEVICE="rebellions.ai/npu=all"
     DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
     return
   fi
-
-  for dev in /dev/rbln*; do
-    if [ -c "${dev}" ]; then
-      DOCKER_DEVICE_ARGS+=( "--device" "${dev}:${dev}" )
-    fi
-  done
-
-  TOOL_CANDIDATES=(
-    "$(command -v rbln-smi 2>/dev/null || true)"
-    "$(command -v rbln-stat 2>/dev/null || true)"
-    /usr/local/bin/rbln-smi
-    /usr/local/bin/rbln-stat
-    /usr/bin/rbln-smi
-    /usr/bin/rbln-stat
-  )
-
-  for tool in "${TOOL_CANDIDATES[@]}"; do
-    if [ -f "${tool}" ]; then
-      case " ${DOCKER_TOOL_MOUNTS[*]} " in
-        *" ${tool}:${tool} "*) ;;
-        *) DOCKER_TOOL_MOUNTS+=( "-v" "${tool}:${tool}" ) ;;
-      esac
-    fi
-  done
+  CDI_DEVICE="rebellions.ai/npu=all"
+  DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
 }
 
 print_run_hint() {
@@ -91,9 +70,6 @@ print_run_hint() {
   done
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
-  for ((i=0; i<${#DOCKER_TOOL_MOUNTS[@]}; i+=2)); do
-    echo "  ${DOCKER_TOOL_MOUNTS[i]} ${DOCKER_TOOL_MOUNTS[i+1]} \\"
-  done
   echo "  ${IMAGE_NAME}:${TAG}"
 }
 
@@ -185,15 +161,18 @@ detect_runtime_mounts
 
 echo "Build complete!"
 echo ""
-if [ ${#DOCKER_DEVICE_ARGS[@]} -eq 0 ]; then
-  echo "[WARN] No RBLN device nodes were detected on this host."
-  echo "       Preferred: configure RBLN Container Toolkit CDI and use rebellions.ai/npu=all."
-  echo "       Fallback expected at least one /dev/rbln* character device."
-  echo ""
-elif [ -n "${CDI_DEVICE}" ]; then
-  echo "[INFO] Using RBLN CDI device handle: ${CDI_DEVICE}"
+if [ "${CDI_SPEC_DETECTED}" -eq 0 ] && [ -z "${RBLN_CDI_DEVICE:-}" ]; then
+  echo "[WARN] CDI spec file was not detected at /var/run/cdi/rbln.yaml."
+  echo "       RBLN official user guide recommends Container Toolkit CDI:"
+  echo "         sudo rbln-ctk cdi generate"
+  echo "         sudo rbln-ctk runtime configure --runtime docker"
+  echo "         sudo systemctl restart docker"
+  echo "       This script will still print a CDI-based docker run example using rebellions.ai/npu=all,"
+  echo "       but the container may not receive RBLN libraries/tools until CDI is configured correctly."
   echo ""
 fi
+echo "[INFO] Using RBLN CDI device handle: ${CDI_DEVICE}"
+echo ""
 
 echo "Run container with:"
 print_run_hint

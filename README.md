@@ -173,9 +173,10 @@ docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
 - 호스트에 `containerd`와 `docker`가 함께 있으면 `multiple runtimes detected`가 나올 수 있습니다.
   이 경우 위 예시처럼 `--runtime docker`를 명시하면 됩니다.
 
-- `./build.sh`는 `/var/run/cdi/rbln.yaml`이 있으면 위 CDI 경로를 우선 사용합니다.
-- CDI가 없는 호스트에서는 현재 보이는 `/dev/rbln*`와 `rbln-smi`/`rbln-stat` 실행 파일을
-  감지해 fallback `docker run` 예시를 출력합니다. 다만 기본 권장 경로는 Container Toolkit + CDI입니다.
+- `./build.sh`는 CDI를 기준으로 `--device rebellions.ai/npu=all` 실행 예시를 출력합니다.
+- `/var/run/cdi/rbln.yaml`이 없으면 build 완료 후 경고를 출력하며, 이 경우 먼저
+  `rbln-ctk cdi generate`, `rbln-ctk runtime configure --runtime docker`,
+  `sudo systemctl restart docker`를 완료한 뒤 다시 컨테이너를 띄우는 것이 맞습니다.
 - NPU가 여러 개인 서버에서는 컴파일/실행 대상을 `RBLN_DEVICES`로 고정하는 것이 안전합니다.
   예: `RBLN_DEVICES=0 python3 examples/run_rbln_build.py`
 
@@ -203,8 +204,9 @@ docker run -it --security-opt seccomp=unconfined \
   unified-sdk:rbln
 ```
 
-CDI가 없는 호스트에서는 `./build.sh`가 감지한 `/dev/rbln*` 기반 fallback 실행 예시를
-출력합니다.
+공식 Container Toolkit 가이드 기준으로는, `rbln-smi`와 RBLN 라이브러리는 CDI를 통해 자동으로
+주입됩니다. 따라서 `/dev/rbln0` 또는 `/usr/bin/rbln-smi`를 수동으로 볼륨 마운트하는 방식은
+이 브랜치의 권장 경로가 아닙니다.
 
 컨테이너 내부 점검:
 
