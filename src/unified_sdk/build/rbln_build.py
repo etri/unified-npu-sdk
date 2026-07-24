@@ -212,7 +212,14 @@ class _RBLNBuildAdapter:
                 )
                 compiled_optimum.save_pretrained(str(compiled_dir))
             except Exception as exc:
-                raise RuntimeError(f"optimum-rbln image classification compile failed: {exc}") from exc
+                hint = (
+                    "optimum-rbln image classification compile failed. This path still uses the same "
+                    "RBLN compiler backend underneath, so if host-native compile succeeds while a "
+                    "CDI/container compile fails, treat it as the same vendor/environment-dependent "
+                    "compile issue first. The currently recommended workaround is host-native compile "
+                    "followed by container inference/custom-fetch of the generated .rbln artifact."
+                )
+                raise RuntimeError(f"{hint} Original error: {exc}") from exc
 
             src = _resolve_compiled_dir(compiled_dir)
             if src != rbln_path.resolve():
