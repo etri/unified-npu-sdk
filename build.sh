@@ -11,6 +11,8 @@ CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${RBLN_BASE_IMAGE:-ubuntu:22.04}"
 COMPILER_VERSION="${REBEL_COMPILER_VERSION:-0.11.0}"
+OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION:-0.11.0.post1}"
+VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION:-0.11.0}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
@@ -33,6 +35,10 @@ print_usage() {
   echo "                (default: ${BASE_IMAGE})"
   echo "  --compiler-version  rebel-compiler version to install during docker build"
   echo "                (default: ${COMPILER_VERSION})"
+  echo "  --optimum-rbln-version  optimum-rbln version to install during docker build"
+  echo "                (default: ${OPTIMUM_RBLN_VERSION})"
+  echo "  --vllm-rbln-version  vllm-rbln version to install during docker build"
+  echo "                (default: ${VLLM_RBLN_VERSION})"
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --cdi-device  RBLN CDI device handle, e.g. rebellions.ai/npu=all"
@@ -105,6 +111,12 @@ while [[ $# -gt 0 ]]; do
     --compiler-version)
       [ -z "$2" ] && { echo "[ERROR] --compiler-version requires a value"; exit 1; }
       COMPILER_VERSION="$2"; shift 2 ;;
+    --optimum-rbln-version)
+      [ -z "$2" ] && { echo "[ERROR] --optimum-rbln-version requires a value"; exit 1; }
+      OPTIMUM_RBLN_VERSION="$2"; shift 2 ;;
+    --vllm-rbln-version)
+      [ -z "$2" ] && { echo "[ERROR] --vllm-rbln-version requires a value"; exit 1; }
+      VLLM_RBLN_VERSION="$2"; shift 2 ;;
     --pytorch-index-url)
       [ -z "$2" ] && { echo "[ERROR] --pytorch-index-url requires a value"; exit 1; }
       PYTORCH_INDEX_URL="$2"; shift 2 ;;
@@ -148,6 +160,8 @@ echo "  Container name : ${CONTAINER_NAME}"
 echo "  Workspace(repo): ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  Compiler ver.  : ${COMPILER_VERSION}"
+echo "  Optimum ver.   : ${OPTIMUM_RBLN_VERSION}"
+echo "  vLLM ver.      : ${VLLM_RBLN_VERSION}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  CDI device     : ${CDI_DEVICE:-auto}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
@@ -162,6 +176,8 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg UID="${UID_VALUE}" \
   --build-arg GID="${GID_VALUE}" \
   --build-arg REBEL_COMPILER_VERSION="${COMPILER_VERSION}" \
+  --build-arg OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION}" \
+  --build-arg VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION}" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   .
 
@@ -188,4 +204,5 @@ echo "  command -v rbln-smi && rbln-smi || true"
 echo "  python3 -c \"import unified_sdk, rebel; print('OK')\""
 echo "  python3 -c \"import rebel; print('npu_is_available=', rebel.npu_is_available())\""
 echo "  python3 -c \"import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))\""
+echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
 echo "  RBLN_DEVICES=0 python3 examples/run_rbln_build.py"

@@ -225,9 +225,8 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py
 ## 🚀 Backend Docker smoke
 
 아래 흐름은 **RBLN 장치가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `rbln-only`
-백엔드를 검증하는 표준 smoke 절차입니다. 추가 wrapper 계층 없이 Unified SDK의
-RBLN adapter가 vendor SDK(`rebel`)를 직접 호출합니다. LLM track은 추가로
-`optimum-rbln` / `vllm-rbln` 설치가 필요하며, 아래 vision smoke 뒤에 별도 실행합니다.
+백엔드를 검증하는 표준 smoke 절차입니다. Unified SDK의
+RBLN adapter가 vendor SDK(`rebel`, `optimum-rbln`, `vllm-rbln`)를 감쌉니다.
 
 ```bash
 # 1) 이미지 빌드
@@ -291,11 +290,6 @@ RBLN_DEVICES=0 python3 examples/run_rbln_infer.py \
 
 # 8) 모델 메타 best-effort 확인
 python3 examples/inspect_rbln_model.py builds/resnet50.rbln --device 0
-
-# ---- LLM track (optional packages required) ----
-# pip install --extra-index-url https://pypi.rbln.ai/simple optimum-rbln
-# pip install --extra-index-url https://wheels.vllm.ai/0.22.0/cpu \
-#            --extra-index-url https://download.pytorch.org/whl/cpu vllm-rbln==0.11.0
 
 # 1) (LLM) model id -> generate
 python3 examples/run_rbln_llm_build.py \

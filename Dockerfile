@@ -9,6 +9,8 @@ ARG USERNAME=etri
 ARG UID=1000
 ARG GID=1000
 ARG REBEL_COMPILER_VERSION=0.11.0
+ARG OPTIMUM_RBLN_VERSION=0.11.0.post1
+ARG VLLM_RBLN_VERSION=0.11.0
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -54,6 +56,19 @@ RUN --mount=type=secret,id=netrc,target=/root/.netrc,mode=0600 \
     pip install --no-cache-dir \
         --extra-index-url https://pypi.rbln.ai/simple \
         rebel-compiler==${REBEL_COMPILER_VERSION}
+
+# 4-b) LLM high-level stacks 설치
+#     - optimum-rbln: 공식 HuggingFace compile path
+#     - vllm-rbln: 공식 high-level LLM runtime/serving path
+RUN --mount=type=secret,id=netrc,target=/root/.netrc,mode=0600 \
+    --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir \
+        --extra-index-url ${PYTORCH_INDEX_URL} \
+        optimum-rbln==${OPTIMUM_RBLN_VERSION} \
+    && pip install --no-cache-dir \
+        --extra-index-url https://wheels.vllm.ai/0.22.0/cpu \
+        --extra-index-url ${PYTORCH_INDEX_URL} \
+        vllm-rbln==${VLLM_RBLN_VERSION}
 
 # 5) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk
