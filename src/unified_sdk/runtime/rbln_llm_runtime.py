@@ -102,6 +102,13 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
     try:
         llm = LLM(**llm_kwargs)
     except Exception as exc:
+        message = str(exc)
+        if "GatedRepoError" in message or "gated repo" in message.lower() or "401 Client Error" in message:
+            raise RuntimeError(
+                "Failed to create RBLN LLM runtime because the selected Hugging Face model is gated or "
+                "requires authentication. For the default public smoke path, try a non-gated model such as "
+                "'Qwen/Qwen3-0.6B', or provide a valid HF_TOKEN if you need a gated model."
+            ) from exc
         raise RuntimeError(f"Failed to create RBLN LLM runtime for {engine!r}: {exc}") from exc
 
     sampling_defaults = {

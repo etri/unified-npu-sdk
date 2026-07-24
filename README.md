@@ -331,29 +331,29 @@ python3 examples/inspect_rbln_model.py builds/resnet50.rbln --device 0
 
 # 1) (LLM) model id -> generate
 python3 examples/run_rbln_llm_build.py \
-  --model meta-llama/Llama-3.2-1B \
+  --model Qwen/Qwen3-0.6B \
   --build-mode fetch
 python3 examples/run_rbln_llm_infer.py \
-  --engine-path meta-llama/Llama-3.2-1B \
+  --engine-path Qwen/Qwen3-0.6B \
   --prompt "What is the capital of South Korea?"
 
 # 2) (LLM) local model path + compatible precompiled RBLN artifact -> generate
 python3 examples/run_rbln_llm_infer.py \
-  --engine-path artifacts/llama32_1b_rbln \
+  --engine-path artifacts/qwen3_0_6b_rbln \
   --prompt "What is the capital of South Korea?"
-python3 examples/inspect_rbln_llm_model.py artifacts/llama32_1b_rbln
+python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln
 
 # 3) (LLM) local model path -> optimum-rbln compile -> generate
 python3 examples/run_rbln_llm_build.py \
-  --model meta-llama/Llama-3.2-1B \
+  --model Qwen/Qwen3-0.6B \
   --build-mode optimum_compile \
-  --model-name llama32_1b_rbln \
+  --model-name qwen3_0_6b_rbln \
   --max-model-len 512 \
   --num-devices 1
 python3 examples/run_rbln_llm_infer.py \
-  --engine-path artifacts/llama32_1b_rbln \
+  --engine-path artifacts/qwen3_0_6b_rbln \
   --prompt "What is the capital of South Korea?"
-python3 examples/inspect_rbln_llm_model.py artifacts/llama32_1b_rbln --load
+python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln --load
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
