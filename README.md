@@ -263,11 +263,14 @@ python3 examples/run_warboy_build.py \
 #   --model-factory mypkg.models:create_model \
 #   --calib-image models/input.jpg
 
-# 5) 1 PE 환경이라면 target-npu 를 명시:
-python3 examples/run_warboy_build.py \
-  --from-onnx models/resnet50_quantized.onnx \
-  --target-npu warboy \
-  --model-name resnet50
+# 5) (선택) 1 PE 환경 참고 예제
+#    아래 명령은 builds/resnet50.enf 를 1PE용으로 다시 생성하므로,
+#    기본 2PE smoke 흐름을 순서대로 따라가는 중에는 실행하지 않는 것을 권장합니다.
+#    실제 1PE 환경이거나 1PE ENF를 의도적으로 만들 때만 참고하세요.
+# python3 examples/run_warboy_build.py \
+#   --from-onnx models/resnet50_quantized.onnx \
+#   --target-npu warboy \
+#   --model-name resnet50
 
 # 6) .enf 추론
 #    resnet50.enf 이고 furiosa-models 가 있으면 model-zoo preprocess/postprocess 를 우선 사용합니다.
