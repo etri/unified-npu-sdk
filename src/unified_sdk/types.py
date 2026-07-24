@@ -48,3 +48,42 @@ class RuntimeHandle:
     input_shape: Tuple[int, ...]
     # 백엔드 전용 객체/버퍼 캐리어 (engine, context, stream, device buffers ...)
     ctx: Dict[str, Any] = field(default_factory=dict)
+
+
+# TensorRT-LLM track
+
+LLMBuildBackendName = Literal["tensorrt"]
+LLMRuntimeBackendName = Literal["tensorrt"]
+
+
+@dataclass
+class LLMBuildConfig:
+    backend: LLMBuildBackendName
+    model_or_path: str | Path
+    out_dir: str | Path = "artifacts"
+    model_name: str = "model"
+    max_model_len: int = 512
+    tensor_parallel_size: int = 1
+    extra: Optional[Dict[str, Any]] = None  # build_mode(fetch|llm_api_compile), tokenizer_path, trust_remote_code, dtype 등
+
+
+@dataclass
+class LLMRuntimeConfig:
+    backend: LLMRuntimeBackendName
+    engine_path: str | Path                 # HF model id, local model dir, or prebuilt TensorRT-LLM artifact dir
+    tokenizer_path: Optional[str | Path] = None
+    max_model_len: int = 512
+    max_tokens: int = 64
+    temperature: float = 0.7
+    top_p: float = 1.0
+    top_k: int = 50
+    min_tokens: int = 0
+    tensor_parallel_size: int = 1
+    extra: Optional[Dict[str, Any]] = None  # trust_remote_code, dtype 등
+
+
+@dataclass
+class LLMRuntimeHandle:
+    backend: str
+    engine_path: str
+    ctx: Dict[str, Any] = field(default_factory=dict)
