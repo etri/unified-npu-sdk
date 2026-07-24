@@ -68,7 +68,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - **NVIDIA GPU 드라이버**가 호스트에 정상 설치되어 있어야 합니다.
 - **Docker Engine**, **docker buildx 플러그인**, **NVIDIA Container Toolkit**이 준비되어 있어야 합니다.
 - `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
-- `tensorrt_llm`는 Docker 빌드 시 `https://pypi.nvidia.com`에서 같이 설치합니다.
+- `tensorrt_llm`는 용량이 큰 편이라 설치 시간이 길 수 있습니다. 다만 `trt-only` 이미지는 vision/LLM 공용으로 재활용하는 전제를 두고, Docker 빌드 시 기본 포함합니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
 최소 확인 항목:
@@ -421,6 +421,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 TensorRT 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - TensorRT-LLM 경로는 high-level `generate` 중심 smoke를 제공합니다. 모델/옵션 호환성은 TensorRT-LLM 릴리스에 따라 달라질 수 있습니다.
+- `tensorrt_llm`는 `tensorrt-cu13-libs` 같은 대형 wheel을 함께 끌어와 첫 빌드 시간이 길 수 있습니다. 대신 Dockerfile은 pip cache mount를 사용하므로, 같은 머신에서 이후 재빌드는 훨씬 덜 아프게 만드는 방향으로 정리했습니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
