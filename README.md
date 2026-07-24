@@ -242,7 +242,7 @@ python3 -c "import unified_sdk, rebel; print('OK')"
 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
-# 4) vision 표준 fetching smoke: model-zoo/source hub -> ./models -> .rbln
+# 4) vision 표준 fetching smoke: model-zoo/source hub -> ./models cache -> optimum-rbln compile -> .rbln
 python3 examples/run_rbln_build.py --list-model-zoo
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --model-zoo-model resnet50 \
@@ -256,12 +256,13 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
 
 # NOTE (2026-07-24):
 # 일부 RBLN-CA22 + rebel-compiler 0.11.0 + CDI/container 조합에서는
-# host native Python 환경에서는 성공하는 compile_from_torch(...)가
+# host native Python 환경에서는 성공하는 direct rebel.compile_from_torch(...)가
 # container 내부에서는 export / graph optimization 이후 RuntimeError로 실패할 수 있습니다.
 # 이 경우 현재 branch 기준 권장 workflow는:
-#   1) host native 에서 .rbln compile
-#   2) container 에서는 host에서 생성한 .rbln을 5) fetch 경로로 artifact setup
-#   3) container 에서 infer / inspect
+#   1) 표준 fetching smoke는 optimum-rbln 경로를 우선 시도
+#   2) custom compile(6-a/6-b) 가 direct rebel.compile_from_torch(...)에 걸리면 host native 에서 .rbln compile
+#   3) container 에서는 host에서 생성한 .rbln을 5) fetch 경로로 artifact setup
+#   4) container 에서 infer / inspect
 # 입니다. 관련 vendor 문의는 진행 중입니다.
 
 # 6) vision custom compile smoke

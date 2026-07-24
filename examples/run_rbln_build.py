@@ -50,7 +50,8 @@ BUILDS_DIR = REPO_ROOT / "builds"
 _MODEL_ZOO_TARGETS = {
     "resnet50": {
         "symbol": "torchvision.models.resnet50",
-        "note": "official RBLN PyTorch ResNet50 tutorial/model-zoo source fetch baseline",
+        "note": "official RBLN PyTorch ResNet50 model-zoo source fetch baseline (optimum-rbln path)",
+        "hf_model_id": "microsoft/resnet-50",
     },
 }
 
@@ -165,22 +166,6 @@ def _build_torchvision_resnet50(*, pretrained: bool):
     return model
 
 
-def _materialize_model_zoo_weights(model_key: str, models_dir: Path) -> Path:
-    import torch
-    from torchvision.models import ResNet50_Weights
-
-    if model_key != "resnet50":
-        raise ValueError(f"Unsupported model-zoo fetch target: {model_key}")
-
-    dst = models_dir / "resnet50.pth"
-    if dst.is_file():
-        return dst
-
-    state_dict = ResNet50_Weights.IMAGENET1K_V2.get_state_dict(progress=True, check_hash=True)
-    torch.save(state_dict, dst)
-    return dst
-
-
 def _looks_like_local_compiled_ref(value: str) -> bool:
     if not value:
         return False
@@ -276,16 +261,14 @@ if __name__ == "__main__":
                     f"Try one of: {', '.join(sorted(_MODEL_ZOO_TARGETS))}"
                 )
             if model_zoo_target == "resnet50":
-                build_input = _build_torchvision_resnet50(pretrained=False)
                 if args.pretrained:
-                    weights_path = _materialize_model_zoo_weights(model_zoo_target, models_dir)
-                    sd = _load_state_dict(weights_path, torch)
-                    build_input.load_state_dict(sd, strict=False)
+                    build_input = _MODEL_ZOO_TARGETS[model_zoo_target]["hf_model_id"]
                     source_note = (
-                        "standard fetch from model-zoo/source hub -> local checkpoint -> .rbln: "
-                        f"{weights_path}"
+                        "standard fetch from model-zoo/source hub via optimum-rbln -> .rbln: "
+                        f"{build_input}"
                     )
                 else:
+                    build_input = _build_torchvision_resnet50(pretrained=False)
                     source_note = (
                         "reference compile from official RBLN model-zoo/tutorial baseline: "
                         "torchvision ResNet50 local/random-init"
@@ -322,6 +305,12 @@ if __name__ == "__main__":
             for key, value in {
                 "npu": args.npu,
                 "model_trace_method": args.model_trace_method,
+                "compile_frontend": "optimum_image_classification"
+                if ((args.model_zoo_model or "").strip().lower() == "resnet50" and args.pretrained)
+                else "rebel",
+                "source_cache_dir": str(models_dir / "hf-cache")
+                if ((args.model_zoo_model or "").strip().lower() == "resnet50" and args.pretrained)
+                else None,
             }.items()
             if value
         },
