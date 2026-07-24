@@ -242,6 +242,11 @@ python3 -c "import unified_sdk, rebel; print('OK')"
 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
+# NOTE:
+# 이전에 root 사용자로 실행한 컨테이너가 bind mount 경로에 root 소유 산출물을 남겼다면,
+# host에서 한 번 정리 후 다시 시작하는 편이 안전합니다.
+#   sudo chown -R "$(id -u)":"$(id -g)" builds models || true
+
 # 4) vision 표준 fetching smoke: model-zoo/source hub -> ./models cache -> optimum-rbln compile -> .rbln
 python3 examples/run_rbln_build.py --list-model-zoo
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
