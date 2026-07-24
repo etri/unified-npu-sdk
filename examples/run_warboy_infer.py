@@ -161,17 +161,12 @@ def _maybe_create_model_zoo_helper(engine_path: Path):
 def _load_with_model_zoo_preprocess(model_helper, image_path: Path):
     preprocess_error = None
     for kwargs in ({"with_scaling": True}, {}):
-        try:
-            inputs, contexts = model_helper.preprocess([str(image_path)], **kwargs)
-            return inputs, contexts, kwargs
-        except TypeError:
+        for candidate in ([str(image_path)], str(image_path)):
             try:
-                inputs, contexts = model_helper.preprocess(str(image_path), **kwargs)
+                inputs, contexts = model_helper.preprocess(candidate, **kwargs)
                 return inputs, contexts, kwargs
             except Exception as exc:
                 preprocess_error = exc
-        except Exception as exc:
-            preprocess_error = exc
     raise RuntimeError(f"Model Zoo preprocess failed: {preprocess_error!r}")
 
 
