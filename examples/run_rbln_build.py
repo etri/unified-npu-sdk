@@ -79,7 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Build/fetch an RBLN vision artifact. Supports model-zoo/source fetch, provided .rbln fetch, "
-            "reference/tutorial compile, PTH/PT restore, and experimental ONNX restore."
+            "reference/tutorial compile, PTH/PT restore, and experimental/unverified ONNX restore."
         )
     )
     parser.add_argument(
@@ -99,7 +99,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pretrained", action="store_true", help="Use pretrained torchvision weights for the selected model-zoo target.")
     parser.add_argument("--weights", type=Path, default=None, help="Legacy alias for --from-pth.")
     parser.add_argument("--from-pth", type=Path, default=None, help="Compile from a local .pth/.pt checkpoint by restoring a torchvision model.")
-    parser.add_argument("--from-onnx", type=Path, default=None, help="Experimental: restore a torch model from ONNX and compile to .rbln.")
+    parser.add_argument(
+        "--from-onnx",
+        type=Path,
+        default=None,
+        help=(
+            "Experimental/unverified: restore a torch model from ONNX and compile to .rbln. "
+            "This path is vendor-dependent and may fail or crash for some graphs."
+        ),
+    )
     parser.add_argument("--rbln", type=Path, default=None, help="Fetch a precompiled .rbln from a local path into the build output directory.")
     parser.add_argument("--models-dir", type=Path, default=MODELS_DIR, help="Directory used to find local model/checkpoint files.")
     parser.add_argument("--out-dir", type=Path, default=BUILDS_DIR, help="Directory for compiled/fetched .rbln output.")
@@ -245,7 +253,7 @@ if __name__ == "__main__":
         source_note = f"provided .rbln fetch: {build_input}"
     elif args.from_onnx:
         build_input = str(args.from_onnx.expanduser().resolve())
-        source_note = f"experimental ONNX restore -> .rbln: {build_input}"
+        source_note = f"experimental/unverified ONNX restore -> .rbln: {build_input}"
     else:
         try:
             import torch

@@ -306,7 +306,11 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --input-shape 1,3,224,224 \
   --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
-# 6-c) experimental ONNX -> torch restore -> .rbln
+# 6-c) experimental / unverified ONNX -> torch restore -> .rbln
+#      이 경로는 vendor-dependent 실험 기능으로 간주합니다.
+#      2026-07-24 기준 일부 ONNX(예: YOLOv7)에서는 onnx2torch 복원 이후
+#      RBLN native compiler/backend crash(segmentation fault 포함)가 재현되었습니다.
+#      따라서 branch 기본 smoke 완료 기준에는 포함하지 않습니다.
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --from-onnx models/resnet50.onnx \
   --model-name resnet50_onnx \
