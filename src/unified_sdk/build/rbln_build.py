@@ -216,8 +216,9 @@ class _RBLNBuildAdapter:
                     "optimum-rbln image classification compile failed. This path still uses the same "
                     "RBLN compiler backend underneath, so if host-native compile succeeds while a "
                     "CDI/container compile fails, treat it as the same vendor/environment-dependent "
-                    "compile issue first. The currently recommended workaround is host-native compile "
-                    "followed by container inference/custom-fetch of the generated .rbln artifact."
+                    "compile issue first. For this branch, keep the primary workflow Docker-first and "
+                    "treat host-native compile only as a temporary debugging workaround while waiting "
+                    "for vendor guidance."
                 )
                 raise RuntimeError(f"{hint} Original error: {exc}") from exc
 
@@ -295,8 +296,9 @@ class _RBLNBuildAdapter:
             hint = (
                 "RBLN compile_from_torch failed. If this happens inside a CDI/container environment "
                 "while host-native compile succeeds, treat it as a vendor/environment-dependent compile "
-                "issue first. The currently recommended workaround is host-native compile followed by "
-                "container inference/custom-fetch of the generated .rbln artifact."
+                "issue first. For this branch, keep the primary workflow Docker-first and treat "
+                "host-native compile only as a temporary debugging workaround while waiting for "
+                "vendor guidance."
             )
             raise RuntimeError(f"{hint} Original error: {exc}") from exc
 
