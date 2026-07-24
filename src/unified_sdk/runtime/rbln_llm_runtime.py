@@ -86,10 +86,9 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
         "tensor_parallel_size": cfg.tensor_parallel_size,
         "max_model_len": cfg.max_model_len,
     }
+    llm_kwargs["block_size"] = int(extra["block_size"]) if ("block_size" in extra and extra["block_size"] is not None) else int(cfg.max_model_len)
     if "trust_remote_code" in extra:
         llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
-    if "block_size" in extra and extra["block_size"] is not None:
-        llm_kwargs["block_size"] = int(extra["block_size"])
     if "enforce_eager" in extra:
         llm_kwargs["enforce_eager"] = bool(extra["enforce_eager"])
     if "dtype" in extra and extra["dtype"]:

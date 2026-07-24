@@ -336,6 +336,7 @@ python3 examples/run_rbln_llm_build.py \
 python3 examples/run_rbln_llm_infer.py \
   --engine-path Qwen/Qwen3-0.6B \
   --prompt "What is the capital of South Korea?"
+# note: if --block-size is omitted, the wrapper defaults it to max_model_len (512 here)
 
 # 2) (LLM) local model path + compatible precompiled RBLN artifact -> generate
 python3 examples/run_rbln_llm_infer.py \
