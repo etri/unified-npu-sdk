@@ -7,6 +7,7 @@
 빌드/추론의 의미가 다릅니다. **공식 smoke 기준점은 `furiosa_llm.LLM` 기반 fetch + generate** 이며,
 custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합니다. 서빙은 **`furiosa_llm.LLM`**을 사용하며,
 `infer_LLM`은 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)**입니다(`generate_LLM` 별칭 제공).
+build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** 를 public API 로 사용합니다.
 (vision 워크로드인 Warboy는 `furiosa-only` 브랜치에서 다룹니다.)
 
 ---
@@ -41,7 +42,7 @@ custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합
     ├── types.py                    # 공통 데이터 구조 (LLM 친화적으로 슬림화)
     ├── build/
     │   ├── __init__.py
-    │   ├── api.py                  # build_unified
+    │   ├── api.py                  # build_unified_LLM
     │   ├── registry.py
     │   └── rngd_build.py           # RNGD 빌드 어댑터 (fetch 기본, 선택적 FXB build)
     └── runtime/
@@ -299,11 +300,11 @@ python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
 
 ```python
 from unified_sdk.types import BuildConfig
-from unified_sdk.build.api import build_unified
+from unified_sdk.build.api import build_unified_LLM
 
 # (a) fetch (기본): HF 모델 id 또는 로컬 모델 경로를 그대로 사용
 cfg = BuildConfig(backend="rngd", model_or_path="furiosa-ai/Qwen2.5-0.5B-Instruct")
-result = build_unified(cfg)
+result = build_unified_LLM(cfg)
 print(result.compiled_model_path)   # 모델 id 또는 로컬 모델 경로
 
 # (b) custom build smoke: FXB 빌드
@@ -315,20 +316,24 @@ cfg = BuildConfig(
     tensor_parallel_size=8,
     extra={"build_mode": "fxb_build"},
 )
-result = build_unified(cfg)
+result = build_unified_LLM(cfg)
 print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
 ```
 
-### Runtime API 분리
+### Build / Runtime API 분리
 
-`furiosa-llm-only`는 LLM 전용 브랜치이므로 runtime wrapping API도 LLM 기준으로 구분해 사용합니다.
+`furiosa-llm-only`는 LLM 전용 브랜치이므로 build 와 runtime wrapping API 모두 LLM 기준으로 구분해 사용합니다.
 README와 smoke 예제는 아래 LLM API를 기준으로 설명합니다.
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
 | --- | --- | --- | --- |
+| LLM / FXB | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 `fxb build ...` |
 | LLM / FXB | 생성 | `create_runtime_LLM(cfg)` | `furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)` |
 | LLM / FXB | 추론 | `infer_LLM(rh, prompt, **overrides)` 또는 `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
 | LLM / FXB | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
+
+위 표 기준으로 이 브랜치의 public surface 는 `build_unified_LLM` / `create_runtime_LLM` /
+`infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 입니다.
 
 ### 텍스트 생성
 
@@ -379,7 +384,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 RNGD(LLM) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - RNGD는 **LLM 스택**이라 `infer_LLM`이 텍스트 생성(프롬프트 → 텍스트)입니다. numpy 추론이 아닙니다.
-- 이 브랜치의 권장 public API는 `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 입니다.
+- 이 브랜치의 권장 public API는 `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 입니다.
 - 이 브랜치의 smoke 구조는 LLM 전용이라 vision 브랜치와 다릅니다.
 - 1) 표준 fetching smoke 는 **model id -> generate** 입니다. 공식 quick start 도 이 경로를 기준으로 합니다.
 - 2) custom fetching smoke 는 **local model path + explicit compatible FXB -> LLM(..., fxb=...) -> generate** 입니다.
