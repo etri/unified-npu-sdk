@@ -67,9 +67,10 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 
 - **NVIDIA GPU 드라이버**가 호스트에 정상 설치되어 있어야 합니다.
 - **Docker Engine**, **docker buildx 플러그인**, **NVIDIA Container Toolkit**이 준비되어 있어야 합니다.
-- `tensorrt`는 NVIDIA 공식 컨테이너(`nvcr.io/nvidia/tensorrt`)에 포함되어 있어 별도 설치가 필요 없습니다.
+- `trt-only`는 vision/LLM 공용 이미지를 위해 기본 base image를 `nvcr.io/nvidia/pytorch:24.03-py3`로 둡니다.
 - `tensorrt_llm`는 용량이 큰 편이라 설치 시간이 길 수 있습니다. 다만 `trt-only` 이미지는 vision/LLM 공용으로 재활용하는 전제를 두고, Docker 빌드 시 기본 포함합니다.
-- 2026년 7월 25일 기준 `trt-only`는 `nvcr.io/nvidia/tensorrt:24.03-py3` 베이스와 맞추기 위해 `tensorrt_llm==0.10.0`, `torch==2.2.2`, `torchvision==0.17.2` 축으로 pin 합니다. 이는 NVIDIA TensorRT-LLM 0.10.0 릴리스 노트의 `NGC 24.03`, `TensorRT 10.0.1`, `CUDA 12.4`, `PyTorch 2.2.2` 의존성 축을 따른 것입니다.
+- 2026년 7월 25일 기준 `trt-only`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스와 맞추기 위해 `tensorrt_llm==0.10.0`, `torch==2.2.2`, `torchvision==0.17.2` 축으로 pin 합니다. 이는 NVIDIA TensorRT-LLM 0.10.0 릴리스 노트의 `NGC 24.03`, `TensorRT 10.0.1`, `CUDA 12.4`, `PyTorch 2.2.2` 의존성 축을 따른 것입니다.
+- 반대로 `nvcr.io/nvidia/tensorrt:24.03-py3`는 컨테이너 배너 기준 TensorRT 8.6.3 축이라, `tensorrt_llm==0.10.0`와 함께 쓰면 `tensorrt.ILogger` 누락 같은 API mismatch가 날 수 있습니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
 최소 확인 항목:
@@ -170,7 +171,7 @@ docker version
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-`./build.sh`는 `nvcr.io/nvidia/tensorrt` 베이스로 이미지를 만들고, `--gpus all` / `--runtime=nvidia`
+`./build.sh`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스로 이미지를 만들고, `--gpus all` / `--runtime=nvidia`
 중 동작하는 모드를 자동 감지해 실행 예시를 출력합니다. 베이스 이미지는
 `./build.sh --base-image <image>` 또는 `TRT_BASE_IMAGE=... ./build.sh`로 바꿀 수 있습니다.
 필요하면 `--torch-version`, `--torchvision-version`, `--trt-llm-version`으로 pin 값을 바꿀 수 있지만,
