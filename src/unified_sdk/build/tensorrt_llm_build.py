@@ -57,6 +57,22 @@ def _best_effort_close(obj: Any) -> None:
                 pass
 
 
+def _normalize_llm_kwargs(cfg: LLMBuildConfig, extra: Dict[str, Any], model_ref: str) -> Dict[str, Any]:
+    llm_kwargs: Dict[str, Any] = {
+        "model": model_ref,
+        "tensor_parallel_size": cfg.tensor_parallel_size,
+        # TensorRT-LLM 1.x torch backend uses max_seq_len instead of max_model_len.
+        "max_seq_len": cfg.max_model_len,
+    }
+    if extra.get("tokenizer_path"):
+        llm_kwargs["tokenizer"] = str(extra["tokenizer_path"])
+    if extra.get("dtype"):
+        llm_kwargs["dtype"] = extra["dtype"]
+    if extra.get("trust_remote_code") is not None:
+        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
+    return llm_kwargs
+
+
 def build_llm(cfg: LLMBuildConfig) -> BuildResult:
     if cfg.backend != "tensorrt":
         raise ValueError(f"TensorRT-LLM build adapter received backend={cfg.backend!r}")
@@ -98,17 +114,7 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
     compiled_dir = Path(cfg.out_dir) / cfg.model_name
     compiled_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    llm_kwargs: Dict[str, Any] = {
-        "model": model_ref,
-        "tensor_parallel_size": cfg.tensor_parallel_size,
-        "max_model_len": cfg.max_model_len,
-    }
-    if extra.get("tokenizer_path"):
-        llm_kwargs["tokenizer"] = str(extra["tokenizer_path"])
-    if extra.get("dtype"):
-        llm_kwargs["dtype"] = extra["dtype"]
-    if extra.get("trust_remote_code") is not None:
-        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
+    llm_kwargs = _normalize_llm_kwargs(cfg, extra, model_ref)
 
     llm = None
     try:
