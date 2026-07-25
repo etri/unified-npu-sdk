@@ -69,7 +69,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - **Docker Engine**, **docker buildx 플러그인**, **NVIDIA Container Toolkit**이 준비되어 있어야 합니다.
 - `trt-only`는 vision/LLM 공용 이미지를 위해 기본 base image를 `nvcr.io/nvidia/pytorch:24.03-py3`로 둡니다.
 - `tensorrt_llm`는 용량이 큰 편이라 설치 시간이 길 수 있습니다. 다만 `trt-only` 이미지는 vision/LLM 공용으로 재활용하는 전제를 두고, Docker 빌드 시 기본 포함합니다.
-- 2026년 7월 25일 기준 `trt-only`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스와 맞추기 위해 `tensorrt_llm==0.10.0`, `torch==2.2.2`, `torchvision==0.17.2` 축으로 pin 합니다. 이는 NVIDIA TensorRT-LLM 0.10.0 릴리스 노트의 `NGC 24.03`, `TensorRT 10.0.1`, `CUDA 12.4`, `PyTorch 2.2.2` 의존성 축을 따른 것입니다.
+- 2026년 7월 25일 기준 `trt-only`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스와 맞추기 위해 `tensorrt_llm==0.10.0`, `tensorrt==10.0.1`, `tensorrt-cu12*==10.0.1` 축으로 pin 합니다. 이는 NVIDIA TensorRT-LLM 0.10.0 릴리스 노트의 `NGC 24.03`, `TensorRT 10.0.1`, `CUDA 12.4`, `PyTorch 2.2.2` 의존성 축을 따른 것입니다. PyTorch는 base image에 이미 포함된 것을 그대로 사용합니다.
 - 반대로 `nvcr.io/nvidia/tensorrt:24.03-py3`는 컨테이너 배너 기준 TensorRT 8.6.3 축이라, `tensorrt_llm==0.10.0`와 함께 쓰면 `tensorrt.ILogger` 누락 같은 API mismatch가 날 수 있습니다.
 - 또한 NVIDIA TensorRT 10.1 릴리스 노트에는 `tensorrt==10.0.1` 같은 metapackage 설치가 `tensorrt-cu12==10.1.0`을 잘못 끌어올 수 있는 known issue가 있습니다. 이를 피하기 위해 `trt-only`는 `tensorrt==10.0.1`와 함께 `tensorrt-cu12==10.0.1`, `tensorrt-cu12-bindings==10.0.1`, `tensorrt-cu12-libs==10.0.1`도 명시적으로 pin 합니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
@@ -175,7 +175,7 @@ docker version
 `./build.sh`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스로 이미지를 만들고, `--gpus all` / `--runtime=nvidia`
 중 동작하는 모드를 자동 감지해 실행 예시를 출력합니다. 베이스 이미지는
 `./build.sh --base-image <image>` 또는 `TRT_BASE_IMAGE=... ./build.sh`로 바꿀 수 있습니다.
-필요하면 `--torch-version`, `--torchvision-version`, `--trt-version`, `--trt-llm-version`으로 pin 값을 바꿀 수 있지만,
+필요하면 `--trt-version`, `--trt-llm-version`으로 pin 값을 바꿀 수 있지만,
 기본값은 `24.03` 계열과 맞춰 둔 값으로 두는 것을 권장합니다.
 
 컨테이너 실행 예시:
@@ -426,7 +426,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 TensorRT 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - TensorRT-LLM 경로는 high-level `generate` 중심 smoke를 제공합니다. 모델/옵션 호환성은 TensorRT-LLM 릴리스에 따라 달라질 수 있습니다.
-- `tensorrt_llm`는 대형 wheel을 함께 끌어와 첫 빌드 시간이 길 수 있습니다. 대신 Dockerfile은 pip cache mount를 사용하므로, 같은 머신에서 이후 재빌드는 훨씬 덜 아프게 만드는 방향으로 정리했습니다.
+- `tensorrt_llm`는 대형 wheel을 함께 끌어와 첫 빌드 시간이 길 수 있습니다. 다만 Dockerfile은 NGC PyTorch base의 기존 PyTorch를 재사용하고, 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에 이전보다 재빌드 부담을 줄이는 방향으로 정리했습니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
