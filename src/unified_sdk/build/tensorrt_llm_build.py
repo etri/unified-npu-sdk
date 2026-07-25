@@ -111,6 +111,14 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
             "Install it in the container or host env first."
         ) from exc
 
+    if not hasattr(LLM, "save"):
+        raise RuntimeError(
+            "TensorRT-LLM build_mode=llm_api_compile is currently unsupported in this trt-only llm flavor. "
+            "The installed official TensorRT-LLM release container exposes the PyTorch backend LLM API, "
+            "and this LLM class does not provide save(engine_dir). "
+            "Use build_mode=fetch for model-id generation, or provide an already prepared local artifact dir for 7-b."
+        )
+
     compiled_dir = Path(cfg.out_dir) / cfg.model_name
     compiled_dir.parent.mkdir(parents=True, exist_ok=True)
 
@@ -119,13 +127,6 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
     llm = None
     try:
         llm = LLM(**llm_kwargs)
-        if not hasattr(llm, "save"):
-            raise RuntimeError(
-                "The installed TensorRT-LLM release container exposes the PyTorch backend LLM API, "
-                "but this LLM object does not support save(engine_dir). "
-                "In the current trt-only llm flavor, build_mode=llm_api_compile is therefore not available. "
-                "Use build_mode=fetch for model-id generation, or provide an already prepared local artifact dir for 7-b."
-            )
         llm.save(str(compiled_dir))
     except Exception as exc:
         raise RuntimeError(f"TensorRT-LLM compile/save failed for {model_ref}: {exc}") from exc
