@@ -18,7 +18,7 @@ _BUILD_PIPELINE = (
 _VENDOR_API_MAP = {
     "fetch": "model ref / local model path passthrough",
     "compile": "tensorrt_llm.LLM(model=..., ...)",
-    "save_artifact": "llm.save(engine_dir)",
+    "save_artifact": "llm.save(engine_dir) [if supported by installed TensorRT-LLM]",
     "artifact": "TensorRT-LLM engine dir",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
@@ -119,6 +119,13 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
     llm = None
     try:
         llm = LLM(**llm_kwargs)
+        if not hasattr(llm, "save"):
+            raise RuntimeError(
+                "The installed TensorRT-LLM release container exposes the PyTorch backend LLM API, "
+                "but this LLM object does not support save(engine_dir). "
+                "In the current trt-only llm flavor, build_mode=llm_api_compile is therefore not available. "
+                "Use build_mode=fetch for model-id generation, or provide an already prepared local artifact dir for 7-b."
+            )
         llm.save(str(compiled_dir))
     except Exception as exc:
         raise RuntimeError(f"TensorRT-LLM compile/save failed for {model_ref}: {exc}") from exc

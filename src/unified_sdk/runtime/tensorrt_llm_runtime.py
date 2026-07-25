@@ -60,6 +60,18 @@ def _best_effort_close(obj: Any) -> None:
                 pass
 
 
+def _looks_like_local_path(model_ref: str) -> bool:
+    p = Path(model_ref).expanduser()
+    if p.is_absolute():
+        return True
+    if model_ref.startswith("./") or model_ref.startswith("../"):
+        return True
+    # Treat common local artifact directories as local paths, but do not confuse HF repo ids like org/repo.
+    if model_ref.startswith("artifacts/") or model_ref.startswith("build_output/") or model_ref.startswith("models/"):
+        return True
+    return False
+
+
 def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, extra: Dict[str, Any], model_ref: str, tokenizer_path: str | None) -> Dict[str, Any]:
     llm_kwargs: Dict[str, Any] = {
         "model": model_ref,
@@ -94,6 +106,16 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
     extra = dict(cfg.extra or {})
     model_ref = str(cfg.engine_path)
     tokenizer_path = str(cfg.tokenizer_path) if cfg.tokenizer_path else None
+
+    if _looks_like_local_path(model_ref):
+        local_ref = Path(model_ref).expanduser()
+        if not local_ref.exists():
+            raise FileNotFoundError(
+                "engine_path was interpreted as a local TensorRT-LLM artifact/model directory, "
+                f"but it does not exist: {local_ref}. "
+                "If you intended a Hugging Face repo id, pass an explicit repo id like "
+                "'TinyLlama/TinyLlama-1.1B-Chat-v1.0'."
+            )
 
     llm_kwargs = _normalize_llm_kwargs(cfg, extra, model_ref, tokenizer_path)
 
