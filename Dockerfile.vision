@@ -2,7 +2,7 @@
 # =========================
 # unified-sdk (NVIDIA TensorRT vision base)
 # =========================
-ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:24.03-py3
+ARG BASE_IMAGE=nvcr.io/nvidia/tensorrt:24.03-py3
 FROM ${BASE_IMAGE}
 
 ARG USERNAME=etri
@@ -10,7 +10,8 @@ ARG UID=1000
 ARG GID=1000
 ARG VIDEO_GID=44
 ARG RENDER_GID=110
-ARG TRT_VERSION=10.0.1
+ARG TORCH_VERSION=2.2.2
+ARG TORCHVISION_VERSION=0.17.2
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -31,11 +32,10 @@ RUN mkdir -p /workspace/unified-sdk \
 
 COPY --chown=${UID}:${GID} requirements.vision.txt /tmp/requirements.vision.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --retries 8 --timeout 300 -r /tmp/requirements.vision.txt \
-    && pip install --retries 8 --timeout 300 \
-         --extra-index-url https://pypi.nvidia.com \
-         tensorrt==${TRT_VERSION} \
-         tensorrt-cu12==${TRT_VERSION} \
-         tensorrt-cu12-bindings==${TRT_VERSION} \
-         tensorrt-cu12-libs==${TRT_VERSION}
+    pip install --retries 8 --timeout 300 \
+         --extra-index-url https://download.pytorch.org/whl/cpu \
+         torch==${TORCH_VERSION} \
+         torchvision==${TORCHVISION_VERSION} \
+    && pip install --retries 8 --timeout 300 -r /tmp/requirements.vision.txt \
+    && python3 -c "import tensorrt, pycuda, torch, torchvision; print('vision stack OK')"
 RUN rm -f /tmp/requirements.vision.txt
