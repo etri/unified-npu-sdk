@@ -328,12 +328,15 @@ python3 examples/run_tensorrt_llm_infer.py \
   --prompt "What is the capital of South Korea?"
 
 # 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
+#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
 # 7-c) (LLM) local model path -> TensorRT-LLM compile -> generate
+#      2026-07-25 기준 trt-only llm flavor의 official release container(PyTorch backend)에서는
+#      `LLM.save(engine_dir)`가 노출되지 않아 이 경로는 currently unsupported 입니다.
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --build-mode llm_api_compile \
@@ -494,6 +497,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `trt-only`는 branch 하나를 유지하되 Docker flavor를 둘로 분리합니다. vision과 llm은 같은 Unified SDK public API 구조를 공유하지만, vendor stack mismatch를 줄이기 위해 컨테이너를 분리합니다.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
+- `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
+- `llm` flavor에서 `7-c`는 현재 official TensorRT-LLM release container의 PyTorch backend `LLM` 객체가 `save(engine_dir)`를 제공하지 않아 currently unsupported 입니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
