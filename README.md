@@ -189,7 +189,7 @@ docker run --gpus all -it --security-opt seccomp=unconfined \
 cd /workspace/unified-sdk
 nvidia-smi || true
 python3 -c "import unified_sdk; print('OK')"
-python3 -c "import tensorrt; print('tensorrt=', tensorrt.__version__)"
+python3 -c "import tensorrt as trt; from importlib import metadata; print('tensorrt=', getattr(trt, '__version__', metadata.version('tensorrt')))"
 ```
 
 ---
