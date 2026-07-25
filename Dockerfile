@@ -3,7 +3,7 @@
 # unified-sdk (NVIDIA TensorRT base)
 # =========================
 # tensorrt 는 베이스 이미지에 포함되어 있다. GPU 는 런타임에 --gpus all 로 전달한다.
-ARG BASE_IMAGE=nvcr.io/nvidia/tensorrt:24.03-py3
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:24.03-py3
 FROM ${BASE_IMAGE}
 
 ARG USERNAME=etri
