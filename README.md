@@ -15,6 +15,20 @@
 **(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**의
 **이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 Warboy 단일 백엔드 분기입니다.
 
+### 현재 구현 상태
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
+| LLM API | `N/A` |
+| Vision compile | model-zoo/source fetch / provided `.enf` fetch / quantized ONNX compile / PTH->ONNX->quantized ONNX->`.enf` 구현 |
+| Vision smoke | compile / infer / inspect 흐름이 비교적 안정적으로 정리됨 |
+
+### 주요 이슈
+
+- 이 브랜치는 Warboy vision 전용입니다. RNGD/LLM 경로는 `furiosa-llm-only` 브랜치에서 다룹니다.
+- 실무상 이슈는 vendor compiler 제약보다 **quantized ONNX 준비**, label/후처리 자산 정리 쪽이 더 큽니다.
+
 ---
 
 ## 🏗️ 프로젝트 구조
