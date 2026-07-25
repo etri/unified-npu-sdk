@@ -67,8 +67,7 @@ def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, extra: Dict[str, Any], model_re
         # TensorRT-LLM 1.x torch backend uses max_seq_len instead of max_model_len.
         "max_seq_len": cfg.max_model_len,
     }
-    if tokenizer_path:
-        llm_kwargs["tokenizer"] = tokenizer_path
+    llm_kwargs["tokenizer"] = tokenizer_path or model_ref
     if extra.get("dtype"):
         llm_kwargs["dtype"] = extra["dtype"]
     if extra.get("trust_remote_code") is not None:

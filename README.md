@@ -349,6 +349,10 @@ python3 examples/run_tensorrt_llm_infer.py \
 python3 examples/inspect_tensorrt_llm_model.py artifacts/tinyllama_trtllm --load
 ```
 
+`run_tensorrt_llm_infer.py`는 기본적으로 `--chat-template auto` 동작을 사용합니다.
+즉 TinyLlama 같은 chat/instruct 모델에 대해 tokenizer를 찾을 수 있으면 `apply_chat_template(...)`
+를 자동 시도하고, `tokenizer_ref`, `formatted_prompt`를 함께 출력해 실제 입력 프롬프트를 확인할 수 있습니다.
+
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
 `/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
 
