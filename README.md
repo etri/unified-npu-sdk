@@ -14,6 +14,21 @@
 **(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**의
 **이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 RBLN 단일 백엔드 분기입니다.
 
+### 현재 구현 상태
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
+| LLM API | `build_unified_LLM` / `create_runtime_LLM` / `generate_LLM` / `infer_LLM` / `destroy_runtime_LLM` 구현 |
+| Vision compile | source fetch / provided `.rbln` / PyTorch 기반 compile 구현, ONNX bridge 는 experimental |
+| LLM compile | host native 기준 `1/2/3` smoke 확인, Docker/CDI container 에서는 compiler backend 이슈 영향 가능 |
+
+### 주요 이슈
+
+- Docker/CDI container 안 `compile_from_torch(...)` 계열과 `optimum-rbln` compile 은 같은 vendor compiler backend 이슈로 실패할 수 있습니다.
+- LLM precompiled artifact 경로도 `vllm-rbln` runtime warmup 중 vendor-side internal compile 이 다시 발생할 수 있습니다.
+- ONNX bridge 경로는 일부 모델에서 native crash/segfault 가능성이 있어 `experimental / unverified`로 둡니다.
+
 ---
 
 ## 🏗️ 프로젝트 구조
