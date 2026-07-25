@@ -74,11 +74,11 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - `trt-only`는 Docker를 두 flavor로 나눕니다.
   - `vision`: 일반 TensorRT `.engine` build/infer 전용
   - `llm`: TensorRT-LLM generate/build 전용
-- `vision` flavor 기본 base image는 `nvcr.io/nvidia/pytorch:24.03-py3`입니다. 여기에는 NGC PyTorch를 재사용하고, Python TensorRT 패키지는 별도로 명시 설치합니다.
+- `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- 2026년 7월 25일 기준 `vision` flavor는 `tensorrt==10.0.1`, `tensorrt-cu12*==10.0.1` 축으로 pin 합니다.
+- 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
-- 또한 NVIDIA TensorRT 10.1 릴리스 노트에는 `tensorrt==10.0.1` 같은 metapackage 설치가 `tensorrt-cu12==10.1.0`을 잘못 끌어올 수 있는 known issue가 있습니다. 이를 피하기 위해 `trt-only`는 `tensorrt==10.0.1`와 함께 `tensorrt-cu12==10.0.1`, `tensorrt-cu12-bindings==10.0.1`, `tensorrt-cu12-libs==10.0.1`도 명시적으로 pin 합니다.
+- 이전에는 `pytorch` base 위에 `pip tensorrt`를 올리는 방식을 시도했지만, 설치가 끝나도 `import tensorrt`가 실패하는 경우가 있어 `vision` flavor는 TensorRT base로 되돌렸습니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
 최소 확인 항목:
@@ -182,6 +182,7 @@ docker version
 
 ```bash
 ./build.sh --flavor vision
+./build.sh --flavor llm
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
@@ -197,8 +198,6 @@ docker version
   - container name: `trt-only-llm`
 
 베이스 이미지는 `./build.sh --flavor <...> --base-image <image>`로 바꿀 수 있습니다.
-`vision` flavor에서만 `--trt-version`을 사용합니다.
-
 vision 컨테이너 실행 예시:
 
 ```bash

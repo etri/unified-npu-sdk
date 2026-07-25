@@ -6,10 +6,9 @@ FLAVOR="vision"
 TAG=""
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
-VISION_BASE_IMAGE="${TRT_VISION_BASE_IMAGE:-nvcr.io/nvidia/pytorch:24.03-py3}"
+VISION_BASE_IMAGE="${TRT_VISION_BASE_IMAGE:-nvcr.io/nvidia/tensorrt:24.03-py3}"
 LLM_BASE_IMAGE="${TRT_LLM_BASE_IMAGE:-nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22}"
 BASE_IMAGE=""
-TRT_VERSION="${TRT_VERSION:-10.0.1}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 RENDER_GID_VALUE="$(getent group render | cut -d: -f3 || true)"
@@ -20,14 +19,13 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 GPU_FLAG=""
 
 print_usage() {
-  echo "사용법: $0 [--flavor vision|llm] [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--trt-version <ver>]"
+  echo "사용법: $0 [--flavor vision|llm] [-n <container_name>] [--workspace <repo_path>] [--base-image <image>]"
   echo ""
   echo "옵션:"
   echo "  --flavor      Docker flavor 선택 (기본: vision)"
   echo "  -n, --name    컨테이너 이름 (기본: trt-only-<flavor>)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: flavor별 권장 이미지)"
-  echo "  --trt-version vision flavor에서 설치할 TensorRT Python package 버전 (기본: ${TRT_VERSION})"
   echo "  -h, --help    도움말 출력"
 }
 
@@ -66,9 +64,6 @@ while [[ $# -gt 0 ]]; do
     --base-image)
       [ -z "$2" ] && { echo "[ERROR] --base-image 값이 필요합니다"; exit 1; }
       BASE_IMAGE="$2"; shift 2 ;;
-    --trt-version)
-      [ -z "$2" ] && { echo "[ERROR] --trt-version 값이 필요합니다"; exit 1; }
-      TRT_VERSION="$2"; shift 2 ;;
     -h|--help)
       print_usage; exit 0 ;;
     *)
@@ -109,9 +104,6 @@ echo "  Dockerfile     : ${DOCKERFILE_PATH}"
 echo "  컨테이너 이름  : ${CONTAINER_NAME}"
 echo "  워크스페이스   : ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
-if [ "${FLAVOR}" = "vision" ]; then
-  echo "  tensorrt       : ${TRT_VERSION}"
-fi
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 if [ -n "${VIDEO_GID_VALUE}" ]; then
   echo "  Video GID      : ${VIDEO_GID_VALUE}"
@@ -131,7 +123,6 @@ if [ "${FLAVOR}" = "vision" ]; then
     --build-arg GID="${GID_VALUE}" \
     --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
     --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
-    --build-arg TRT_VERSION="${TRT_VERSION}" \
     .
 else
   DOCKER_BUILDKIT=1 docker build \
