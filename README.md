@@ -14,6 +14,20 @@
 **(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**의
 **이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 QB(Mobilint ARISE) 단일 백엔드 분기입니다.
 
+### 현재 구현 상태
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
+| LLM API | `create_runtime_LLM` / `infer_LLM` / `destroy_runtime_LLM` 구현 |
+| Vision compile | 표준 fetch / provided `.mxq` fetch / ONNX compile / `resnet50` 중심 PTH->ONNX->`.mxq` 구현 |
+| LLM compile | precompiled `.mxq` fetch 와 low-level runtime smoke 중심, custom compile 은 `planned` |
+
+### 주요 이슈
+
+- 현재 공개 Mobilint 문서 기준으로는 **local LLM source/checkpoint -> qb compiler -> `.mxq`** compile workflow 를 branch public API 로 일반화하기 어려워 `build_unified_LLM(cfg)`는 planned 로 남겨둡니다.
+- 현재 LLM 완료 기준은 high-level generate 가 아니라 **low-level cache-aware infer smoke 통과**입니다.
+
 ---
 
 ## 🏗️ 프로젝트 구조
@@ -364,6 +378,8 @@ Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지�
 또한 Mobilint Model Zoo는 transformer / language / multimodal `.mxq`를 Hugging Face group을 통해 제공합니다.
 
 다만 현재 `qb-only`는 vision branch가 기본이며, **LLM custom compile wrapper는 아직 공식 smoke 대상으로 일반화하지 않았습니다.**
+이유는 현재 공개 Mobilint 문서 기준으로는 **precompiled transformer/LLM `.mxq` fetch 와 low-level runtime primitive** 근거는 충분하지만,
+**local LLM checkpoint/source model -> qb compiler -> `.mxq`** 를 branch public API 로 일반화할 만큼 선명한 vendor compile workflow 가 부족하기 때문입니다.
 즉 현재 preview는:
 
 - `1) model zoo LLM fetch`
@@ -382,6 +398,8 @@ Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지�
 반면 아래 항목은 아직 후속 과제로 남겨둡니다.
 - `3) local model/checkpoint -> qb compiler -> LLM .mxq`
 - high-level `generate(text)` 스타일 serving helper
+
+위 항목들은 단순 미구현이라기보다, **vendor SDK 공개 지원 범위 추가 확인 후 반영할 planned 항목**으로 보는 것이 맞습니다.
 
 참고 문서:
 - Batch LLM support added in qb Runtime v1.2.0
@@ -404,6 +422,9 @@ python3 examples/run_qb_build.py \
 # 현재 qb-only는 vision 컴파일 흐름(ONNX / torchvision .pth -> .mxq)을 우선 지원합니다.
 # Transformer/LLM custom compile 은 compiler transformer workflow 와
 # model-specific export pipeline 정리가 더 필요해 현재는 공식 smoke 에서 제외합니다.
+# 특히 현 공개 Mobilint 문서 기준으로는 local LLM source/checkpoint -> qb compiler -> .mxq
+# 경로를 branch public API 로 일반화할 만큼 vendor compile workflow 근거가 충분하지 않아
+# planned 로만 남겨둡니다.
 
 # 7-d) low-level runtime smoke
 # 실제 generate API 가 아니라 Unified SDK LLM infer(...)
@@ -437,6 +458,8 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
   preview helper는 `-1` 축을 `1 token`으로 치환해 runtime path만 검증합니다.
 - Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 - 현재 브랜치의 LLM 완료 기준은 **low-level LLM smoke 통과**입니다.
+- `build_unified_LLM(cfg)`는 현재 의도적으로 비워둔 상태입니다. 이는 누락보다는,
+  공개 vendor SDK 문서 기준으로 **LLM compile contract를 일반화하기 어렵기 때문**입니다.
 - high-level generation/helper 경로는 벤더 경로 의존성과 제약이 남아 있어, 향후 vendor 공식 지원/가이드에 맞춰 업데이트 예정입니다.
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
