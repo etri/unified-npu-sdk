@@ -311,10 +311,10 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 진행 원칙:
 
 - `7-a`는 현재 컨테이너에서 바로 검증 가능한 기본 경로입니다.
-- `7-b`는 **이미 준비된 로컬 TensorRT-LLM artifact dir**가 있을 때만 보는 경로입니다.
+- `7-b`는 **이미 준비된 로컬 TensorRT-LLM artifact dir**가 있을 때 보는 경로입니다.
   이 artifact는 과거 결과물이나 외부 제공 산출물일 수 있으며, 현재 세션에서 반드시 `7-c`로부터 만들어질 필요는 없습니다.
 - `7-c`는 Unified SDK public API 상의 compile smoke 항목으로는 유지하지만,
-  2026년 7월 25일 기준 official TensorRT-LLM release container의 PyTorch backend에서는
+  `2026년 7월 25일` 기준 official TensorRT-LLM release container의 PyTorch backend에서는
   `LLM.save(engine_dir)`가 노출되지 않아 **currently unsupported** 입니다.
 
 ```bash
@@ -336,6 +336,14 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
+# 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
+#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
+#      현재 세션에선 7-c가 unsupported 이므로, 기존 산출물 또는 외부 제공 artifact를 사용하는 경로로 해석합니다.
+python3 examples/run_tensorrt_llm_infer.py \
+  --engine-path artifacts/tinyllama_trtllm \
+  --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --prompt "What is the capital of South Korea?"
+
 # 7-c) (LLM) local model path -> TensorRT-LLM compile -> generate
 #      2026-07-25 기준 trt-only llm flavor의 official release container(PyTorch backend)에서는
 #      `LLM.save(engine_dir)`가 노출되지 않아 이 경로는 currently unsupported 입니다.
@@ -345,14 +353,6 @@ python3 examples/run_tensorrt_llm_build.py \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
-python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path artifacts/tinyllama_trtllm \
-  --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --prompt "What is the capital of South Korea?"
-
-# 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
-#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
-#      현재 세션에선 7-c가 unsupported 이므로, 기존 산출물 또는 외부 제공 artifact를 사용하는 경로로 해석합니다.
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
