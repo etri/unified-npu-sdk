@@ -265,6 +265,7 @@ def _prepare_module_from_pth(weights_path: Path, model_name: str):
 
 def _export_module_to_onnx(model, export_onnx_path: Path, input_name: str, input_shape: tuple[int, ...]) -> Path:
     try:
+        import inspect
         import torch
     except ImportError as exc:
         raise RuntimeError("torch is required to export ONNX.") from exc
@@ -275,16 +276,32 @@ def _export_module_to_onnx(model, export_onnx_path: Path, input_name: str, input
     # legacy tracer(dynamo=False)로 내보낸 torchvision 분류 모델이 더 안정적으로 파싱된다.
     # 특히 ResNet50의 global average pool -> flatten/view 구간에서
     # opset down-conversion이 끼면 shape inference가 깨질 수 있어 legacy 경로를 기본으로 둔다.
-    torch.onnx.export(
-        model,
-        dummy,
-        str(export_onnx_path),
-        input_names=[input_name],
-        output_names=["output"],
-        opset_version=13,
-        do_constant_folding=True,
-        dynamo=False,
-    )
+    export_kwargs = {
+        "input_names": [input_name],
+        "output_names": ["output"],
+        "opset_version": 13,
+        "do_constant_folding": True,
+    }
+    if "dynamo" in inspect.signature(torch.onnx.export).parameters:
+        export_kwargs["dynamo"] = False
+
+    try:
+        torch.onnx.export(
+            model,
+            dummy,
+            str(export_onnx_path),
+            **export_kwargs,
+        )
+    except TypeError as exc:
+        if "dynamo" not in str(exc):
+            raise
+        export_kwargs.pop("dynamo", None)
+        torch.onnx.export(
+            model,
+            dummy,
+            str(export_onnx_path),
+            **export_kwargs,
+        )
     if not export_onnx_path.is_file():
         raise RuntimeError(f"ONNX export did not produce a file: {export_onnx_path}")
     return export_onnx_path
