@@ -14,6 +14,7 @@ PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 TORCH_VERSION="${TORCH_VERSION:-2.2.2}"
 TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.17.2}"
 TRT_LLM_VERSION="${TRT_LLM_VERSION:-0.10.0}"
+TRT_VERSION="${TRT_VERSION:-10.0.1}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 RENDER_GID_VALUE="$(getent group render | cut -d: -f3 || true)"
@@ -25,7 +26,7 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 GPU_FLAG=""
 
 print_usage() {
-  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>] [--torch-version <ver>] [--torchvision-version <ver>] [--trt-llm-version <ver>]"
+  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>] [--torch-version <ver>] [--torchvision-version <ver>] [--trt-version <ver>] [--trt-llm-version <ver>]"
   echo ""
   echo "옵션:"
   echo "  -n, --name    컨테이너 이름 (기본: tensorrt-only)"
@@ -34,6 +35,7 @@ print_usage() {
   echo "  --pytorch-index-url  torch/torchvision wheel 인덱스 (기본: ${PYTORCH_INDEX_URL})"
   echo "  --torch-version  torch 버전 (기본: ${TORCH_VERSION})"
   echo "  --torchvision-version  torchvision 버전 (기본: ${TORCHVISION_VERSION})"
+  echo "  --trt-version  TensorRT Python package 버전 (기본: ${TRT_VERSION})"
   echo "  --trt-llm-version  tensorrt_llm 버전 (기본: ${TRT_LLM_VERSION})"
   echo "  -h, --help    도움말 출력"
 }
@@ -76,6 +78,9 @@ while [[ $# -gt 0 ]]; do
     --torchvision-version)
       [ -z "$2" ] && { echo "[ERROR] --torchvision-version 값이 필요합니다"; exit 1; }
       TORCHVISION_VERSION="$2"; shift 2 ;;
+    --trt-version)
+      [ -z "$2" ] && { echo "[ERROR] --trt-version 값이 필요합니다"; exit 1; }
+      TRT_VERSION="$2"; shift 2 ;;
     --trt-llm-version)
       [ -z "$2" ] && { echo "[ERROR] --trt-llm-version 값이 필요합니다"; exit 1; }
       TRT_LLM_VERSION="$2"; shift 2 ;;
@@ -103,6 +108,7 @@ echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  torch          : ${TORCH_VERSION}"
 echo "  torchvision    : ${TORCHVISION_VERSION}"
+echo "  tensorrt       : ${TRT_VERSION}"
 echo "  tensorrt_llm   : ${TRT_LLM_VERSION}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 if [ -n "${VIDEO_GID_VALUE}" ]; then
@@ -125,6 +131,7 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   --build-arg TORCH_VERSION="${TORCH_VERSION}" \
   --build-arg TORCHVISION_VERSION="${TORCHVISION_VERSION}" \
+  --build-arg TRT_VERSION="${TRT_VERSION}" \
   --build-arg TRT_LLM_VERSION="${TRT_LLM_VERSION}" \
   .
 

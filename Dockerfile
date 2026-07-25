@@ -16,6 +16,7 @@ ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG TORCH_VERSION=2.2.2
 ARG TORCHVISION_VERSION=0.17.2
 ARG TRT_LLM_VERSION=0.10.0
+ARG TRT_VERSION=10.0.1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -44,6 +45,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && pip install --retries 8 --timeout 300 -r /tmp/requirements.txt \
     && pip install --retries 8 --timeout 300 \
          --extra-index-url https://pypi.nvidia.com \
+         tensorrt==${TRT_VERSION} \
+         tensorrt-cu12==${TRT_VERSION} \
+         tensorrt-cu12-bindings==${TRT_VERSION} \
+         tensorrt-cu12-libs==${TRT_VERSION} \
          tensorrt_llm==${TRT_LLM_VERSION}
 
 # 3) unified-sdk 소스 복사 및 설치
