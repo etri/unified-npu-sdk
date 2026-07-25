@@ -13,6 +13,9 @@ ARG VIDEO_GID=44
 ARG RENDER_GID=110
 # TensorRT 엔진 빌드에는 CUDA torch 가 필요 없다 (ONNX 내보내기 용도).
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+ARG TORCH_VERSION=2.2.2
+ARG TORCHVISION_VERSION=0.17.2
+ARG TRT_LLM_VERSION=0.10.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -37,11 +40,11 @@ COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --retries 8 --timeout 300 \
         --index-url ${PYTORCH_INDEX_URL} \
-        torch torchvision \
+        torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} \
     && pip install --retries 8 --timeout 300 -r /tmp/requirements.txt \
     && pip install --retries 8 --timeout 300 \
          --extra-index-url https://pypi.nvidia.com \
-         tensorrt_llm
+         tensorrt_llm==${TRT_LLM_VERSION}
 
 # 3) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk

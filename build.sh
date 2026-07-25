@@ -11,6 +11,9 @@ CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${TRT_BASE_IMAGE:-nvcr.io/nvidia/tensorrt:24.03-py3}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+TORCH_VERSION="${TORCH_VERSION:-2.2.2}"
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.17.2}"
+TRT_LLM_VERSION="${TRT_LLM_VERSION:-0.10.0}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
 RENDER_GID_VALUE="$(getent group render | cut -d: -f3 || true)"
@@ -22,13 +25,16 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 GPU_FLAG=""
 
 print_usage() {
-  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>]"
+  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--pytorch-index-url <url>] [--torch-version <ver>] [--torchvision-version <ver>] [--trt-llm-version <ver>]"
   echo ""
   echo "옵션:"
   echo "  -n, --name    컨테이너 이름 (기본: tensorrt-only)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: ${BASE_IMAGE})"
   echo "  --pytorch-index-url  torch/torchvision wheel 인덱스 (기본: ${PYTORCH_INDEX_URL})"
+  echo "  --torch-version  torch 버전 (기본: ${TORCH_VERSION})"
+  echo "  --torchvision-version  torchvision 버전 (기본: ${TORCHVISION_VERSION})"
+  echo "  --trt-llm-version  tensorrt_llm 버전 (기본: ${TRT_LLM_VERSION})"
   echo "  -h, --help    도움말 출력"
 }
 
@@ -64,6 +70,15 @@ while [[ $# -gt 0 ]]; do
     --pytorch-index-url)
       [ -z "$2" ] && { echo "[ERROR] --pytorch-index-url 값이 필요합니다"; exit 1; }
       PYTORCH_INDEX_URL="$2"; shift 2 ;;
+    --torch-version)
+      [ -z "$2" ] && { echo "[ERROR] --torch-version 값이 필요합니다"; exit 1; }
+      TORCH_VERSION="$2"; shift 2 ;;
+    --torchvision-version)
+      [ -z "$2" ] && { echo "[ERROR] --torchvision-version 값이 필요합니다"; exit 1; }
+      TORCHVISION_VERSION="$2"; shift 2 ;;
+    --trt-llm-version)
+      [ -z "$2" ] && { echo "[ERROR] --trt-llm-version 값이 필요합니다"; exit 1; }
+      TRT_LLM_VERSION="$2"; shift 2 ;;
     -h|--help)
       print_usage; exit 0 ;;
     *)
@@ -86,6 +101,9 @@ echo "  컨테이너 이름  : ${CONTAINER_NAME}"
 echo "  워크스페이스   : ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
+echo "  torch          : ${TORCH_VERSION}"
+echo "  torchvision    : ${TORCHVISION_VERSION}"
+echo "  tensorrt_llm   : ${TRT_LLM_VERSION}"
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 if [ -n "${VIDEO_GID_VALUE}" ]; then
   echo "  Video GID      : ${VIDEO_GID_VALUE}"
@@ -105,6 +123,9 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
   --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
+  --build-arg TORCH_VERSION="${TORCH_VERSION}" \
+  --build-arg TORCHVISION_VERSION="${TORCHVISION_VERSION}" \
+  --build-arg TRT_LLM_VERSION="${TRT_LLM_VERSION}" \
   .
 
 echo "빌드 완료!"
