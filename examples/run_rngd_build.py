@@ -45,7 +45,7 @@ if str(SRC_DIR) not in sys.path:
 
 try:
     from unified_sdk.types import BuildConfig
-    from unified_sdk.build.api import build_unified
+    from unified_sdk.build.api import build_unified_LLM
 except ImportError:
     print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
     sys.exit(1)
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         },
     )
 
-    result = build_unified(cfg)
+    result = build_unified_LLM(cfg)
     mode = "fxb_build" if args.fxb_build else "fetch (provided model id / local model path)"
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")

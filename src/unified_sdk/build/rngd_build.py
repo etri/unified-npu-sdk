@@ -25,8 +25,8 @@ _VENDOR_API_MAP = {
     "artifact": "HF model id or .fxb file path",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified(cfg) when extra['build_mode'] is absent or 'fetch'",
-    "fxb build <model_id_or_path> <output_path> [options]": "build_unified(cfg) when extra['build_mode'] == 'fxb_build'",
+    "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified_LLM(cfg) when extra['build_mode'] is absent or 'fetch'",
+    "fxb build <model_id_or_path> <output_path> [options]": "build_unified_LLM(cfg) when extra['build_mode'] == 'fxb_build'",
     "fxb build --tensor-parallel-size / --pipeline-parallel-size": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
     "fxb build --max-model-len": "BuildConfig.max_model_len",
     "HF model id or .fxb file path": "BuildResult.compiled_model_path",
@@ -87,7 +87,7 @@ def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
 
 def describe_api_mapping() -> Dict[str, Any]:
     return {
-        "unified_api": "build_unified(cfg)",
+        "unified_api": "build_unified_LLM(cfg)",
         "backend": "rngd",
         "capability_family": _CAPABILITY_FAMILY,
         "mapping_direction": "vendor_api ==> unified_api",

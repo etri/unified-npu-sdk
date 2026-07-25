@@ -13,6 +13,14 @@ def build_unified(cfg: BuildConfig) -> BuildResult:
     return builder.build(cfg)
 
 
+def build_unified_LLM(cfg: BuildConfig) -> BuildResult:
+    """LLM-specific build/fetch entrypoint for the RNGD-only backend."""
+    return build_unified(cfg)
+
+
+build_unified_llm = build_unified_LLM
+
+
 def describe_build_api_mapping() -> Dict[str, Any]:
     """Return vendor API ==> Unified SDK build API mapping for this backend."""
     return _rngd.describe_api_mapping()
