@@ -18,6 +18,21 @@ LLM 경로는 **TensorRT-LLM**(`tensorrt_llm.LLM`, `SamplingParams`, `llm.genera
 **이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 TensorRT 단일 백엔드 분기입니다.
 TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역할을 합니다.
 
+### 현재 구현 상태
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
+| LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
+| Vision smoke | 표준 fetch / provided `.engine` fetch / ONNX compile / PTH->ONNX->`.engine` / infer / inspect 구현 |
+| LLM smoke | `7-a` 구현, `7-b`는 prebuilt artifact 가 있을 때 사용 가능, `7-c`는 current release container 기준 unsupported |
+
+### 주요 이슈
+
+- Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
+- `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준이며, `LLM.save(engine_dir)`가 없어 `7-c`는 현재 unsupported 입니다.
+- `7-b`는 concept 상 독립 경로지만, 실제로는 외부 또는 기존 prebuilt artifact 가 있어야 검증 가능합니다.
+
 ---
 
 ## 🏗️ 프로젝트 구조
