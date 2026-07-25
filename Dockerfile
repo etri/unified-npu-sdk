@@ -11,10 +11,6 @@ ARG UID=1000
 ARG GID=1000
 ARG VIDEO_GID=44
 ARG RENDER_GID=110
-# TensorRT 엔진 빌드에는 CUDA torch 가 필요 없다 (ONNX 내보내기 용도).
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-ARG TORCH_VERSION=2.2.2
-ARG TORCHVISION_VERSION=0.17.2
 ARG TRT_LLM_VERSION=0.10.0
 ARG TRT_VERSION=10.0.1
 
@@ -37,12 +33,10 @@ RUN mkdir -p /workspace/unified-sdk \
  && chown -R ${UID}:${GID} /workspace
 
 # 2) Python 의존성
+# nvcr.io/nvidia/pytorch:* base 는 이미 PyTorch 를 포함하므로 여기서 다시 torch/torchvision 을 덮어쓰지 않는다.
 COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --retries 8 --timeout 300 \
-        --index-url ${PYTORCH_INDEX_URL} \
-        torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} \
-    && pip install --retries 8 --timeout 300 -r /tmp/requirements.txt \
+    pip install --retries 8 --timeout 300 -r /tmp/requirements.txt \
     && pip install --retries 8 --timeout 300 \
          --extra-index-url https://pypi.nvidia.com \
          tensorrt==${TRT_VERSION} \
@@ -50,12 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
          tensorrt-cu12-bindings==${TRT_VERSION} \
          tensorrt-cu12-libs==${TRT_VERSION} \
          tensorrt_llm==${TRT_LLM_VERSION}
-
-# 3) unified-sdk 소스 복사 및 설치
-COPY --chown=${UID}:${GID} . /workspace/unified-sdk
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --retries 8 --timeout 300 . \
-    && rm -f /tmp/requirements.txt
+RUN rm -f /tmp/requirements.txt
 
 ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.sh"]
 CMD ["/bin/bash"]
