@@ -308,6 +308,15 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 `LLM` smoke는 `trt-only-llm` 컨테이너에서 진행합니다.
 
+진행 원칙:
+
+- `7-a`는 현재 컨테이너에서 바로 검증 가능한 기본 경로입니다.
+- `7-b`는 **이미 준비된 로컬 TensorRT-LLM artifact dir**가 있을 때만 보는 경로입니다.
+  이 artifact는 과거 결과물이나 외부 제공 산출물일 수 있으며, 현재 세션에서 반드시 `7-c`로부터 만들어질 필요는 없습니다.
+- `7-c`는 Unified SDK public API 상의 compile smoke 항목으로는 유지하지만,
+  2026년 7월 25일 기준 official TensorRT-LLM release container의 PyTorch backend에서는
+  `LLM.save(engine_dir)`가 노출되지 않아 **currently unsupported** 입니다.
+
 ```bash
 # 1) llm 이미지 빌드
 ./build.sh --flavor llm
@@ -327,13 +336,6 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
-# 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
-#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
-python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path artifacts/tinyllama_trtllm \
-  --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --prompt "What is the capital of South Korea?"
-
 # 7-c) (LLM) local model path -> TensorRT-LLM compile -> generate
 #      2026-07-25 기준 trt-only llm flavor의 official release container(PyTorch backend)에서는
 #      `LLM.save(engine_dir)`가 노출되지 않아 이 경로는 currently unsupported 입니다.
@@ -343,6 +345,14 @@ python3 examples/run_tensorrt_llm_build.py \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
+python3 examples/run_tensorrt_llm_infer.py \
+  --engine-path artifacts/tinyllama_trtllm \
+  --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --prompt "What is the capital of South Korea?"
+
+# 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
+#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
+#      현재 세션에선 7-c가 unsupported 이므로, 기존 산출물 또는 외부 제공 artifact를 사용하는 경로로 해석합니다.
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
@@ -498,6 +508,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
 - `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
+- `llm` flavor에서 `7-b`는 개념적으로는 `7-c`에 종속되지 않지만, 현재 세션에서 artifact를 새로 만들 수 없으면 과거 산출물이나 외부 제공 artifact를 사용해야 합니다.
 - `llm` flavor에서 `7-c`는 현재 official TensorRT-LLM release container의 PyTorch backend `LLM` 객체가 `save(engine_dir)`를 제공하지 않아 currently unsupported 입니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
