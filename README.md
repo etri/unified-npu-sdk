@@ -18,6 +18,20 @@ build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** �
 **(세부 3) 국산 AI 반도체 기반 마이크로 데이터센터 운영 및 확산 기술 개발 과제**의
 **이종 AI 반도체 활용을 지원하는 통합 SDK** 결과물의 RNGD(LLM) 단일 백엔드 분기입니다.
 
+### 현재 구현 상태
+
+| 구분 | 현재 상태 |
+| --- | --- |
+| Vision API | `N/A` |
+| LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
+| LLM smoke | `1) model id -> generate`, `2) local model path + compatible FXB -> generate`, `3) local model path -> fxb build -> generate` 구조 정리 |
+| LLM build | fetch 중심은 안정적, custom `fxb build`는 모델별 vendor toolchain 이슈가 남아 있음 |
+
+### 주요 이슈
+
+- `2026-07-25` 기준 `Qwen3-8B-FP8` local custom build 는 TP=8 설정 후에도 vendor toolchain 이슈가 남아 있습니다.
+- 이 브랜치는 RNGD/LLM 전용이며, Warboy vision API 와 혼용하지 않도록 public surface 를 `*_LLM` 기준으로 분리합니다.
+
 ---
 
 ## 🏗️ 프로젝트 구조
