@@ -19,6 +19,21 @@ Unified SDK is an integrated development toolkit that enables seamless model com
 이 SDK는 다양한 AI 반도체(TensorRT, 리벨리온, 퓨리오사 등) 간의 **추론 환경 통합**을 목표로 하며,
 AI 모델의 빌드(컴파일) 및 런타임 생성 기능을 제공합니다.
 
+### 현재 브랜치 조합 현황
+
+| 브랜치 | 역할 | 현재 구현 요약 |
+| --- | --- | --- |
+| `qb-only` | Mobilint ARISE 단일 백엔드 | vision API 구현, LLM runtime preview 구현, LLM compile 은 planned |
+| `rbln-only` | Rebellions 단일 백엔드 | vision/LLM API 모두 구현, container compile 은 vendor backend 이슈 메모 |
+| `furiosa-only` | Warboy vision 단일 백엔드 | vision API 및 compile/infer/inspect 흐름 구현 |
+| `furiosa-llm-only` | RNGD LLM 단일 백엔드 | LLM API 구현, custom `fxb build`는 일부 모델에서 vendor toolchain 이슈 잔존 |
+| `trt-only` | TensorRT 단일 백엔드 | vision/LLM API 구현, Docker 는 `vision` / `llm` flavor 로 분리, LLM `7-c`는 unsupported |
+
+### 멀티밴더 통합 상태
+
+- `main`은 **전체 벤더 조합을 최종 통합한 안정 branch라기보다**, 공통 골격과 통합 방향을 담는 작업 공간에 가깝습니다.
+- `2026-07-25` 기준 각 vendor branch 의 API 표면과 smoke 기준은 상당 부분 정리되었지만, **멀티밴더 통합 구현체를 `main`에 완전히 재조합하는 작업은 아직 예정**입니다.
+
 ---
 
 ## 🚀 주요 기능
@@ -277,7 +292,6 @@ For full license details, please refer to the LICENSEfile.
 * Additional Korean NPU backends will be integrated in future releases.
 
 ---
-
 
 
 
