@@ -242,17 +242,22 @@ python3 -c "import tensorrt_llm; print('tensorrt_llm OK')"
 ## 🚀 Backend Docker smoke
 
 아래 흐름은 **NVIDIA GPU 가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `trt-only`
-백엔드를 검증하는 표준 smoke 절차입니다.
+백엔드를 검증하는 표준 smoke 절차입니다. `vision`과 `llm`은 **서로 다른 Docker flavor**에서
+검증합니다.
+
+### Vision smoke
+
+`vision` smoke는 `trt-only-vision` 컨테이너에서 진행합니다.
 
 ```bash
-# 1) 이미지 빌드
+# 1) vision 이미지 빌드
 ./build.sh --flavor vision
 
-# 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
+# 2) build.sh가 출력한 docker run 명령으로 vision 컨테이너 진입
 
 # 3) 컨테이너 내부에서 장치/패키지 확인
 nvidia-smi || true
-python3 -c "import tensorrt, pycuda; print('OK')"
+python3 -c "import tensorrt, pycuda, torch, torchvision; print('vision stack OK')"
 
 # 4-a) 표준 fetching smoke (torchvision model zoo -> ONNX export -> .engine)
 python3 examples/run_tensorrt_build.py \
@@ -296,10 +301,23 @@ python3 examples/run_tensorrt_infer.py \
 
 # 6) 엔진 입출력 메타 확인
 python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
+```
+
+### LLM smoke
+
+`LLM` smoke는 `trt-only-llm` 컨테이너에서 진행합니다.
+
+```bash
+# 1) llm 이미지 빌드
+./build.sh --flavor llm
+
+# 2) build.sh가 출력한 docker run 명령으로 llm 컨테이너 진입
+
+# 3) 컨테이너 내부에서 장치/패키지 확인
+nvidia-smi || true
+python3 -c "import tensorrt_llm; print('tensorrt_llm OK')"
 
 # 7-a) (LLM) model id -> generate
-# 먼저 llm flavor 컨테이너로 진입
-# ./build.sh --flavor llm
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --build-mode fetch
