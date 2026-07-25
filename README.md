@@ -7,6 +7,7 @@
 컴파일은 **ONNX → `.engine`**(`Builder` + `OnnxParser` + `build_serialized_network`),
 추론은 **TensorRT + PyCUDA**(`execute_async_v3` / `execute_v2`)를 사용합니다.
 LLM 경로는 **TensorRT-LLM**(`tensorrt_llm.LLM`, `SamplingParams`, `llm.generate`)를 사용합니다.
+이 브랜치는 **브랜치는 하나(`trt-only`)로 유지**하되, Docker 환경은 **vision / llm 두 flavor**로 분리합니다.
 
 ---
 
@@ -29,8 +30,11 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 ├── pyrightconfig.json
 ├── requirements.txt
 ├── devcontainer.json
-├── Dockerfile
+├── Dockerfile.vision
+├── Dockerfile.llm
 ├── build.sh
+├── requirements.vision.txt
+├── requirements.llm.txt
 ├── examples/
 │   ├── run_tensorrt_build.py       # ONNX → .engine 컴파일
 │   ├── run_tensorrt_infer.py       # .engine 추론 + latency 측정
@@ -67,10 +71,13 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 
 - **NVIDIA GPU 드라이버**가 호스트에 정상 설치되어 있어야 합니다.
 - **Docker Engine**, **docker buildx 플러그인**, **NVIDIA Container Toolkit**이 준비되어 있어야 합니다.
-- `trt-only`는 vision/LLM 공용 이미지를 위해 기본 base image를 `nvcr.io/nvidia/pytorch:24.03-py3`로 둡니다.
-- `tensorrt_llm`는 용량이 큰 편이라 설치 시간이 길 수 있습니다. 다만 `trt-only` 이미지는 vision/LLM 공용으로 재활용하는 전제를 두고, Docker 빌드 시 기본 포함합니다.
-- 2026년 7월 25일 기준 `trt-only`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스와 맞추기 위해 `tensorrt_llm==0.10.0`, `tensorrt==10.0.1`, `tensorrt-cu12*==10.0.1` 축으로 pin 합니다. 이는 NVIDIA TensorRT-LLM 0.10.0 릴리스 노트의 `NGC 24.03`, `TensorRT 10.0.1`, `CUDA 12.4`, `PyTorch 2.2.2` 의존성 축을 따른 것입니다. PyTorch는 base image에 이미 포함된 것을 그대로 사용합니다.
-- 반대로 `nvcr.io/nvidia/tensorrt:24.03-py3`는 컨테이너 배너 기준 TensorRT 8.6.3 축이라, `tensorrt_llm==0.10.0`와 함께 쓰면 `tensorrt.ILogger` 누락 같은 API mismatch가 날 수 있습니다.
+- `trt-only`는 Docker를 두 flavor로 나눕니다.
+  - `vision`: 일반 TensorRT `.engine` build/infer 전용
+  - `llm`: TensorRT-LLM generate/build 전용
+- `vision` flavor 기본 base image는 `nvcr.io/nvidia/pytorch:24.03-py3`입니다. 여기에는 NGC PyTorch를 재사용하고, Python TensorRT 패키지는 별도로 명시 설치합니다.
+- `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
+- 2026년 7월 25일 기준 `vision` flavor는 `tensorrt==10.0.1`, `tensorrt-cu12*==10.0.1` 축으로 pin 합니다.
+- `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 또한 NVIDIA TensorRT 10.1 릴리스 노트에는 `tensorrt==10.0.1` 같은 metapackage 설치가 `tensorrt-cu12==10.1.0`을 잘못 끌어올 수 있는 known issue가 있습니다. 이를 피하기 위해 `trt-only`는 `tensorrt==10.0.1`와 함께 `tensorrt-cu12==10.0.1`, `tensorrt-cu12-bindings==10.0.1`, `tensorrt-cu12-libs==10.0.1`도 명시적으로 pin 합니다.
 - 자세한 내용은 <https://developer.nvidia.com/tensorrt> 참조.
 
@@ -167,34 +174,68 @@ docker version
 
 ### 3. Docker 빌드 & 실행
 
+기본 원칙:
+
+- `vision smoke`는 `--flavor vision`
+- `llm smoke`는 `--flavor llm`
+- 기본 컨테이너 이름도 각각 `trt-only-vision`, `trt-only-llm` 으로 분리됩니다.
+
 ```bash
-./build.sh
+./build.sh --flavor vision
 # 종료 후 안내되는 docker run 명령을 참고하여 컨테이너 실행
 ```
 
-`./build.sh`는 `nvcr.io/nvidia/pytorch:24.03-py3` 베이스로 이미지를 만들고, `--gpus all` / `--runtime=nvidia`
-중 동작하는 모드를 자동 감지해 실행 예시를 출력합니다. 베이스 이미지는
-`./build.sh --base-image <image>` 또는 `TRT_BASE_IMAGE=... ./build.sh`로 바꿀 수 있습니다.
-필요하면 `--trt-version`, `--trt-llm-version`으로 pin 값을 바꿀 수 있지만,
-기본값은 `24.03` 계열과 맞춰 둔 값으로 두는 것을 권장합니다.
+`./build.sh`는 flavor에 따라 다른 Dockerfile을 사용합니다.
 
-컨테이너 실행 예시:
+- `--flavor vision`
+  - Dockerfile: `Dockerfile.vision`
+  - image tag: `unified-sdk:tensorrt-vision`
+  - container name: `trt-only-vision`
+- `--flavor llm`
+  - Dockerfile: `Dockerfile.llm`
+  - image tag: `unified-sdk:tensorrt-llm`
+  - container name: `trt-only-llm`
+
+베이스 이미지는 `./build.sh --flavor <...> --base-image <image>`로 바꿀 수 있습니다.
+`vision` flavor에서만 `--trt-version`을 사용합니다.
+
+vision 컨테이너 실행 예시:
 
 ```bash
 docker run --gpus all -it --security-opt seccomp=unconfined \
-  --name tensorrt-only \
+  --name trt-only-vision \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
-  unified-sdk:tensorrt
+  unified-sdk:tensorrt-vision
 ```
 
-컨테이너 내부 점검:
+llm 컨테이너 실행 예시:
+
+```bash
+docker run --gpus all -it --security-opt seccomp=unconfined \
+  --name trt-only-llm \
+  --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
+  -w /workspace/unified-sdk \
+  -v $(pwd):/workspace/unified-sdk \
+  unified-sdk:tensorrt-llm
+```
+
+vision 컨테이너 내부 점검:
 
 ```bash
 cd /workspace/unified-sdk
 nvidia-smi || true
 python3 -c "import unified_sdk; print('OK')"
 python3 -c "import tensorrt as trt; from importlib import metadata; print('tensorrt=', getattr(trt, '__version__', metadata.version('tensorrt')))"
+```
+
+llm 컨테이너 내부 점검:
+
+```bash
+cd /workspace/unified-sdk
+nvidia-smi || true
+python3 -c "import unified_sdk; print('OK')"
+python3 -c "import tensorrt_llm; print('tensorrt_llm OK')"
 ```
 
 ---
@@ -206,7 +247,7 @@ python3 -c "import tensorrt as trt; from importlib import metadata; print('tenso
 
 ```bash
 # 1) 이미지 빌드
-./build.sh
+./build.sh --flavor vision
 
 # 2) build.sh가 출력한 docker run 명령으로 컨테이너 진입
 
@@ -258,6 +299,8 @@ python3 examples/run_tensorrt_infer.py \
 python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 # 7-a) (LLM) model id -> generate
+# 먼저 llm flavor 컨테이너로 진입
+# ./build.sh --flavor llm
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --build-mode fetch
@@ -426,7 +469,9 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 TensorRT 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - TensorRT-LLM 경로는 high-level `generate` 중심 smoke를 제공합니다. 모델/옵션 호환성은 TensorRT-LLM 릴리스에 따라 달라질 수 있습니다.
-- `tensorrt_llm`는 대형 wheel을 함께 끌어와 첫 빌드 시간이 길 수 있습니다. 다만 Dockerfile은 NGC PyTorch base의 기존 PyTorch를 재사용하고, 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에 이전보다 재빌드 부담을 줄이는 방향으로 정리했습니다.
+- `trt-only`는 branch 하나를 유지하되 Docker flavor를 둘로 분리합니다. vision과 llm은 같은 Unified SDK public API 구조를 공유하지만, vendor stack mismatch를 줄이기 위해 컨테이너를 분리합니다.
+- `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
+- 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,

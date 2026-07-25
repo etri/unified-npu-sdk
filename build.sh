@@ -1,16 +1,14 @@
 #!/bin/bash
 set -e
 
-# =====================================
-# unified-sdk (NVIDIA TensorRT) 빌드 스크립트
-# =====================================
-
 IMAGE_NAME="unified-sdk"
-TAG="tensorrt"
+FLAVOR="vision"
+TAG=""
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
-BASE_IMAGE="${TRT_BASE_IMAGE:-nvcr.io/nvidia/pytorch:24.03-py3}"
-TRT_LLM_VERSION="${TRT_LLM_VERSION:-0.10.0}"
+VISION_BASE_IMAGE="${TRT_VISION_BASE_IMAGE:-nvcr.io/nvidia/pytorch:24.03-py3}"
+LLM_BASE_IMAGE="${TRT_LLM_BASE_IMAGE:-nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22}"
+BASE_IMAGE=""
 TRT_VERSION="${TRT_VERSION:-10.0.1}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
@@ -19,18 +17,17 @@ VIDEO_GID_VALUE="$(getent group video | cut -d: -f3 || true)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
-
 GPU_FLAG=""
 
 print_usage() {
-  echo "사용법: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--trt-version <ver>] [--trt-llm-version <ver>]"
+  echo "사용법: $0 [--flavor vision|llm] [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--trt-version <ver>]"
   echo ""
   echo "옵션:"
-  echo "  -n, --name    컨테이너 이름 (기본: tensorrt-only)"
+  echo "  --flavor      Docker flavor 선택 (기본: vision)"
+  echo "  -n, --name    컨테이너 이름 (기본: trt-only-<flavor>)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
-  echo "  --base-image  빌드에 사용할 Docker base image (기본: ${BASE_IMAGE})"
-  echo "  --trt-version  TensorRT Python package 버전 (기본: ${TRT_VERSION})"
-  echo "  --trt-llm-version  tensorrt_llm 버전 (기본: ${TRT_LLM_VERSION})"
+  echo "  --base-image  빌드에 사용할 Docker base image (기본: flavor별 권장 이미지)"
+  echo "  --trt-version vision flavor에서 설치할 TensorRT Python package 버전 (기본: ${TRT_VERSION})"
   echo "  -h, --help    도움말 출력"
 }
 
@@ -47,6 +44,9 @@ detect_nvidia_mode() {
 print_run_hint() {
   echo "docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
   echo "  --name ${CONTAINER_NAME} \\"
+  if [ "${FLAVOR}" = "llm" ]; then
+    echo "  --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \\"
+  fi
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
   echo "  ${IMAGE_NAME}:${TAG}"
@@ -54,6 +54,9 @@ print_run_hint() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --flavor)
+      [ -z "$2" ] && { echo "[ERROR] --flavor 값이 필요합니다"; exit 1; }
+      FLAVOR="$2"; shift 2 ;;
     -n|--name)
       [ -z "$2" ] && { echo "[ERROR] --name 값이 필요합니다"; exit 1; }
       CONTAINER_NAME="$2"; shift 2 ;;
@@ -66,9 +69,6 @@ while [[ $# -gt 0 ]]; do
     --trt-version)
       [ -z "$2" ] && { echo "[ERROR] --trt-version 값이 필요합니다"; exit 1; }
       TRT_VERSION="$2"; shift 2 ;;
-    --trt-llm-version)
-      [ -z "$2" ] && { echo "[ERROR] --trt-llm-version 값이 필요합니다"; exit 1; }
-      TRT_LLM_VERSION="$2"; shift 2 ;;
     -h|--help)
       print_usage; exit 0 ;;
     *)
@@ -76,7 +76,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="tensorrt-only"
+case "${FLAVOR}" in
+  vision)
+    TAG="tensorrt-vision"
+    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="trt-only-vision"
+    [ -z "${BASE_IMAGE}" ] && BASE_IMAGE="${VISION_BASE_IMAGE}"
+    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfile.vision"
+    ;;
+  llm)
+    TAG="tensorrt-llm"
+    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="trt-only-llm"
+    [ -z "${BASE_IMAGE}" ] && BASE_IMAGE="${LLM_BASE_IMAGE}"
+    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfile.llm"
+    ;;
+  *)
+    echo "[ERROR] --flavor 는 vision 또는 llm 이어야 합니다: ${FLAVOR}"
+    exit 1
+    ;;
+esac
+
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
@@ -86,12 +104,14 @@ fi
 WORKSPACE_DIR="$(cd "${WORKSPACE_DIR}" && pwd)"
 
 echo "Docker 이미지 빌드: ${IMAGE_NAME}:${TAG}"
-echo "  Dockerfile     : ${PROJECT_ROOT}/Dockerfile"
+echo "  Flavor         : ${FLAVOR}"
+echo "  Dockerfile     : ${DOCKERFILE_PATH}"
 echo "  컨테이너 이름  : ${CONTAINER_NAME}"
 echo "  워크스페이스   : ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
-echo "  tensorrt       : ${TRT_VERSION}"
-echo "  tensorrt_llm   : ${TRT_LLM_VERSION}"
+if [ "${FLAVOR}" = "vision" ]; then
+  echo "  tensorrt       : ${TRT_VERSION}"
+fi
 echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 if [ -n "${VIDEO_GID_VALUE}" ]; then
   echo "  Video GID      : ${VIDEO_GID_VALUE}"
@@ -102,17 +122,28 @@ fi
 
 cd "${PROJECT_ROOT}"
 
-DOCKER_BUILDKIT=1 docker build \
-  -f "${PROJECT_ROOT}/Dockerfile" \
-  -t "${IMAGE_NAME}:${TAG}" \
-  --build-arg BASE_IMAGE="${BASE_IMAGE}" \
-  --build-arg UID="${UID_VALUE}" \
-  --build-arg GID="${GID_VALUE}" \
-  --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
-  --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
-  --build-arg TRT_VERSION="${TRT_VERSION}" \
-  --build-arg TRT_LLM_VERSION="${TRT_LLM_VERSION}" \
-  .
+if [ "${FLAVOR}" = "vision" ]; then
+  DOCKER_BUILDKIT=1 docker build \
+    -f "${DOCKERFILE_PATH}" \
+    -t "${IMAGE_NAME}:${TAG}" \
+    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    --build-arg UID="${UID_VALUE}" \
+    --build-arg GID="${GID_VALUE}" \
+    --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
+    --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
+    --build-arg TRT_VERSION="${TRT_VERSION}" \
+    .
+else
+  DOCKER_BUILDKIT=1 docker build \
+    -f "${DOCKERFILE_PATH}" \
+    -t "${IMAGE_NAME}:${TAG}" \
+    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    --build-arg UID="${UID_VALUE}" \
+    --build-arg GID="${GID_VALUE}" \
+    --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
+    --build-arg RENDER_GID="${RENDER_GID_VALUE:-110}" \
+    .
+fi
 
 echo "빌드 완료!"
 echo ""
@@ -138,7 +169,13 @@ echo ""
 echo "컨테이너 내부 점검:"
 echo "  nvidia-smi || true"
 echo "  python3 -c \"import unified_sdk; print('OK')\""
-echo "  python3 -c \"import tensorrt as trt; from importlib import metadata; print('tensorrt=', getattr(trt, '__version__', metadata.version('tensorrt')))\""
-echo "  python3 -c \"import tensorrt_llm; print('tensorrt_llm OK')\""
-echo "  python3 examples/run_tensorrt_build.py --help"
-echo "  python3 examples/run_tensorrt_llm_build.py --help"
+if [ "${FLAVOR}" = "vision" ]; then
+  echo "  python3 -c \"import tensorrt as trt; from importlib import metadata; print('tensorrt=', getattr(trt, '__version__', metadata.version('tensorrt')))\""
+  echo "  python3 examples/run_tensorrt_build.py --help"
+  echo "  python3 examples/run_tensorrt_infer.py --help"
+else
+  echo "  python3 -c \"import tensorrt_llm; print('tensorrt_llm OK')\""
+  echo "  python3 examples/run_tensorrt_llm_build.py --help"
+  echo "  python3 examples/run_tensorrt_llm_infer.py --help"
+  echo "  python3 examples/inspect_tensorrt_llm_model.py --help"
+fi
