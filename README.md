@@ -38,9 +38,10 @@
 ├── LICENSE
 ├── pyproject.toml
 ├── pyrightconfig.json
-├── requirements.txt
+├── Dockers/
+│   ├── docker.qb.unified
+│   └── requirements.qb.unified.txt
 ├── devcontainer.json
-├── Dockerfile
 ├── build.sh
 ├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
 │   └── README.md                   #   qbcompiler-*.whl
@@ -139,7 +140,7 @@ cp /path/to/qbcompiler-*.whl vendor/
   - GPU 가속 compile이 필요한 환경에서만 `--base-image mobilint/qbcompiler:<major>.<minor>-cuda12.8.1-ubuntu22.04`처럼 명시적으로 바꿔 쓰세요.
 - Ubuntu에서는 **Docker 공식 apt 저장소** 기준 설치를 권장합니다. `docker.io`만 설치하면 `docker buildx`가 없을 수 있습니다.
 - `./build.sh`를 돌리기 전에 `docker.service` / `docker.socket` 이 실제로 올라왔는지 확인하세요.
-- `qb-only` Dockerfile은 컨테이너 안에서 `mobilint-cli`를 설치하기 위해 Mobilint APT 저장소(`https://dl.mobilint.com/apt`)를 추가합니다.
+- `qb-only` Docker 정의는 `Dockers/docker.qb.unified`에 있으며, 컨테이너 안에서 `mobilint-cli`를 설치하기 위해 Mobilint APT 저장소(`https://dl.mobilint.com/apt`)를 추가합니다.
 
 Ubuntu 예시:
 

@@ -50,7 +50,7 @@ RUN mkdir -p /workspace/unified-sdk \
 # 3) Python 의존성 설치 (공용)
 #    qubee 컴파일러는 ONNX 를 입력으로 받으므로 onnx 를 포함한다.
 #    QB compile smoke 에는 CUDA wheel 이 필요 없으므로 torch/torchvision 은 CPU wheel 로 고정한다.
-COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
+COPY --chown=${UID}:${GID} Dockers/requirements.qb.unified.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir \
         --index-url ${PYTORCH_INDEX_URL} \
