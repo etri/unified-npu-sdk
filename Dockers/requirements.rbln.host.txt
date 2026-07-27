@@ -14,7 +14,7 @@
 #     --extra-index-url https://download.pytorch.org/whl/cpu \
 #     --extra-index-url https://pypi.rbln.ai/simple \
 #     --extra-index-url https://wheels.vllm.ai/0.22.0/cpu \
-#     -r requirements-host.txt
+#     -r Dockers/requirements.rbln.host.txt
 
 numpy
 torch
