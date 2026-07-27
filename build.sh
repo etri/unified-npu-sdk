@@ -20,6 +20,8 @@ GID_VALUE=$(id -g)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
+DOCKER_DIR="${PROJECT_ROOT}/Dockers"
+DOCKERFILE_PATH="${DOCKER_DIR}/docker.qb.unified"
 
 DOCKER_DEVICE_ARGS=()
 COMPILER_WHEELS=()
@@ -186,7 +188,7 @@ if [ -z "${BASE_IMAGE}" ]; then
 fi
 
 echo "Building Docker image: ${IMAGE_NAME}:${TAG}"
-echo "  Dockerfile     : ${PROJECT_ROOT}/Dockerfile"
+echo "  Dockerfile     : ${DOCKERFILE_PATH}"
 echo "  Container name : ${CONTAINER_NAME}"
 echo "  Workspace(repo): ${WORKSPACE_DIR}"
 echo "  Base image     : ${BASE_IMAGE}"
@@ -200,7 +202,7 @@ echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
 cd "${PROJECT_ROOT}"
 
 DOCKER_BUILDKIT=1 docker build \
-  -f "${PROJECT_ROOT}/Dockerfile" \
+  -f "${DOCKERFILE_PATH}" \
   -t "${IMAGE_NAME}:${TAG}" \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
   --build-arg UID="${UID_VALUE}" \
