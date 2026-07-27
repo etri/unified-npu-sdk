@@ -25,11 +25,12 @@ build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** �
 | Vision API | `N/A` |
 | LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
 | LLM smoke | `1) model id -> generate`, `2) local model path + compatible FXB -> generate`, `3) local model path -> fxb build -> generate` 구조 정리 |
-| LLM build | fetch 중심은 안정적, custom `fxb build`는 모델별 vendor toolchain 이슈가 남아 있음 |
+| LLM build | fetch 중심은 안정적, custom `fxb build`는 `gcc-aarch64-linux-gnu` 의존성 반영 후 재검증 단계 |
 
 ### 주요 이슈
 
-- `2026-07-25` 기준 `Qwen3-8B-FP8` local custom build 는 TP=8 설정 후에도 vendor toolchain 이슈가 남아 있습니다.
+- `2026-07-27` 기준 vendor 답변으로, `Qwen3-8B-FP8` local custom `fxb build` 실패 원인 중 하나가 `gcc-aarch64-linux-gnu` 누락으로 특정되었습니다.
+- 재시도 시에는 `gcc-aarch64-linux-gnu` 설치 후 `~/.cache/furiosa/compiler/` 를 비우고 다시 확인하는 절차를 권장합니다.
 - 이 브랜치는 RNGD/LLM 전용이며, Warboy vision API 와 혼용하지 않도록 public surface 를 `*_LLM` 기준으로 분리합니다.
 
 ---
@@ -180,7 +181,8 @@ python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; pri
 custom FXB build prerequisite:
 
 - `fxb build` custom smoke 는 컨테이너 내부에서 추가 빌드 툴체인을 필요로 할 수 있습니다.
-- 현재 Dockerfile 은 이를 위해 `build-essential`, `python3-dev` 를 함께 설치합니다.
+- 현재 Dockerfile 은 이를 위해 `build-essential`, `python3-dev`, `gcc-aarch64-linux-gnu` 를 함께 설치합니다.
+- `2026-07-27` 기준 vendor 답변에 따라, custom build 재시도 전 `rm -rf ~/.cache/furiosa/compiler/` 로 compiler cache 를 비우는 것을 권장합니다.
 - 따라서 이 문서의 custom smoke 를 처음 시도하거나 Dockerfile 변경 후 다시 시도할 때는 `./build.sh`로 이미지를 다시 빌드해야 합니다.
 
 custom local model 준비:
@@ -283,8 +285,11 @@ python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
 #    예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
 #    `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
 #    이 경로는 Dockerfile 의 build toolchain 변경이 반영된 이미지를 전제로 합니다.
-#    FuriosaAI 답변(2026-07-14) 기준 Qwen3-8B-FP8 는 TP=1 이 지원되지 않으며,
-#    RNGD 1장 smoke 는 TP=8 을 권장합니다.
+#    FuriosaAI 답변 기준:
+#      - 2026-07-14: Qwen3-8B-FP8 는 TP=1 이 지원되지 않으며, RNGD 1장 smoke 는 TP=8 권장
+#      - 2026-07-27: gcc-aarch64-linux-gnu 누락이 원인으로 확인됨. 재시도 전
+#                    ~/.cache/furiosa/compiler/ 제거 권장
+rm -rf ~/.cache/furiosa/compiler/
 python3 examples/run_rngd_build.py \
   --model models/Qwen3-8B-FP8 \
   --fxb-build \
@@ -409,6 +414,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - custom smoke 에서는 `furiosa-ai/...` prebuilt artifact repo 대신 upstream/raw model snapshot 을 사용해야 합니다.
 - 현재 custom smoke 예시는 Furiosa 공식 FXB 문서의 `Qwen/Qwen3-8B-FP8` / `furiosa-ai/Qwen3-8B-FP8` 예시를 따릅니다.
 - FuriosaAI 답변(2026-07-14) 기준 `Qwen3-8B-FP8`의 `fxb build`는 TP=1 이 아니라 TP=8 (RNGD 1장) 사용이 권장됩니다.
+- FuriosaAI 답변(2026-07-27) 기준 `gcc-aarch64-linux-gnu` 누락이 `Qwen3-8B-FP8` local custom build 실패 원인으로 특정되었으며, 재시도 전 `rm -rf ~/.cache/furiosa/compiler/` 를 함께 권장합니다.
 - custom local model 은 repo 내부 `models/` 같은 gitignored 경로에 별도 준비해야 합니다. 저장소에는 포함되지 않습니다.
 - `examples/prepare_rngd_local_model.py`는 custom smoke 전용 local snapshot 준비 예제입니다.
 - `examples/prepare_rngd_compatible_fxb.py`는 compatible prebuilt FXB를 cache에 내려받고 추천 경로를 확인하는 예제입니다.
