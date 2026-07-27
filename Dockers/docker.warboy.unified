@@ -54,7 +54,7 @@ RUN mkdir -p /workspace/unified-sdk \
 # 4) Python 의존성 (공용). Warboy compile smoke 에는 CUDA wheel 이 필요 없다.
 #    furiosa-models 일부 vision model(YOLOv5/YOLOv7 계열)은 torchvision 을 사용하므로
 #    torch/torchvision 을 같은 PyTorch index 에서 함께 설치해 ABI/ops mismatch 를 피한다.
-COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
+COPY --chown=${UID}:${GID} Dockers/requirements.warboy.unified.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --retries 8 --timeout 300 \
         --index-url ${PYTORCH_INDEX_URL} \
@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # 5) FuriosaAI SDK (Python): runtime + optimizer + quantizer + model zoo
 #    이 브랜치가 실제로 쓰는 Python 패키지만 정확한 버전으로 설치해 meta package resolver backtracking 을 줄인다.
 #    별도 pip invocation 에서 furiosa-models 의존성 resolver 가 OpenCV 후보를 다시 backtracking 하지 않도록
-#    공용 requirements.txt 를 constraint 로 재사용한다.
+#    공용 Dockers/requirements.warboy.unified.txt 를 constraint 로 재사용한다.
 RUN --mount=type=cache,target=/root/.cache/pip \
     EXTRA_INDEX_ARG="" ; \
     if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
