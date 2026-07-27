@@ -39,10 +39,14 @@
 ├── LICENSE
 ├── pyproject.toml
 ├── pyrightconfig.json
-├── requirements.txt
+├── Dockers/
+│   ├── docker.rbln.unified
+│   ├── requirements.rbln.unified.txt
+│   └── requirements.rbln.host.txt
 ├── devcontainer.json
-├── Dockerfile
 ├── build.sh
+├── scripts/
+│   └── build_rbln.sh
 ├── .secrets/                       # (gitignore) Rebellions SDK 인증
 │   └── netrc                       # 사용자가 직접 생성
 ├── examples/
@@ -473,7 +477,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 2026년 7월 24일 기준, LLM도 비슷한 경향을 보입니다. host native에서는 `1) model id -> generate`, `2) precompiled artifact -> generate`, `3) optimum-rbln compile -> generate`가 통과했지만, CDI/container에서는 `3)`의 `optimum-rbln` compile이 같은 compiler backend 이슈로 실패할 수 있습니다. 또한 host에서 미리 만든 artifact가 있어도 `2)`의 `create_runtime_LLM(...)` / `generate_LLM(...)` 경로에서 `vllm-rbln` runtime warmup, sampler 준비, fallback 처리 때문에 vendor-side internal compile이 다시 일어날 수 있습니다. 이 경우 Docker 이미지에 작동하는 C++ compiler(`build-essential`, `g++`)가 없으면 PyTorch inductor CPU fallback이 `InvalidCxxCompiler`로 추가 실패할 수 있습니다.
 - 현재 README에서 `표준 fetching`은 **허브/model-zoo에서 원본 pretrained 모델을 받아 `./models` 아래에 준비하고, 이후 `.rbln` compile까지 이어지는 경로**를 뜻합니다. 반면 `provided .rbln fetch`는 이미 컴파일된 artifact를 직접 받아 셋업하는 별도 경로입니다.
 - 다중 NPU 서버에서는 `RBLN_DEVICES=0` 또는 `RBLN_DEVICES=1`처럼 장치 ID를 고정해 두는 편이 안전합니다.
-- `Dockerfile` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
+- `Dockers/docker.rbln.unified` 기본 base image는 `ubuntu:22.04`, 기본 `rebel-compiler` 버전은 `0.11.0`입니다. 현재 호스트 driver/SDK 기준이 다르면 `./build.sh --base-image <image> --compiler-version <version>`으로 맞춰 빌드하세요.
 - 예제 스크립트는 현재 작업 디렉터리의 checkout root를 우선 사용하므로 `/workspace/unified-sdk`와 `/workspace/unified-npu-sdk` 둘 다 지원합니다.
 - 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_rbln_build.py --help`,
   `python3 examples/run_rbln_infer.py --help`, `python3 examples/inspect_rbln_model.py --help`로 확인하세요.
