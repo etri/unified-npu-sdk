@@ -43,13 +43,16 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 ├── LICENSE
 ├── pyproject.toml
 ├── pyrightconfig.json
-├── requirements.txt
+├── Dockers/
+│   ├── docker.trt.vision
+│   ├── docker.trt.llm
+│   ├── requirements.trt.shared.txt
+│   ├── requirements.trt.vision.txt
+│   └── requirements.trt.llm.txt
 ├── devcontainer.json
-├── Dockerfile.vision
-├── Dockerfile.llm
 ├── build.sh
-├── requirements.vision.txt
-├── requirements.llm.txt
+├── scripts/
+│   └── build_trt.sh
 ├── examples/
 │   ├── run_tensorrt_build.py       # ONNX → .engine 컴파일
 │   ├── run_tensorrt_infer.py       # .engine 추론 + latency 측정
@@ -205,11 +208,11 @@ docker version
 `./build.sh`는 flavor에 따라 다른 Dockerfile을 사용합니다.
 
 - `--flavor vision`
-  - Dockerfile: `Dockerfile.vision`
+  - Dockerfile: `Dockers/docker.trt.vision`
   - image tag: `unified-sdk:tensorrt-vision`
   - container name: `trt-only-vision`
 - `--flavor llm`
-  - Dockerfile: `Dockerfile.llm`
+  - Dockerfile: `Dockers/docker.trt.llm`
   - image tag: `unified-sdk:tensorrt-llm`
   - container name: `trt-only-llm`
 
