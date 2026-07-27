@@ -43,10 +43,13 @@ build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** �
 ├── LICENSE
 ├── pyproject.toml
 ├── pyrightconfig.json
-├── requirements.txt
+├── Dockers/
+│   ├── docker.rngd.unified
+│   └── requirements.rngd.unified.txt
 ├── devcontainer.json
-├── Dockerfile
 ├── build.sh
+├── scripts/
+│   └── build_rngd.sh
 ├── examples/
 │   ├── prepare_rngd_local_model.py  # custom smoke 용 HF snapshot/local model 준비
 │   ├── run_rngd_build.py           # HF 모델 id/local path 전달(fetch) 또는 FXB 빌드
@@ -181,9 +184,9 @@ python3 -c "import unified_sdk; from furiosa_llm import LLM, SamplingParams; pri
 custom FXB build prerequisite:
 
 - `fxb build` custom smoke 는 컨테이너 내부에서 추가 빌드 툴체인을 필요로 할 수 있습니다.
-- 현재 Dockerfile 은 이를 위해 `build-essential`, `python3-dev`, `gcc-aarch64-linux-gnu` 를 함께 설치합니다.
+- 현재 `Dockers/docker.rngd.unified` 는 이를 위해 `build-essential`, `python3-dev`, `gcc-aarch64-linux-gnu` 를 함께 설치합니다.
 - `2026-07-27` 기준 vendor 답변에 따라, custom build 재시도 전 `rm -rf ~/.cache/furiosa/compiler/` 로 compiler cache 를 비우는 것을 권장합니다.
-- 따라서 이 문서의 custom smoke 를 처음 시도하거나 Dockerfile 변경 후 다시 시도할 때는 `./build.sh`로 이미지를 다시 빌드해야 합니다.
+- 따라서 이 문서의 custom smoke 를 처음 시도하거나 Docker image 정의 변경 후 다시 시도할 때는 `./build.sh`로 이미지를 다시 빌드해야 합니다.
 
 custom local model 준비:
 
@@ -284,7 +287,7 @@ python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
 #    주의: 이 브랜치의 compile 기준은 ONNX/PTH 가 아니라 FXB build 입니다.
 #    예시 local path 는 supported architecture 의 upstream/raw HF snapshot/local copy 여야 합니다.
 #    `furiosa-ai/...` prebuilt artifact repo 는 이 build 입력으로 쓰지 않습니다.
-#    이 경로는 Dockerfile 의 build toolchain 변경이 반영된 이미지를 전제로 합니다.
+#    이 경로는 Docker image build toolchain 변경이 반영된 이미지를 전제로 합니다.
 #    FuriosaAI 답변 기준:
 #      - 2026-07-14: Qwen3-8B-FP8 는 TP=1 이 지원되지 않으며, RNGD 1장 smoke 는 TP=8 권장
 #      - 2026-07-27: gcc-aarch64-linux-gnu 누락이 원인으로 확인됨. 재시도 전

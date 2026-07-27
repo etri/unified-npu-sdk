@@ -52,7 +52,7 @@ RUN mkdir -p /workspace/unified-sdk \
  && chown -R ${UID}:${GID} /workspace
 
 # 4) Python 의존성 (경량). torch/transformers 는 furiosa-llm 이 의존성으로 가져온다.
-COPY --chown=${UID}:${GID} requirements.txt /tmp/requirements.txt
+COPY --chown=${UID}:${GID} Dockers/requirements.rngd.unified.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
