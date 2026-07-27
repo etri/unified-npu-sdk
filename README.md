@@ -43,6 +43,8 @@
 │   └── requirements.qb.unified.txt
 ├── devcontainer.json
 ├── build.sh
+├── scripts/
+│   └── build_qb.sh
 ├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
 │   └── README.md                   #   qbcompiler-*.whl
 ├── examples/
