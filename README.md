@@ -304,6 +304,7 @@ python3 examples/run_qb_build.py \
 
 python3 examples/run_qb_infer.py \
   --engine-path builds/resnet50.mxq \
+  --core-mode global8 \
   --image models/input.jpg
 ```
 

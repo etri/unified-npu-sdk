@@ -63,9 +63,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-name", default="output")
     parser.add_argument("--input-shape", type=_parse_shape, default=(224, 224, 3)) # 이 .mxq 는 정규화/레이아웃 변환을 내부에 포함해 컴파일되어 원본 uint8 HWC 입력을 기대함
     parser.add_argument("--device", type=int, default=int(os.getenv("MBLT_DEVICE", "0")))
-    # 추론 단계는 로컬/직접 컴파일된 .mxq 의 실제 지원 코어 모드를 모르고 시작하는 경우가 많다.
-    # 따라서 기본값은 가장 보수적인 `auto`로 두고, 필요할 때만 명시적으로 global4/global8 등을 준다.
-    parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "auto"))
+    # main 의 기본 smoke 는 model-zoo/global8 경로를 우선 기준으로 하므로,
+    # default 는 global8 로 두고, 로컬/직접 컴파일된 single-mode MXQ 인 경우에만 override 한다.
+    parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "global8"))
     parser.add_argument("--iters", type=int, default=50)
     parser.add_argument("--allow-dynamic-shape", action="store_true")
     return parser
