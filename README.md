@@ -153,7 +153,7 @@ cd main
 
 ## 사용 예시
 
-### 권장 사용 흐름
+### 환경 설정
 
 처음 `main`을 검증할 때는 아래 순서를 권장합니다.
 
@@ -169,7 +169,7 @@ cd main
 - Python dependency / import 문제
 - 실제 vendor compile / runtime 문제
 
-### 1차 검증 순서
+#### 권장 검증 순서
 
 VM별 1차 검증 권장 순서:
 
@@ -184,7 +184,7 @@ VM별 1차 검증 권장 순서:
 상대적으로 단순한 vision/runtime 경로부터 확인한 뒤
 LLM 및 flavor 분리 경로로 점차 확장하는 편이 문제 원인을 분리하기 쉽기 때문입니다.
 
-### backend별 기본 sanity check
+#### backend별 기본 sanity check
 
 `qb`
 
@@ -234,7 +234,7 @@ python3 examples/run_tensorrt_llm_build.py --help
 python3 examples/run_tensorrt_llm_infer.py --help
 ```
 
-### 1차 smoke entry
+### Build, Inference 활용 예시
 
 아래는 바로 복붙해서 보기 좋은 최소 smoke 예시입니다.  
 모든 예제가 모든 환경에서 완전히 같은 수준으로 보장되는 것은 아니므로,
