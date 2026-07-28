@@ -417,6 +417,8 @@ python3 examples/run_tensorrt_llm_infer.py \
 
 관련 참고 자료:
 
+- `SMOKE_TEST_FULL_DESCRIPTION.md`
+  - backend별 compile / fetch / infer / inspect 전체 smoke 실행 가이드
 - `vendor_sdk_wrapping_api_report.md`
   - backend별 public API mapping, 구현 수준, known issue 요약
 - `main_integration_review_2026-07-27.md`
