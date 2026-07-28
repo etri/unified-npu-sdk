@@ -2,6 +2,7 @@
 models/
 build_output/
 builds/
+tests/input.jpg
 tests/imagenet_classes.txt
 
 # Byte-compiled / optimized / DLL files
