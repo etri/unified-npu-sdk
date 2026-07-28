@@ -18,6 +18,7 @@ class BuildConfig:
     precision: Precision = "fp16"
     input_name: str = "input.1"
     input_shape: Tuple[int, ...] = (1, 3, 224, 224)
+    bucketing_shapes: list[Tuple[int, ...]] | None = None
     min_input_shape: Tuple[int, ...] = (1, 3, 256, 192)
     opt_input_shape: Tuple[int, ...] = (4, 3, 256, 192)
     max_input_shape: Tuple[int, ...] = (30, 3, 256, 192)
