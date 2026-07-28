@@ -151,6 +151,25 @@ cd main
 | `trt --flavor vision` | `unified-sdk:main-trt-vision` | `main-trt-vision` |
 | `trt --flavor llm` | `unified-sdk:main-trt-llm` | `main-trt-llm` |
 
+예를 들어 `qb`와 `trt vision`은 아래처럼 실행할 수 있습니다.
+
+```bash
+docker run -it \
+  --name main-qb \
+  -w /workspace/unified-sdk \
+  -v "$PWD":/workspace/unified-sdk \
+  unified-sdk:main-qb
+
+docker run --gpus all -it --security-opt seccomp=unconfined \
+  --name main-trt-vision \
+  -w /workspace/unified-sdk \
+  -v "$PWD":/workspace/unified-sdk \
+  unified-sdk:main-trt-vision
+```
+
+실제 장치 마운트나 권한 옵션은 backend마다 다를 수 있으므로,
+가장 정확한 실행 명령은 각 `./build.sh --backend ...`가 출력하는 예시를 그대로 따르는 것을 권장합니다.
+
 ## 사용 예시
 
 ### 환경 설정
