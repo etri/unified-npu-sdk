@@ -240,10 +240,14 @@ python3 examples/run_tensorrt_llm_infer.py --help
 모든 예제가 모든 환경에서 완전히 같은 수준으로 보장되는 것은 아니므로,
 README와 branch별 known issue를 함께 확인하는 것을 권장합니다.
 
+메모:
+
+- 아래 예시는 해당 backend용 Docker 이미지 빌드와 컨테이너 진입이 이미 끝난 상태를 전제로 합니다.
+- 즉 `./build.sh --backend ...` 단계는 앞의 `환경 설정` 섹션에서 먼저 수행하고, 여기서는 실제 build / infer / generate 예시만 봅니다.
+
 `qb`
 
 ```bash
-./build.sh --backend qb
 python3 examples/run_qb_build.py \
   --model-name resnet50 \
   --input-name input \
@@ -257,7 +261,6 @@ python3 examples/run_qb_infer.py \
 `rbln`
 
 ```bash
-./build.sh --backend rbln
 python3 examples/run_rbln_build.py \
   --model-zoo-model resnet50 \
   --pretrained \
@@ -279,7 +282,6 @@ python3 examples/run_rbln_llm_infer.py \
 `warboy`
 
 ```bash
-./build.sh --backend warboy
 python3 examples/run_warboy_build.py \
   --model-name resnet50 \
   --input-name input \
@@ -293,7 +295,6 @@ python3 examples/run_warboy_infer.py \
 `rngd`
 
 ```bash
-./build.sh --backend rngd
 python3 examples/run_rngd_build.py \
   --model furiosa-ai/Qwen2.5-0.5B-Instruct
 
@@ -305,7 +306,6 @@ python3 examples/run_rngd_infer.py \
 `trt vision`
 
 ```bash
-./build.sh --backend trt --flavor vision
 python3 examples/run_tensorrt_build.py \
   --model-name resnet50 \
   --precision fp32 \
@@ -322,7 +322,6 @@ python3 examples/run_tensorrt_infer.py \
 `trt llm`
 
 ```bash
-./build.sh --backend trt --flavor llm
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --build-mode fetch
