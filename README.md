@@ -51,6 +51,20 @@ git clone https://github.com/etri/unified-npu-sdk.git
 cd unified-npu-sdk/main
 ```
 
+이미 vendor별 checkout이 `~/unified-npu-sdk/qb-only`, `~/unified-npu-sdk/rbln-only`처럼 따로 있는 경우에는,
+상위 디렉터리에서 `main` 브랜치만 별도 하위 폴더로 받는 방식이 더 안전합니다.
+
+```bash
+cd ~/unified-npu-sdk
+git clone --branch main --single-branch https://github.com/etri/unified-npu-sdk.git main
+cd main
+```
+
+메모:
+
+- 위 명령은 `~/unified-npu-sdk/main` 폴더를 새로 생성합니다.
+- `~/unified-npu-sdk/main` 폴더가 이미 있으면 clone이 실패할 수 있으니, 그 경우에는 폴더명을 바꾸거나 비운 뒤 다시 시도합니다.
+
 ### backend별 Docker build
 
 ```bash
@@ -229,4 +243,3 @@ main/
 ## 라이선스
 
 Apache License 2.0
-
