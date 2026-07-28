@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+# =========================
+# unified-sdk (NVIDIA TensorRT-LLM release base)
+# =========================
+ARG BASE_IMAGE=nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22
+FROM ${BASE_IMAGE}
+
+ARG USERNAME=etri
+ARG UID=1000
+ARG GID=1000
+ARG VIDEO_GID=44
+ARG RENDER_GID=110
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Seoul \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PIP_NO_INPUT=1 \
+    PIP_DEFAULT_TIMEOUT=300 \
+    PYTHONPATH=/workspace/unified-sdk/src
+
+RUN groupadd -g ${VIDEO_GID} video 2>/dev/null || true \
+ && groupadd -g ${RENDER_GID} render 2>/dev/null || true \
+ && groupadd -g ${GID} ${USERNAME} 2>/dev/null || true \
+ && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} 2>/dev/null || true
+
+WORKDIR /workspace/unified-sdk
+RUN mkdir -p /workspace/unified-sdk \
+ && chown -R ${UID}:${GID} /workspace
+
+COPY --chown=${UID}:${GID} Dockers/requirements.trt.llm.txt /tmp/requirements.llm.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --retries 8 --timeout 300 -r /tmp/requirements.llm.txt
+RUN rm -f /tmp/requirements.llm.txt
