@@ -1,0 +1,101 @@
+# examples/inspect_rbln_model.py
+"""
+RBLN 컴파일 결과(.rbln) 파일의 입출력 텐서 정보를 출력합니다.
+rebel.Runtime 객체에서 사용 가능한 메타 정보를 best-effort로 덤프합니다.
+"""
+import argparse
+from pathlib import Path
+import sys
+import os
+
+def _is_repo_root(path: Path) -> bool:
+    return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
+
+
+def _resolve_repo_root() -> Path:
+    env_root = os.getenv("UNIFIED_SDK_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if _is_repo_root(candidate):
+            return candidate
+
+    cwd = Path.cwd().resolve()
+    if _is_repo_root(cwd):
+        return cwd
+
+    file_root = Path(__file__).resolve().parents[1]
+    if _is_repo_root(file_root):
+        return file_root
+
+    for candidate in (Path("/workspace/unified-sdk"), Path("/workspace/unified-npu-sdk")):
+        if _is_repo_root(candidate):
+            return candidate
+
+    return file_root
+
+
+REPO_ROOT = _resolve_repo_root()
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Inspect a compiled RBLN model.")
+    parser.add_argument("model_path", nargs="?", default=str(REPO_ROOT / "builds" / "resnet50.rbln"))
+    parser.add_argument("--device", type=int, default=int(os.getenv("RBLN_DEVICE", "0")))
+    parser.add_argument("--tensor-type", choices=("np", "pt"), default="np")
+    return parser
+
+
+def inspect(model_path: str, *, device: int, tensor_type: str) -> None:
+    try:
+        import rebel
+    except ImportError:
+        print("Error: 'rebel' (Rebellions SDK) not found. Install via Rebellions private index first.")
+        return
+
+    p = Path(model_path)
+    if not p.is_file():
+        print(f"Error: file not found - {p}")
+        return
+    if p.suffix != ".rbln":
+        print(f"Error: expected a .rbln file - {p}")
+        return
+
+    try:
+        rt = rebel.Runtime(str(p), device=device, tensor_type=tensor_type)
+    except Exception as e:
+        print(f"Error: failed to load runtime ({type(e).__name__}): {e}")
+        return
+
+    print(f"\n== RBLN model: {p.name} ==")
+    print(f"  path: {p}")
+    print(f"  device: {device}")
+    print(f"  tensor_type: {tensor_type}")
+    # rebel.Runtime API는 버전에 따라 노출 속성이 다르므로 best-effort 출력
+    for attr in (
+        "get_input_info",
+        "get_output_info",
+        "input_info",
+        "output_info",
+        "input_names",
+        "output_names",
+    ):
+        if hasattr(rt, attr):
+            value = getattr(rt, attr)
+            try:
+                value = value() if callable(value) else value
+            except Exception as e:
+                value = f"<{type(e).__name__}: {e}>"
+            print(f"  {attr}: {value}")
+
+    # 일반 dir() 덤프 (디버깅 도움용)
+    print("\n  public attrs:")
+    for name in sorted(n for n in dir(rt) if not n.startswith("_")):
+        print(f"    - {name}")
+
+
+if __name__ == "__main__":
+    args = _build_parser().parse_args()
+    inspect(args.model_path, device=args.device, tensor_type=args.tensor_type)

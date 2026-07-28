@@ -1,12 +1,33 @@
+import argparse
 import timeit
 from pathlib import Path
 import sys
+import os
+
+def _is_repo_root(path: Path) -> bool:
+    return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
+
 
 def _resolve_repo_root() -> Path:
-    ws_root = Path("/workspace/unified-sdk")
-    if ws_root.is_dir():
-        return ws_root
-    return Path(__file__).resolve().parents[1]
+    env_root = os.getenv("UNIFIED_SDK_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if _is_repo_root(candidate):
+            return candidate
+
+    cwd = Path.cwd().resolve()
+    if _is_repo_root(cwd):
+        return cwd
+
+    file_root = Path(__file__).resolve().parents[1]
+    if _is_repo_root(file_root):
+        return file_root
+
+    for candidate in (Path("/workspace/unified-sdk"), Path("/workspace/unified-npu-sdk")):
+        if _is_repo_root(candidate):
+            return candidate
+
+    return file_root
 
 
 REPO_ROOT = _resolve_repo_root()
@@ -15,31 +36,43 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-try:
-    import numpy as np
-    import torch
-    from torchvision.io.image import read_image
-    from torchvision import transforms
-except ImportError:
-    print("Error: 'numpy', 'torch', and 'torchvision' are required for the RBLN inference example.")
-    sys.exit(1)
 
-from unified_sdk.types import RuntimeConfig
-from unified_sdk.runtime import create_runtime, infer, destroy_runtime
-
-
-# ====== 경로 설정 (요청한 기준) ======
+# ====== 경로 설정 (checkout root 기준, 컨테이너에서는 현재 마운트된 repo root) ======
 ENGINE_PATH = REPO_ROOT / "builds" / "resnet50.rbln"   # <- builds 기준
 IMG_PATH = REPO_ROOT / "tests" / "input.jpg"
 LABELS_PATH = REPO_ROOT / "tests" / "imagenet_classes.txt"  # 있으면 사용, 없으면 cls_id만 출력
 
 
-def _check_files():
+def _parse_shape(value: str) -> tuple[int, ...]:
+    parts = value.replace("x", ",").split(",")
+    try:
+        shape = tuple(int(part.strip()) for part in parts if part.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid shape: {value!r}") from exc
+    if not shape or any(dim <= 0 for dim in shape):
+        raise argparse.ArgumentTypeError(f"shape must contain positive integers: {value!r}")
+    return shape
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run inference with a compiled RBLN model.")
+    parser.add_argument("--engine-path", type=Path, default=ENGINE_PATH)
+    parser.add_argument("--image", type=Path, default=IMG_PATH)
+    parser.add_argument("--labels", type=Path, default=LABELS_PATH)
+    parser.add_argument("--input-name", default="input")
+    parser.add_argument("--output-name", default="output")
+    parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
+    parser.add_argument("--device", type=int, default=int(os.getenv("RBLN_DEVICE", "0")))
+    parser.add_argument("--tensor-type", choices=("np", "pt"), default="np")
+    parser.add_argument("--iters", type=int, default=50)
+    parser.add_argument("--allow-dynamic-shape", action="store_true")
+    return parser
+
+
+def _check_files(engine_path: Path):
     missing = []
-    if not ENGINE_PATH.is_file():
-        missing.append(f"- engine: {ENGINE_PATH}")
-    if not IMG_PATH.is_file():
-        missing.append(f"- image : {IMG_PATH}")
+    if not engine_path.is_file():
+        missing.append(f"- engine: {engine_path}")
     if missing:
         raise FileNotFoundError("필요한 파일이 없습니다:\n" + "\n".join(missing))
 
@@ -48,35 +81,66 @@ def _check_files():
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
 
-preprocess = transforms.Compose([
-    transforms.Resize(256, antialias=True),
-    transforms.CenterCrop(224),
-    transforms.ConvertImageDtype(torch.float32),   # uint8 -> float32, [0,1]
-    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-])
 
-
-def _load_labels():
-    if LABELS_PATH.is_file():
-        labels = [l.strip() for l in LABELS_PATH.read_text().splitlines() if l.strip()]
+def _load_labels(labels_path: Path):
+    if labels_path.is_file():
+        labels = [l.strip() for l in labels_path.read_text().splitlines() if l.strip()]
         return labels
     return None
 
 
 if __name__ == "__main__":
-    _check_files()
-    labels = _load_labels()
+    args = _build_parser().parse_args()
 
-    img = read_image(str(IMG_PATH))                 # [C,H,W], uint8
-    batch = preprocess(img).unsqueeze(0).numpy()    # weights.transforms() 대신 preprocess 사용
+    try:
+        import numpy as np
+        import torch
+        from torchvision.io.image import read_image
+        from torchvision import transforms
+    except ImportError:
+        print("Error: 'numpy', 'torch', and 'torchvision' are required for the RBLN inference example.")
+        sys.exit(1)
+
+    from unified_sdk.types import RuntimeConfig
+    from unified_sdk.runtime import create_runtime, infer, destroy_runtime
+
+    engine_path = args.engine_path.expanduser().resolve()
+    image_path = args.image.expanduser().resolve()
+    labels_path = args.labels.expanduser().resolve()
+
+    if args.iters <= 0:
+        raise ValueError("--iters must be > 0")
+
+    _check_files(engine_path)
+    labels = _load_labels(labels_path)
+
+    if image_path.is_file():
+        preprocess = transforms.Compose([
+            transforms.Resize(256, antialias=True),
+            transforms.CenterCrop(224),
+            transforms.ConvertImageDtype(torch.float32),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ])
+        img = read_image(str(image_path))                 # [C,H,W], uint8
+        batch_t = preprocess(img).unsqueeze(0)
+        input_source = str(image_path)
+    else:
+        batch_t = torch.zeros(args.input_shape, dtype=torch.float32)
+        input_source = f"synthetic zeros {args.input_shape}"
+
+    batch = batch_t if args.tensor_type == "pt" else batch_t.numpy()
 
     cfg = RuntimeConfig(
         backend="rbln",
-        engine_path=str(ENGINE_PATH),   # builds/resnet50.rbln
-        input_name="input",
-        output_name="output",
-        input_shape=(1, 3, 224, 224),
-        extra={"tensor_type": "np"},    # numpy 입력
+        engine_path=str(engine_path),
+        input_name=args.input_name,
+        output_name=args.output_name,
+        input_shape=args.input_shape,
+        extra={
+            "tensor_type": args.tensor_type,
+            "device": args.device,
+            "allow_dynamic_shape": args.allow_dynamic_shape,
+        },
     )
 
     rh = create_runtime(cfg)
@@ -84,10 +148,9 @@ if __name__ == "__main__":
     x = batch
     _ = infer(rh, x)  # warmup
 
-    iters = 50
     times = []
     y = None
-    for _ in range(iters):
+    for _ in range(args.iters):
         t0 = timeit.default_timer()
         y = infer(rh, x)
         t1 = timeit.default_timer()
@@ -100,8 +163,9 @@ if __name__ == "__main__":
     if labels and 0 <= cls_id < len(labels):
         print(f"pred: {labels[cls_id]} (id={cls_id})")
     else:
-        print(f"pred_id: {cls_id} (labels file not found: {LABELS_PATH})")
+        print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
+    print(f"(engine={engine_path}, input={input_source}, tensor_type={args.tensor_type}, device={args.device})")
 
     destroy_runtime(rh)
