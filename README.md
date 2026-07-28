@@ -307,6 +307,20 @@ python3 examples/run_qb_infer.py \
   --image models/input.jpg
 ```
 
+LLM runtime smoke (`qb`):
+
+```bash
+python3 examples/run_qb_llm_infer.py \
+  --engine-path models/Llama-3.2-1B-Instruct.mxq \
+  --core-mode global8 \
+  --cache-size 0
+```
+
+메모:
+
+- `qb` LLM은 high-level text generate가 아니라 low-level cache-aware `infer_LLM(...)` smoke입니다.
+- `build_unified_LLM(cfg)`는 아직 `planned` 상태이므로, 현재는 precompiled transformer/LLM `.mxq`를 기준으로 확인합니다.
+
 `rbln`
 
 ```bash
