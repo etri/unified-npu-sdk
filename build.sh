@@ -1,59 +1,69 @@
 #!/bin/bash
 set -e
 
-IMAGE_NAME="unified-sdk"
-TARGET="tensorrt"
-CONTAINER_NAME=""
-WORKSPACE_DIR=""
-UID_VALUE=$(id -u)
-GID_VALUE=$(id -g)
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 
+BACKEND="trt"
+FLAVOR="vision"
+PASSTHROUGH=()
+
 print_usage() {
-  echo "Usage: $0 [--target <target>] [--name <container_name>] [--workspace <repo_path>]"
-  echo ""
-  echo "Options:"
-  echo "  --target      Build target (default: tensorrt)"
-  echo "                Supported: tensorrt, rebellions, furiosa"
-  echo "  --name        Container name (default: unified-sdk_<target>_dev)"
-  echo "  --workspace   Host repository path to mount into /workspace/unified-sdk"
-  echo "                (default: current project root)"
-  echo "  -h, --help    Show this help message"
-  echo ""
-  echo "Examples:"
-  echo "  $0"
-  echo "  $0 --target tensorrt"
-  echo "  $0 --target tensorrt --name rskim_unified-npu-sdk"
-  echo "  $0 --target tensorrt --workspace /home/etri/users/rskim/uDC/unified-npu-sdk"
-  echo "  $0 --target tensorrt --name rskim_unified-npu-sdk --workspace /home/etri/users/rskim/uDC/unified-npu-sdk"
+  cat <<'EOF'
+Usage: ./build.sh [--backend <qb|rbln|warboy|rngd|trt>] [--flavor <vision|llm>] [backend-script options...]
+
+Top-level dispatcher:
+  --backend qb       Mobilint QB vision/LLM environment
+  --backend rbln     Rebellions RBLN vision/LLM environment
+  --backend warboy   Furiosa Warboy vision environment
+  --backend rngd     Furiosa RNGD LLM environment
+  --backend trt      NVIDIA TensorRT environment
+
+TensorRT flavor:
+  --flavor vision    TensorRT vision image (default)
+  --flavor llm       TensorRT-LLM image
+
+Legacy aliases:
+  --target tensorrt    -> --backend trt
+  --target rebellions  -> --backend rbln
+  --target furiosa     -> error (choose warboy or rngd explicitly)
+
+Examples:
+  ./build.sh --backend qb
+  ./build.sh --backend rbln --workspace /path/to/repo
+  ./build.sh --backend warboy
+  ./build.sh --backend rngd
+  ./build.sh --backend trt --flavor vision
+  ./build.sh --backend trt --flavor llm
+EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --backend)
+      [ -z "$2" ] && { echo "[ERROR] --backend requires a value"; exit 1; }
+      BACKEND="$2"
+      shift 2
+      ;;
+    --flavor)
+      [ -z "$2" ] && { echo "[ERROR] --flavor requires a value"; exit 1; }
+      FLAVOR="$2"
+      shift 2
+      ;;
     --target)
-      if [ -z "$2" ]; then
-        echo "[ERROR] --target requires a value"
-        exit 1
-      fi
-      TARGET="$2"
-      shift 2
-      ;;
-    --name)
-      if [ -z "$2" ]; then
-        echo "[ERROR] --name requires a value"
-        exit 1
-      fi
-      CONTAINER_NAME="$2"
-      shift 2
-      ;;
-    --workspace)
-      if [ -z "$2" ]; then
-        echo "[ERROR] --workspace requires a value"
-        exit 1
-      fi
-      WORKSPACE_DIR="$2"
+      [ -z "$2" ] && { echo "[ERROR] --target requires a value"; exit 1; }
+      case "$2" in
+        tensorrt) BACKEND="trt" ;;
+        rebellions) BACKEND="rbln" ;;
+        furiosa)
+          echo "[ERROR] Legacy target 'furiosa' is ambiguous in main. Use --backend warboy or --backend rngd."
+          exit 1
+          ;;
+        *)
+          echo "[ERROR] Unsupported legacy target: $2"
+          exit 1
+          ;;
+      esac
       shift 2
       ;;
     -h|--help)
@@ -61,153 +71,47 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "[ERROR] Unknown option: $1"
-      echo ""
-      print_usage
-      exit 1
+      PASSTHROUGH+=("$1")
+      shift
       ;;
   esac
 done
 
-if [ -z "${CONTAINER_NAME}" ]; then
-  CONTAINER_NAME="${IMAGE_NAME}_${TARGET}_dev"
-fi
-
-if [ -z "${WORKSPACE_DIR}" ]; then
-  WORKSPACE_DIR="${PROJECT_ROOT}"
-fi
-
-if [ ! -d "${WORKSPACE_DIR}" ]; then
-  echo "[ERROR] Workspace directory not found: ${WORKSPACE_DIR}"
-  exit 1
-fi
-
-WORKSPACE_DIR="$(cd "${WORKSPACE_DIR}" && pwd)"
-
-SECRET_ARGS=()
-if [ -f "${PROJECT_ROOT}/.secrets/netrc" ]; then
-  SECRET_ARGS=(--secret "id=netrc,src=${PROJECT_ROOT}/.secrets/netrc")
-fi
-
-case "${TARGET}" in
-  tensorrt)
-    TAG="tensorrt"
-    BASE_IMAGE="nvcr.io/nvidia/tensorrt:23.10-py3"
-    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/tensorrt/Dockerfile"
-    NEED_GPU="yes"
+case "${BACKEND}" in
+  qb)
+    TARGET_SCRIPT="${PROJECT_ROOT}/scripts/build_qb.sh"
     ;;
-  rebellions)
-    TAG="rebellions"
-    BASE_IMAGE="ubuntu:24.04"
-    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/rebellions/Dockerfile"
-    NEED_GPU="no"
+  rbln)
+    TARGET_SCRIPT="${PROJECT_ROOT}/scripts/build_rbln.sh"
     ;;
-  furiosa)
-    TAG="furiosa"
-    BASE_IMAGE="ubuntu:24.04"
-    DOCKERFILE_PATH="${PROJECT_ROOT}/Dockerfiles/furiosa/Dockerfile"
-    NEED_GPU="no"
+  warboy)
+    TARGET_SCRIPT="${PROJECT_ROOT}/scripts/build_warboy.sh"
+    ;;
+  rngd)
+    TARGET_SCRIPT="${PROJECT_ROOT}/scripts/build_rngd.sh"
+    ;;
+  trt)
+    case "${FLAVOR}" in
+      vision|llm) ;;
+      *)
+        echo "[ERROR] --flavor must be one of: vision, llm"
+        exit 1
+        ;;
+    esac
+    TARGET_SCRIPT="${PROJECT_ROOT}/scripts/build_trt.sh"
+    PASSTHROUGH=(--flavor "${FLAVOR}" "${PASSTHROUGH[@]}")
     ;;
   *)
-    echo "[ERROR] Unsupported target: ${TARGET}"
-    echo "Supported targets: tensorrt, rebellions, furiosa"
+    echo "[ERROR] Unsupported backend: ${BACKEND}"
+    echo ""
+    print_usage
     exit 1
     ;;
 esac
 
-if [ ! -f "${DOCKERFILE_PATH}" ]; then
-  echo "[ERROR] Dockerfile not found: ${DOCKERFILE_PATH}"
+if [ ! -x "${TARGET_SCRIPT}" ]; then
+  echo "[ERROR] Target build script is missing or not executable: ${TARGET_SCRIPT}"
   exit 1
 fi
 
-echo "Building Docker image: ${IMAGE_NAME}:${TAG}"
-echo "Target: ${TARGET}"
-echo "Dockerfile: ${DOCKERFILE_PATH}"
-echo "Base image: ${BASE_IMAGE}"
-echo "Container name: ${CONTAINER_NAME}"
-echo "Workspace(repo): ${WORKSPACE_DIR}"
-echo "UID:GID = ${UID_VALUE}:${GID_VALUE}"
-
-cd "${PROJECT_ROOT}"
-
-DOCKER_BUILDKIT=1 docker build \
-  "${SECRET_ARGS[@]}" \
-  -f "${DOCKERFILE_PATH}" \
-  -t "${IMAGE_NAME}:${TAG}" \
-  --build-arg BASE_IMAGE="${BASE_IMAGE}" \
-  --build-arg UID="${UID_VALUE}" \
-  --build-arg GID="${GID_VALUE}" \
-  .
-
-echo "Build complete!"
-
-########################################
-# NVIDIA Docker mode auto detect
-########################################
-
-detect_nvidia_mode() {
-  if docker run --rm --gpus all hello-world >/dev/null 2>&1; then
-    echo "gpus"
-    return 0
-  fi
-
-  if docker run --rm --runtime=nvidia hello-world >/dev/null 2>&1; then
-    echo "runtime"
-    return 0
-  fi
-
-  echo "none"
-  return 0
-}
-
-MODE=$(detect_nvidia_mode)
-
-case "${MODE}" in
-  gpus)
-    GPU_FLAG="--gpus all"
-    ;;
-  runtime)
-    GPU_FLAG="--runtime=nvidia"
-    ;;
-  none)
-    GPU_FLAG=""
-    ;;
-esac
-
-echo ""
-echo "Detected NVIDIA Docker mode: ${MODE}"
-echo ""
-
-########################################
-# Run command output
-########################################
-
-if [ "${NEED_GPU}" = "yes" ]; then
-  if [ "${MODE}" = "none" ]; then
-    echo "[WARN] GPU runtime was not detected automatically."
-    echo "       Please check NVIDIA Container Toolkit installation."
-    echo ""
-    echo "Run container with:"
-    echo "docker run -it --security-opt seccomp=unconfined \\"
-    echo "  --name ${CONTAINER_NAME} \\"
-    echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
-    echo "  ${IMAGE_NAME}:${TAG}"
-  else
-    echo "Run container with:"
-    echo "docker run ${GPU_FLAG} -it --security-opt seccomp=unconfined \\"
-    echo "  --name ${CONTAINER_NAME} \\"
-    echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
-    echo "  ${IMAGE_NAME}:${TAG}"
-  fi
-else
-  echo "Run container with:"
-  echo "docker run -it --security-opt seccomp=unconfined \\"
-  echo "  --name ${CONTAINER_NAME} \\"
-  echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
-  echo "  ${IMAGE_NAME}:${TAG}"
-fi
-
-echo ""
-echo "After entering the container, test with:"
-echo "  python -m pip show unified-sdk"
-echo "  python -c \"import unified_sdk; print('unified_sdk import ok')\""
+exec "${TARGET_SCRIPT}" "${PASSTHROUGH[@]}"
