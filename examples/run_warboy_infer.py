@@ -192,6 +192,20 @@ def _format_output_shape(output) -> str:
     return str(tuple(output.shape))
 
 
+def _maybe_retry_uint8_batch(current_batch, image_path: Path, model_helper):
+    if model_helper is None or not image_path.is_file():
+        return None, None, None
+    try:
+        batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(
+            model_helper,
+            image_path,
+            prefer_uint8=True,
+        )
+        return batch, contexts, preprocess_kwargs
+    except Exception:
+        return None, None, None
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -260,7 +274,26 @@ if __name__ == "__main__":
     rh = create_runtime(cfg)
 
     x = batch
-    _ = infer(rh, x)  # warmup
+    try:
+        _ = infer(rh, x)  # warmup
+    except TypeError as exc:
+        if "UINT8" not in str(exc).upper():
+            raise
+        retried_batch, retried_contexts, retried_kwargs = _maybe_retry_uint8_batch(
+            x,
+            image_path,
+            model_helper,
+        )
+        if retried_batch is None:
+            raise TypeError(
+                "Warboy runtime expected UINT8 input for this ENF, but the current example prepared "
+                f"dtype={getattr(x, 'dtype', None)!r}. Try the matching vendor branch README or use "
+                "a model-zoo preprocess path that yields uint8 input."
+            ) from exc
+        x = retried_batch
+        contexts = retried_contexts
+        input_source = f"{image_path} (model-zoo preprocess {retried_kwargs}, UINT8 retry)"
+        _ = infer(rh, x)
 
     times = []
     y = None

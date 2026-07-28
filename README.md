@@ -404,4 +404,5 @@ python3 examples/run_tensorrt_llm_infer.py \
 - `main_integration_review_2026-07-27.md`
   - historical merge와 post-merge normalization 방향 정리
 - 각 vendor branch README
+  - `qb-only`, `rbln-only`, `furiosa-only`, `furiosa-llm-only`, `trt-only`
   - backend별 세부 smoke, vendor caveat, known issue의 원본 기록
