@@ -6,7 +6,7 @@ set -e
 # =====================================
 
 IMAGE_NAME="unified-sdk"
-TAG="rngd"
+TAG="main-rngd"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${RNGD_BASE_IMAGE:-ubuntu:22.04}"
@@ -126,7 +126,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="furiosa-llm-only"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="main-rngd"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then

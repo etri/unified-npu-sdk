@@ -6,7 +6,7 @@ set -e
 # =====================================
 
 IMAGE_NAME="unified-sdk"
-TAG="qb"
+TAG="main-qb"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${QB_BASE_IMAGE:-}"
@@ -126,7 +126,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="qb-only"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="main-qb"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then

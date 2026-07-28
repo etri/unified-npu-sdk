@@ -137,6 +137,17 @@ cd main
 
 각 backend script는 빌드가 끝나면 해당 환경에 맞는 `docker run ...` 예시를 직접 출력합니다.
 
+`main` 브랜치에서는 vendor branch와 충돌하지 않도록 이미지/컨테이너 이름도 별도로 씁니다.
+
+| Backend | 기본 이미지 태그 | 기본 컨테이너 이름 |
+| --- | --- | --- |
+| `qb` | `unified-sdk:main-qb` | `main-qb` |
+| `rbln` | `unified-sdk:main-rbln` | `main-rbln` |
+| `warboy` | `unified-sdk:main-warboy` | `main-warboy` |
+| `rngd` | `unified-sdk:main-rngd` | `main-rngd` |
+| `trt --flavor vision` | `unified-sdk:main-trt-vision` | `main-trt-vision` |
+| `trt --flavor llm` | `unified-sdk:main-trt-llm` | `main-trt-llm` |
+
 ## 1차 검증 순서
 
 VM별로 1차 검증할 때는 아래 순서를 권장합니다.
@@ -207,57 +218,99 @@ python3 examples/run_tensorrt_llm_infer.py --help
 
 ## 1차 smoke entry
 
-아래는 VM 검증 때 먼저 보기 좋은 최소 smoke entry입니다.
+아래는 VM 검증 때 먼저 보기 좋은 최소 smoke entry입니다.  
+`--help`만 보는 단계에서 끝내지 않고, 가능하면 **build 1개 + infer/generate 1개**까지 같이 확인하는 것을 권장합니다.
 
 `qb`
 
 ```bash
 ./build.sh --backend qb
-python3 examples/run_qb_build.py --help
-python3 examples/run_qb_infer.py --help
-python3 examples/run_qb_llm_infer.py --help
+python3 examples/run_qb_build.py \
+  --model-name resnet50 \
+  --input-name input \
+  --input-shape 1,3,224,224
+
+python3 examples/run_qb_infer.py \
+  --engine-path builds/resnet50.mxq \
+  --image models/input.jpg
 ```
 
 `rbln`
 
 ```bash
 ./build.sh --backend rbln
-python3 examples/run_rbln_build.py --help
-python3 examples/run_rbln_infer.py --help
-python3 examples/run_rbln_llm_build.py --help
-python3 examples/run_rbln_llm_infer.py --help
+python3 examples/run_rbln_build.py \
+  --model-zoo-model resnet50 \
+  --pretrained \
+  --model-name resnet50
+
+python3 examples/run_rbln_infer.py \
+  --engine-path builds/resnet50.rbln \
+  --image models/input.jpg
+```
+
+LLM runtime smoke:
+
+```bash
+python3 examples/run_rbln_llm_infer.py \
+  --engine-path Qwen/Qwen3-0.6B \
+  --prompt "What is the capital of South Korea?"
 ```
 
 `warboy`
 
 ```bash
 ./build.sh --backend warboy
-python3 examples/run_warboy_build.py --help
-python3 examples/run_warboy_infer.py --help
+python3 examples/run_warboy_build.py \
+  --model-name resnet50 \
+  --input-name input \
+  --input-shape 1,3,224,224
+
+python3 examples/run_warboy_infer.py \
+  --engine-path builds/resnet50.enf \
+  --image models/input.jpg
 ```
 
 `rngd`
 
 ```bash
 ./build.sh --backend rngd
-python3 examples/run_rngd_build.py --help
-python3 examples/run_rngd_infer.py --help
+python3 examples/run_rngd_build.py \
+  --model furiosa-ai/Qwen2.5-0.5B-Instruct
+
+python3 examples/run_rngd_infer.py \
+  --engine-path furiosa-ai/Qwen2.5-0.5B-Instruct \
+  --prompt "What is the capital of South Korea?"
 ```
 
 `trt vision`
 
 ```bash
 ./build.sh --backend trt --flavor vision
-python3 examples/run_tensorrt_build.py --help
-python3 examples/run_tensorrt_infer.py --help
+python3 examples/run_tensorrt_build.py \
+  --model-name resnet50 \
+  --precision fp32 \
+  --input-name input \
+  --input-shape 1,3,224,224
+
+python3 examples/run_tensorrt_infer.py \
+  --engine-path build_output/resnet50_FP32.engine \
+  --input-name input \
+  --output-name output \
+  --input-shape 1,3,224,224
 ```
 
 `trt llm`
 
 ```bash
 ./build.sh --backend trt --flavor llm
-python3 examples/run_tensorrt_llm_build.py --help
-python3 examples/run_tensorrt_llm_infer.py --help
+python3 examples/run_tensorrt_llm_build.py \
+  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --build-mode fetch
+
+python3 examples/run_tensorrt_llm_infer.py \
+  --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --prompt "What is the capital of South Korea?"
 ```
 
 ## 예제 진입점

@@ -74,14 +74,14 @@ done
 
 case "${FLAVOR}" in
   vision)
-    TAG="tensorrt-vision"
-    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="trt-only-vision"
+    TAG="main-trt-vision"
+    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="main-trt-vision"
     [ -z "${BASE_IMAGE}" ] && BASE_IMAGE="${VISION_BASE_IMAGE}"
     DOCKERFILE_PATH="${DOCKER_DIR}/docker.trt.vision"
     ;;
   llm)
-    TAG="tensorrt-llm"
-    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="trt-only-llm"
+    TAG="main-trt-llm"
+    [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="main-trt-llm"
     [ -z "${BASE_IMAGE}" ] && BASE_IMAGE="${LLM_BASE_IMAGE}"
     DOCKERFILE_PATH="${DOCKER_DIR}/docker.trt.llm"
     ;;

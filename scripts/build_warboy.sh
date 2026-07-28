@@ -6,7 +6,7 @@ set -e
 # =====================================
 
 IMAGE_NAME="unified-sdk"
-TAG="warboy"
+TAG="main-warboy"
 CONTAINER_NAME=""
 WORKSPACE_DIR=""
 BASE_IMAGE="${WARBOY_BASE_IMAGE:-ubuntu:22.04}"
@@ -114,7 +114,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="furiosa-only"
+[ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="main-warboy"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
