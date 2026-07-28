@@ -64,6 +64,24 @@ cd unified-npu-sdk/main
 
 각 backend script는 빌드가 끝나면 해당 환경에 맞는 `docker run ...` 예시를 직접 출력합니다.
 
+## 1차 검증 순서
+
+VM별로 1차 검증할 때는 아래 순서를 권장합니다.
+
+1. `qb`
+2. `rbln`
+3. `warboy`
+4. `rngd`
+5. `trt --flavor vision`
+6. `trt --flavor llm`
+
+권장 이유:
+
+- `qb`, `warboy`는 비교적 단순한 vision/runtime 경로부터 확인 가능합니다.
+- `rbln`은 장치/CDI와 container compile 제약을 같이 확인해야 합니다.
+- `rngd`는 LLM runtime과 `fxb` 경로를 분리해서 보는 편이 좋습니다.
+- `trt`는 `vision`과 `llm` Docker flavor가 다르므로 마지막에 분리 검증하는 편이 안전합니다.
+
 ### backend별 기본 sanity check
 
 `qb`
@@ -114,6 +132,61 @@ python3 examples/run_tensorrt_llm_build.py --help
 python3 examples/run_tensorrt_llm_infer.py --help
 ```
 
+## 1차 smoke entry
+
+아래는 VM 검증 때 먼저 보기 좋은 최소 smoke entry입니다.
+
+`qb`
+
+```bash
+./build.sh --backend qb
+python3 examples/run_qb_build.py --help
+python3 examples/run_qb_infer.py --help
+python3 examples/run_qb_llm_infer.py --help
+```
+
+`rbln`
+
+```bash
+./build.sh --backend rbln
+python3 examples/run_rbln_build.py --help
+python3 examples/run_rbln_infer.py --help
+python3 examples/run_rbln_llm_build.py --help
+python3 examples/run_rbln_llm_infer.py --help
+```
+
+`warboy`
+
+```bash
+./build.sh --backend warboy
+python3 examples/run_warboy_build.py --help
+python3 examples/run_warboy_infer.py --help
+```
+
+`rngd`
+
+```bash
+./build.sh --backend rngd
+python3 examples/run_rngd_build.py --help
+python3 examples/run_rngd_infer.py --help
+```
+
+`trt vision`
+
+```bash
+./build.sh --backend trt --flavor vision
+python3 examples/run_tensorrt_build.py --help
+python3 examples/run_tensorrt_infer.py --help
+```
+
+`trt llm`
+
+```bash
+./build.sh --backend trt --flavor llm
+python3 examples/run_tensorrt_llm_build.py --help
+python3 examples/run_tensorrt_llm_infer.py --help
+```
+
 ## 예제 진입점
 
 Vision 예제:
@@ -156,5 +229,4 @@ main/
 ## 라이선스
 
 Apache License 2.0
-
 
