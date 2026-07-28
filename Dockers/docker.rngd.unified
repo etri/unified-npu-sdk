@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1.7
+# =========================
+# unified-sdk (FuriosaAI RNGD / furiosa-llm base)
+# =========================
+# RNGD 는 OS codename APT suite(예: jammy)를 사용한다. Warboy 의 warboy-jammy 와 다르다.
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+ARG USERNAME=etri
+ARG UID=1000
+ARG GID=1000
+# furiosa-llm 설치에 별도 인덱스가 필요하면 지정 (기본은 공개 PyPI 가정).
+ARG FURIOSA_PIP_INDEX=
+# 컨테이너에 설치할 RNGD userspace 패키지 (커널 드라이버 furiosa-driver-rngd 는 호스트 전제).
+ARG FURIOSA_APT_PACKAGES="furiosa-smi"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Seoul \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PIP_NO_INPUT=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PYTHONPATH=/workspace/unified-sdk/src
+
+# 1) 기본 패키지
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-venv python3-dev \
+        build-essential \
+        gcc-aarch64-linux-gnu \
+        git ca-certificates curl gnupg \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/local/bin/pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2) FuriosaAI RNGD APT suite (public: OS codename) + userspace CLI(furiosa-smi)
+#    커널 드라이버(furiosa-driver-rngd)는 호스트에 설치되어 있어야 하며, /dev/rngd* 를 컨테이너로 전달한다.
+RUN . /etc/os-release \
+    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | gpg --dearmor -o /etc/apt/trusted.gpg.d/cloud.google.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture)] http://asia-northeast3-apt.pkg.dev/projects/furiosa-ai ${VERSION_CODENAME} main" \
+        > /etc/apt/sources.list.d/furiosa.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ${FURIOSA_APT_PACKAGES} \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3) 사용자 생성
+RUN groupadd -g ${GID} ${USERNAME} \
+ && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME}
+
+WORKDIR /workspace/unified-sdk
+RUN mkdir -p /workspace/unified-sdk \
+ && chown -R ${UID}:${GID} /workspace
+
+# 4) Python 의존성 (경량). torch/transformers 는 furiosa-llm 이 의존성으로 가져온다.
+COPY --chown=${UID}:${GID} Dockers/requirements.rngd.unified.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r /tmp/requirements.txt
+
+# 5) FuriosaAI RNGD LLM 스택 (furiosa-llm). 필요 시 Furiosa 인덱스 지정.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    EXTRA_INDEX_ARG="" ; \
+    if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
+    pip install --no-cache-dir ${EXTRA_INDEX_ARG} furiosa-llm
+
+# 6) unified-sdk 소스 복사 및 설치
+COPY --chown=${UID}:${GID} . /workspace/unified-sdk
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir . \
+    && rm -f /tmp/requirements.txt
+
+CMD ["/bin/bash"]
