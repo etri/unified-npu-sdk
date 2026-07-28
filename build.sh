@@ -23,11 +23,6 @@ TensorRT flavor:
   --flavor vision    TensorRT vision image (default)
   --flavor llm       TensorRT-LLM image
 
-Legacy aliases:
-  --target tensorrt    -> --backend trt
-  --target rebellions  -> --backend rbln
-  --target furiosa     -> error (choose warboy or rngd explicitly)
-
 Examples:
   ./build.sh --backend qb
   ./build.sh --backend rbln --workspace /path/to/repo
@@ -48,22 +43,6 @@ while [[ $# -gt 0 ]]; do
     --flavor)
       [ -z "$2" ] && { echo "[ERROR] --flavor requires a value"; exit 1; }
       FLAVOR="$2"
-      shift 2
-      ;;
-    --target)
-      [ -z "$2" ] && { echo "[ERROR] --target requires a value"; exit 1; }
-      case "$2" in
-        tensorrt) BACKEND="trt" ;;
-        rebellions) BACKEND="rbln" ;;
-        furiosa)
-          echo "[ERROR] Legacy target 'furiosa' is ambiguous in main. Use --backend warboy or --backend rngd."
-          exit 1
-          ;;
-        *)
-          echo "[ERROR] Unsupported legacy target: $2"
-          exit 1
-          ;;
-      esac
       shift 2
       ;;
     -h|--help)
