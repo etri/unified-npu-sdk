@@ -311,6 +311,9 @@ python3 examples/run_qb_infer.py \
 LLM runtime smoke (`qb`):
 
 ```bash
+python3 examples/prepare_qb_transformer_model.py \
+  --model-id mobilint/Llama-3.2-1B-Instruct
+
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
   --core-mode global8 \

@@ -109,7 +109,12 @@ if __name__ == "__main__":
 
     engine_path = args.engine_path.expanduser().resolve()
     if not engine_path.is_file():
-        raise SystemExit(f"Error: file not found - {engine_path}")
+        raise SystemExit(
+            "Error: file not found - "
+            f"{engine_path}\n"
+            "Prepare a precompiled transformer/LLM MXQ first, for example:\n"
+            "  python3 examples/prepare_qb_transformer_model.py --model-id mobilint/Llama-3.2-1B-Instruct"
+        )
 
     cfg = RuntimeConfig(
         backend="qb",
