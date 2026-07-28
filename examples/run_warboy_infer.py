@@ -27,6 +27,16 @@ def _load_image_batch(image_path: Path, input_shape: tuple[int, ...], np_module)
     normalized = (array - mean) / std
     return normalized[None, ...].astype(np_module.float32)
 
+
+def _load_image_batch_uint8(image_path: Path, input_shape: tuple[int, ...], np_module):
+    from PIL import Image
+
+    image = Image.open(image_path).convert("RGB")
+    cropped = _center_crop_resize_pil(image, input_shape[-1])
+    array = np_module.asarray(cropped, dtype=np_module.uint8)
+    array = array.transpose(2, 0, 1)
+    return array[None, ...].astype(np_module.uint8)
+
 def _is_repo_root(path: Path) -> bool:
     return (path / "src" / "unified_sdk").is_dir() and (path / "examples").is_dir()
 
@@ -192,7 +202,7 @@ def _format_output_shape(output) -> str:
     return str(tuple(output.shape))
 
 
-def _maybe_retry_uint8_batch(current_batch, image_path: Path, model_helper):
+def _maybe_retry_uint8_batch(image_path: Path, input_shape: tuple[int, ...], model_helper, np_module):
     if model_helper is None or not image_path.is_file():
         return None, None, None
     try:
@@ -203,7 +213,14 @@ def _maybe_retry_uint8_batch(current_batch, image_path: Path, model_helper):
         )
         return batch, contexts, preprocess_kwargs
     except Exception:
-        return None, None, None
+        try:
+            return (
+                _load_image_batch_uint8(image_path, input_shape, np_module),
+                None,
+                {"manual_uint8_fallback": True},
+            )
+        except Exception:
+            return None, None, None
 
 
 if __name__ == "__main__":
@@ -280,9 +297,10 @@ if __name__ == "__main__":
         if "UINT8" not in str(exc).upper():
             raise
         retried_batch, retried_contexts, retried_kwargs = _maybe_retry_uint8_batch(
-            x,
             image_path,
+            args.input_shape,
             model_helper,
+            np,
         )
         if retried_batch is None:
             raise TypeError(
