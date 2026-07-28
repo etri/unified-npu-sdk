@@ -53,6 +53,36 @@ Unified SDK는 특정 벤더 SDK를 대체하는 새 compiler/runtime가 아니�
 | 멀티백엔드 정리 | vendor별 Docker, example, known issue를 한 저장소에서 관리 |
 | API 통일 | vision / LLM public API 이름을 가능한 한 통일 |
 
+### 공통 API와 backend별 지원 범위
+
+Vision:
+
+- `build_unified(cfg)`
+- `create_runtime(cfg)`
+- `infer(...)`
+- `destroy_runtime(rh)`
+
+LLM:
+
+- `build_unified_LLM(cfg)`
+- `create_runtime_LLM(cfg)`
+- `infer_LLM(...)`
+- `generate_LLM(...)`
+- `destroy_runtime_LLM(rh)`
+
+| Backend | Vision Build | Vision Infer | LLM Build | LLM Generate/Infer | 비고 |
+| --- | --- | --- | --- | --- | --- |
+| `qb` | 구현 | 구현 | planned | 부분 구현 | LLM은 low-level runtime 중심 |
+| `rbln` | 구현 | 구현 | 구현 | 구현 | container compile known issue 메모 유지 |
+| `warboy` | 구현 | 구현 | N/A | N/A | vision 전용 |
+| `rngd` | N/A | N/A | 구현 | 구현 | 일부 `fxb build`는 vendor/toolchain 이력 있음 |
+| `trt` | 구현 | 구현 | 부분 구현 | 구현 | LLM compile 일부 unsupported |
+
+메모:
+
+- 위 표의 `구현`은 Unified SDK public API entry가 연결되어 있고, branch 단계에서 smoke 검증을 진행한 범위를 의미합니다.
+- backend별 지원 수준은 완전히 동일하지 않으며, 일부 항목은 `planned`, `부분 구현`, `unsupported`, `known issue` 상태를 그대로 유지합니다.
+
 ### 공통 public API
 
 Vision:
