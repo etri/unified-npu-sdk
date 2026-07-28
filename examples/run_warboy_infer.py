@@ -204,7 +204,14 @@ def _format_output_shape(output) -> str:
 
 def _maybe_retry_uint8_batch(image_path: Path, input_shape: tuple[int, ...], model_helper, np_module):
     if not image_path.is_file():
-        return None, None, None
+        try:
+            return (
+                np_module.zeros(input_shape, dtype=np_module.uint8),
+                None,
+                {"synthetic_uint8_fallback": True},
+            )
+        except Exception:
+            return None, None, None
     if model_helper is not None:
         try:
             batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(
