@@ -42,6 +42,14 @@ _VENDOR_TO_UNIFIED_API_MAP = {
 }
 
 
+def _legacy_fallback_metadata(cfg: RuntimeConfig) -> dict[str, Any]:
+    used = cfg.backend_options is None and bool(cfg.extra)
+    return {
+        "legacy_extra_fallback_used": used,
+        "legacy_extra_keys": sorted(dict(cfg.extra or {}).keys()) if used else [],
+    }
+
+
 def describe_api_mapping() -> dict[str, Any]:
     return {
         "unified_api": {
@@ -73,8 +81,6 @@ class _QBVisionRuntime:
         input_shape = validate_shape(tuple(cfg.input_shape), "RuntimeConfig.input_shape")
 
         options = resolve_qb_runtime_options(cfg.backend_options, cfg.extra)
-        extra = options.to_legacy_extra()
-        device = options.device
         core_mode = options.core_mode
 
         qbruntime, qb_model, qb_type = load_qbruntime_modules()
@@ -99,10 +105,9 @@ class _QBVisionRuntime:
             ctx={
                 "model": model,
                 "qbruntime": qbruntime,
-                "device": device,
                 "core_mode": core_mode,
                 "runtime_options": options,
-                "extra": extra,
+                **_legacy_fallback_metadata(cfg),
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,

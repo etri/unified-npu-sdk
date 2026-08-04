@@ -8,15 +8,19 @@ from unified_sdk.options import resolve_qb_sequence_runtime_options
 from unified_sdk.runtime._qb_common import (
     build_model_config,
     load_qbruntime_modules,
-    normalize_batch_params,
     parse_non_negative_int,
     require_non_empty_string,
     to_numpy,
     validate_mxq_path,
     validate_shape,
 )
+from unified_sdk.sequence_runtime._qb_sequence_common import normalize_batch_params
 from unified_sdk.sequence_runtime.registry import register
-from unified_sdk.types import SequenceBatchParam, SequenceRuntimeConfig, SequenceRuntimeHandle
+from unified_sdk.sequence_runtime.types import (
+    SequenceBatchParam,
+    SequenceRuntimeConfig,
+    SequenceRuntimeHandle,
+)
 
 
 _CAPABILITY_FAMILY = "sequence.low-level-cache-aware-runtime"
@@ -46,6 +50,14 @@ _VENDOR_TO_UNIFIED_API_MAP = {
 }
 
 
+def _legacy_fallback_metadata(cfg: SequenceRuntimeConfig) -> dict[str, Any]:
+    used = cfg.backend_options is None and bool(cfg.extra)
+    return {
+        "legacy_extra_fallback_used": used,
+        "legacy_extra_keys": sorted(dict(cfg.extra or {}).keys()) if used else [],
+    }
+
+
 def describe_api_mapping() -> dict[str, Any]:
     return {
         "unified_api": {
@@ -63,7 +75,7 @@ def describe_api_mapping() -> dict[str, Any]:
 
 
 class _QBSequenceRuntime:
-    """Mobilint ARISE(QB) low-level sequence runtime adapter."""
+    """Mobilint ARISE(QB) low-level sequence extension runtime adapter."""
 
     name = "qb"
 
@@ -77,8 +89,6 @@ class _QBSequenceRuntime:
         input_shape = validate_shape(tuple(cfg.input_shape), "SequenceRuntimeConfig.input_shape")
 
         options = resolve_qb_sequence_runtime_options(cfg.backend_options, cfg.extra)
-        extra = options.to_legacy_extra()
-        device = options.device
         core_mode = options.core_mode
 
         qbruntime, qb_model, qb_type = load_qbruntime_modules()
@@ -103,10 +113,9 @@ class _QBSequenceRuntime:
             ctx={
                 "model": model,
                 "qbruntime": qbruntime,
-                "device": device,
                 "core_mode": core_mode,
                 "runtime_options": options,
-                "extra": extra,
+                **_legacy_fallback_metadata(cfg),
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,

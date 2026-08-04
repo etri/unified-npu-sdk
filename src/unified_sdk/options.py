@@ -18,6 +18,7 @@ _TARGET_DEVICE_BY_PRODUCT = {
 class QBBuildOptions:
     quantize_method: str = "percentile"
     use_random_calib: bool | None = None
+    calib_data_path: str | None = None
     product: str = "aries"
     target_device: str | None = None
     model_nickname: str | None = None
@@ -38,6 +39,7 @@ class QBBuildOptions:
         return cls(
             quantize_method=str(extra.get("quantize_method", "percentile")),
             use_random_calib=extra.get("use_random_calib"),
+            calib_data_path=str(extra["calib_data_path"]).strip() if extra.get("calib_data_path") else None,
             product=str(extra.get("product", "aries")),
             target_device=str(extra["target_device"]).strip() if extra.get("target_device") else None,
             model_nickname=extra.get("model_nickname"),
@@ -55,6 +57,8 @@ class QBBuildOptions:
             )
         if not isinstance(self.product, str) or not self.product.strip():
             raise ValueError("QBBuildOptions.product must be a non-empty string")
+        if self.calib_data_path is not None and (not isinstance(self.calib_data_path, str) or not self.calib_data_path.strip()):
+            raise ValueError("QBBuildOptions.calib_data_path must be a non-empty string when provided")
         if self.target_device is not None and (not isinstance(self.target_device, str) or not self.target_device.strip()):
             raise ValueError("QBBuildOptions.target_device must be a non-empty string when provided")
         return self
@@ -69,6 +73,7 @@ class QBBuildOptions:
         return {
             "quantize_method": self.quantize_method,
             "use_random_calib": self.use_random_calib,
+            "calib_data_path": self.calib_data_path,
             "product": self.product,
             "target_device": self.target_device,
             "model_nickname": self.model_nickname,
@@ -84,6 +89,8 @@ class QBBuildOptions:
         }
         if self.use_random_calib is not None:
             extra["use_random_calib"] = self.use_random_calib
+        if self.calib_data_path:
+            extra["calib_data_path"] = self.calib_data_path
         if self.target_device:
             extra["target_device"] = self.target_device
         if self.model_nickname is not None:
@@ -99,7 +106,6 @@ class QBBuildOptions:
 
 @dataclass(frozen=True)
 class QBVisionRuntimeOptions:
-    device: int = 0
     core_mode: str | None = None
     allow_dynamic_shape: bool = False
 
@@ -112,24 +118,18 @@ class QBVisionRuntimeOptions:
     def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBVisionRuntimeOptions":
         extra = dict(extra or {})
         return cls(
-            device=int(extra.get("device", 0)),
             core_mode=str(extra["core_mode"]).strip() if extra.get("core_mode") else None,
             allow_dynamic_shape=bool(extra.get("allow_dynamic_shape", False)),
         )
 
     def validate(self) -> "QBVisionRuntimeOptions":
         self._normalize_in_place()
-        if not isinstance(self.device, int) or self.device < 0:
-            raise ValueError("QBVisionRuntimeOptions.device must be an integer >= 0")
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
             raise ValueError("QBVisionRuntimeOptions.core_mode must be a non-empty string when provided")
         return self
 
     def to_legacy_extra(self) -> Dict[str, Any]:
-        extra: Dict[str, Any] = {
-            "device": self.device,
-            "allow_dynamic_shape": self.allow_dynamic_shape,
-        }
+        extra: Dict[str, Any] = {"allow_dynamic_shape": self.allow_dynamic_shape}
         if self.core_mode is not None:
             extra["core_mode"] = self.core_mode
         return extra
@@ -137,7 +137,6 @@ class QBVisionRuntimeOptions:
 
 @dataclass(frozen=True)
 class QBSequenceRuntimeOptions:
-    device: int = 0
     core_mode: str | None = None
     allow_dynamic_shape: bool = False
 
@@ -150,24 +149,18 @@ class QBSequenceRuntimeOptions:
     def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBSequenceRuntimeOptions":
         extra = dict(extra or {})
         return cls(
-            device=int(extra.get("device", 0)),
             core_mode=str(extra["core_mode"]).strip() if extra.get("core_mode") else None,
             allow_dynamic_shape=bool(extra.get("allow_dynamic_shape", False)),
         )
 
     def validate(self) -> "QBSequenceRuntimeOptions":
         self._normalize_in_place()
-        if not isinstance(self.device, int) or self.device < 0:
-            raise ValueError("QBSequenceRuntimeOptions.device must be an integer >= 0")
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
             raise ValueError("QBSequenceRuntimeOptions.core_mode must be a non-empty string when provided")
         return self
 
     def to_legacy_extra(self) -> Dict[str, Any]:
-        extra: Dict[str, Any] = {
-            "device": self.device,
-            "allow_dynamic_shape": self.allow_dynamic_shape,
-        }
+        extra: Dict[str, Any] = {"allow_dynamic_shape": self.allow_dynamic_shape}
         if self.core_mode is not None:
             extra["core_mode"] = self.core_mode
         return extra

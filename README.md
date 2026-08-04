@@ -48,7 +48,7 @@
 ├── vendor/                         # (gitignore) Mobilint compiler wheel 배치 위치
 │   └── README.md                   #   qbcompiler-*.whl
 ├── examples/
-│   ├── run_qb_build.py             # .mxq 확보(fetch) 또는 ONNX→.mxq 컴파일(compiler Python API)
+│   ├── run_qb_build.py             # prepare/fetch 후 필요 시 compiler Python API로 .mxq 컴파일
 │   ├── run_qb_infer.py             # .mxq 모델 추론 (qbruntime)
 │   ├── inspect_qb_model.py         # .mxq 요약 정보 확인
 │   ├── prepare_qb_transformer_model.py  # Mobilint HF group 의 transformer/LLM MXQ snapshot 준비
@@ -56,12 +56,19 @@
 │   └── inspect_qb_llm_model.py     # LLM MXQ의 cache/meta 정보 확인
 └── src/unified_sdk/
     ├── __init__.py
-    ├── types.py                    # 공통 데이터 구조 (QB 슬림화)
+    ├── types.py                    # vision build/runtime 공통 데이터 구조
     ├── build/
     │   ├── __init__.py
     │   ├── api.py                  # build_unified
     │   ├── registry.py
-    │   └── qb_build.py             # QB 빌드 어댑터 (qubee/qbcompiler mxq_compile)
+    │   └── qb_build.py             # QB compile orchestration 어댑터
+    ├── frontends/
+    │   ├── __init__.py
+    │   ├── prepare_qb_source.py    # build 입력을 provided artifact / compile source로 정규화
+    │   ├── fetch_qb_artifact.py    # provided .mxq 배치(fetch/materialize)
+    │   ├── qb_model_zoo.py         # model zoo fetch / materialize helper
+    │   ├── export_qb_onnx.py       # supported checkpoint -> ONNX export helper
+    │   └── types.py                # prepare 단계 결과 타입
     ├── runtime/
     │   ├── __init__.py
     │   ├── api.py                  # vision: create_runtime/infer/destroy_runtime
@@ -71,6 +78,7 @@
         ├── __init__.py
         ├── api.py                  # low-level sequence runtime: create_sequence_runtime/infer_sequence/destroy_sequence_runtime
         ├── registry.py
+        ├── types.py                # extension capability 전용 config/handle/batch param
         └── qb_sequence_runtime.py  # QB cache-aware sequence runtime 어댑터
 ```
 
@@ -80,7 +88,7 @@
 
 ### Runtime API 분리
 
-`qb-only`는 runtime wrapping API를 **vision**과 **sequence low-level runtime**으로 구분하며,
+`qb-only`는 runtime wrapping API를 **vision**과 **sequence low-level extension runtime**으로 구분하며,
 실제로는 아래처럼 `qbruntime` 함수에 매핑됩니다.
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
@@ -94,8 +102,23 @@
 
 기본 원칙:
 - 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
-- low-level sequence preview는 별도 `sequence_runtime` capability를 통해 cache-aware runtime path를 검증합니다.
+- low-level sequence preview는 별도 `sequence_runtime` extension capability를 통해 cache-aware runtime path를 검증합니다.
 - 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
+
+### Build lifecycle 분리
+
+`qb-only`의 build 경로는 이제 아래 세 단계로 나뉩니다.
+
+1. `prepare`
+   - `model_or_path`가 사전 컴파일된 `.mxq`인지, compiler에 넘길 ONNX / torch source인지 정규화
+   - 표준 model zoo fetch/materialize, supported checkpoint -> ONNX export 같은 준비 단계도 `frontends` helper에서 담당
+2. `fetch/materialize`
+   - provided `.mxq`라면 목적지 `builds/` 아래로 배치
+3. `compile`
+   - compile source라면 `qubee` 또는 `qbcompiler` Python API로 `.mxq` 생성
+
+즉 `build_unified(cfg)`는 더 이상 fetch와 compile을 한 덩어리로 직접 설명하기보다,
+**prepare된 입력을 받아 fetch/materialize 또는 compile orchestration을 수행하는 build capability**로 보는 편이 맞습니다.
 
 ---
 
@@ -370,7 +393,6 @@ python3 examples/run_qb_build.py \
 ```bash
 python3 examples/run_qb_infer.py \
   --engine-path builds/resnet50.mxq \
-  --device 0 \
   --iters 50
 ```
 
@@ -465,7 +487,7 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 - `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
 - 단일-step smoke에서 MXQ 입력 shape가 `(1, -1, hidden_dim)`처럼 동적 시퀀스 길이를 보고하면,
   preview helper는 `-1` 축을 `1 token`으로 치환해 runtime path만 검증합니다.
-- Batch LLM은 `get_cache_infos()`와 `SequenceBatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
+- Batch LLM은 `unified_sdk.sequence_runtime.types.SequenceBatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 - 현재 브랜치의 LLM 완료 기준은 **low-level LLM smoke 통과**입니다.
 - `build_unified_LLM(cfg)`는 현재 의도적으로 비워둔 상태입니다. 이는 누락보다는,
   공개 vendor SDK 문서 기준으로 **LLM compile contract를 일반화하기 어렵기 때문**입니다.
@@ -485,26 +507,25 @@ from unified_sdk.options import QBBuildOptions
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
 
-# (a) ONNX -> .mxq
+# (a) prepare + compile: ONNX -> .mxq
 cfg = BuildConfig(
     backend="qb",
     model_or_path="models/resnet50.onnx",   # ONNX 경로
     out_dir="builds",
     model_name="resnet50",
-    precision="int8",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    calib_data_path=None,                    # 없으면 random calib
     backend_options=QBBuildOptions(
         quantize_method="percentile",
         use_random_calib=True,
+        calib_data_path=None,               # 없으면 random calib
         product="aries",
     ),
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)
 
-# (b) 사전 컴파일된 .mxq 확보(fetch): model_or_path 에 .mxq 경로를 그대로 전달
+# (b) prepare + fetch/materialize: model_or_path 에 .mxq 경로를 그대로 전달
 #     cfg = BuildConfig(backend="qb", model_or_path="models/resnet50.mxq", ...)
 
 # (c) PyTorch module 인스턴스를 직접 전달하는 lower-level 경로도 이론상 가능하지만,
@@ -526,7 +547,7 @@ cfg = RuntimeConfig(
     input_name="input",
     output_name="output",
     input_shape=(1, 3, 224, 224),
-    backend_options=QBVisionRuntimeOptions(device=0, core_mode="auto"),
+    backend_options=QBVisionRuntimeOptions(core_mode="auto"),
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 224, 224), dtype=np.float32))
@@ -547,10 +568,9 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - 본 체크아웃은 QB(Mobilint ARISE) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
 - ARISE 런타임은 **`qbruntime`(QB-RUNTIME)** 을 사용합니다.
 - compiler Python API(`qubee` 또는 `qbcompiler`)는 **ONNX**를 입력으로 받아 int8 양자화 `.mxq`를 생성합니다. calibration 데이터셋이
-  없으면 `use_random_calib=True`로 smoke 컴파일할 수 있습니다.
+  없으면 `QBBuildOptions(use_random_calib=True)`로 smoke 컴파일할 수 있습니다.
 - `.mxq`의 입력 layout/dtype은 컴파일 시 결정(compiler `preprocess_dict`)되므로, 추론 입력을 이에 맞춰야 합니다.
-- 다중 장치 서버에서는 `MBLT_DEVICE`/`--device`로 장치 ID를 고정하고,
-  `MBLT_CORE_MODE`/`--core-mode`는 MXQ 가 실제로 지원하는 모드(`single`, `global4`, `global8`, `auto`)에 맞춰 지정하세요.
+- `MBLT_CORE_MODE`/`--core-mode`는 MXQ 가 실제로 지원하는 모드(`single`, `global4`, `global8`, `auto`)에 맞춰 지정하세요.
 - 장치/모델 점검용 CLI: `mobilint-cli status`, `mobilint-cli mxqtool show <mxq>`,
   `mobilint-cli testinfer ...`, `mobilint-cli benchmark ...`.
 - `qb Runtime`은 문서상 `Batch LLM`을 지원하며, `cache_size`, `SequenceBatchParam`, `get_cache_infos()` 같은 low-level sequence primitive 를 제공합니다.

@@ -108,7 +108,7 @@ if __name__ == "__main__":
             destroy_sequence_runtime,
             infer_sequence,
         )
-        from unified_sdk.types import SequenceBatchParam, SequenceRuntimeConfig
+        from unified_sdk.sequence_runtime.types import SequenceBatchParam, SequenceRuntimeConfig
     except Exception as exc:
         raise SystemExit(f"Error: unified_sdk runtime and numpy are required ({type(exc).__name__}: {exc})")
 

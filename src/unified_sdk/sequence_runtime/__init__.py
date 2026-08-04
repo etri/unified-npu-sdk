@@ -5,7 +5,8 @@ Low-level sequence runtime capability for vendor APIs that expose cache-aware
 or batch-parameterized infer primitives.
 
 In the QB-only worktree, this package wraps the Mobilint ARISE Batch LLM style
-runtime path separately from the common vision runtime API.
+runtime path as an explicit extension capability, separately from the common
+vision runtime API.
 """
 
 from .api import (
@@ -14,6 +15,7 @@ from .api import (
     infer_sequence,
     describe_sequence_runtime_api_mapping,
 )
+from .types import SequenceBatchParam, SequenceRuntimeConfig, SequenceRuntimeHandle
 
 # Adapter auto-registration
 from . import qb_sequence_runtime as _qb  # noqa: F401

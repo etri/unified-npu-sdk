@@ -74,7 +74,7 @@ if __name__ == "__main__":
     try:
         from unified_sdk.options import QBSequenceRuntimeOptions
         from unified_sdk.sequence_runtime import create_sequence_runtime, destroy_sequence_runtime
-        from unified_sdk.types import SequenceRuntimeConfig
+        from unified_sdk.sequence_runtime.types import SequenceRuntimeConfig
         from qbruntime import type as qb_type
     except Exception as exc:
         raise SystemExit(f"Error: unified_sdk runtime and qbruntime are required ({type(exc).__name__}: {exc})")

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Protocol, Sequence
 
-from unified_sdk.types import SequenceBatchParam, SequenceRuntimeConfig, SequenceRuntimeHandle
+from unified_sdk.sequence_runtime.types import (
+    SequenceBatchParam,
+    SequenceRuntimeConfig,
+    SequenceRuntimeHandle,
+)
 
 
 class SequenceRuntimeAdapter(Protocol):
@@ -33,4 +37,6 @@ def get_runtime(name: str) -> SequenceRuntimeAdapter:
     try:
         return _REGISTRY[name]
     except KeyError:
-        raise ValueError(f"Sequence runtime backend '{name}' not registered. Available: {list(_REGISTRY)}")
+        raise ValueError(
+            f"Sequence low-level runtime backend '{name}' not registered. Available: {list(_REGISTRY)}"
+        )

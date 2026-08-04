@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Sequence
 
 from unified_sdk.sequence_runtime.registry import get_runtime
-from unified_sdk.types import SequenceBatchParam, SequenceRuntimeConfig, SequenceRuntimeHandle
+from unified_sdk.sequence_runtime.types import (
+    SequenceBatchParam,
+    SequenceRuntimeConfig,
+    SequenceRuntimeHandle,
+)
 
 # Adapter auto-registration
 from . import qb_sequence_runtime as _qb  # noqa: F401
@@ -31,5 +35,5 @@ def destroy_sequence_runtime(rh: SequenceRuntimeHandle) -> None:
 
 
 def describe_sequence_runtime_api_mapping() -> Dict[str, Any]:
-    """Return vendor API ==> Unified SDK sequence-runtime API mapping for this backend."""
+    """Return vendor API ==> low-level extension sequence-runtime API mapping."""
     return _qb.describe_api_mapping()

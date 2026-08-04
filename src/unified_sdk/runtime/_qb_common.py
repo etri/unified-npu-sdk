@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any, Tuple
 
 import numpy as np
-
-from unified_sdk.types import SequenceBatchParam
 
 
 def require_non_empty_string(value: str, field_name: str) -> str:
@@ -20,16 +18,6 @@ def validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     if not all(isinstance(dim, int) and dim > 0 for dim in shape):
         raise ValueError(f"{field_name} must contain only positive integers: {shape!r}")
     return shape
-
-
-def parse_device(value: Any) -> int:
-    try:
-        device = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"device must be an integer, got {value!r}") from exc
-    if device < 0:
-        raise ValueError("device must be >= 0")
-    return device
 
 
 def parse_bool(value: Any, field_name: str) -> bool:
@@ -66,46 +54,6 @@ def parse_non_negative_int(value: Any, field_name: str) -> int:
     if parsed < 0:
         raise ValueError(f"{field_name} must be >= 0")
     return parsed
-
-
-def normalize_batch_params(
-    batch_params: Optional[Sequence[Any]],
-    qbruntime_module: Any,
-) -> Optional[list[Any]]:
-    if batch_params is None:
-        return None
-
-    BatchParamCls = getattr(qbruntime_module, "BatchParam", None)
-    if BatchParamCls is None:
-        raise RuntimeError("qbruntime.BatchParam is unavailable but batch_params were provided")
-
-    normalized = []
-    for idx, item in enumerate(batch_params):
-        if isinstance(item, BatchParamCls):
-            normalized.append(item)
-            continue
-
-        if isinstance(item, SequenceBatchParam):
-            sequence_length = item.sequence_length
-            cache_size = item.cache_size
-            cache_id = item.cache_id
-        elif isinstance(item, dict):
-            sequence_length = item.get("sequence_length")
-            cache_size = item.get("cache_size", 0)
-            cache_id = item.get("cache_id", idx)
-        else:
-            sequence_length = getattr(item, "sequence_length", None)
-            cache_size = getattr(item, "cache_size", 0)
-            cache_id = getattr(item, "cache_id", idx)
-
-        sequence_length = parse_non_negative_int(sequence_length, f"batch_params[{idx}].sequence_length")
-        cache_size = parse_non_negative_int(cache_size, f"batch_params[{idx}].cache_size")
-        cache_id = parse_non_negative_int(cache_id, f"batch_params[{idx}].cache_id")
-        if sequence_length <= 0:
-            raise ValueError(f"batch_params[{idx}].sequence_length must be > 0")
-
-        normalized.append(BatchParamCls(sequence_length, cache_size, cache_id))
-    return normalized
 
 
 _CORE_MODE_SETTERS = {
@@ -165,4 +113,3 @@ def validate_mxq_path(engine_path: Any) -> Path:
     if p.suffix != ".mxq":
         raise ValueError(f"Expected a .mxq model file, got: {p}")
     return p
-

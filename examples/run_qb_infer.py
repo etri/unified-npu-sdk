@@ -62,7 +62,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-name", default="input")
     parser.add_argument("--output-name", default="output")
     parser.add_argument("--input-shape", type=_parse_shape, default=(224, 224, 3)) # 이 .mxq 는 정규화/레이아웃 변환을 내부에 포함해 컴파일되어 원본 uint8 HWC 입력을 기대함
-    parser.add_argument("--device", type=int, default=int(os.getenv("MBLT_DEVICE", "0")))
     # 추론 단계는 로컬/직접 컴파일된 .mxq 의 실제 지원 코어 모드를 모르고 시작하는 경우가 많다.
     # 따라서 기본값은 가장 보수적인 `auto`로 두고, 필요할 때만 명시적으로 global4/global8 등을 준다.
     parser.add_argument("--core-mode", default=os.getenv("MBLT_CORE_MODE", "auto"))
@@ -174,7 +173,6 @@ if __name__ == "__main__":
         output_name=args.output_name,
         input_shape=args.input_shape,
         backend_options=QBVisionRuntimeOptions(
-            device=args.device,
             core_mode=args.core_mode,
             allow_dynamic_shape=args.allow_dynamic_shape,
         ),
@@ -222,6 +220,6 @@ if __name__ == "__main__":
         print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={y.shape}")
-    print(f"(engine={engine_path}, input={input_source}, core_mode={args.core_mode}, device={args.device}, input_dtype={input_dtype})")
+    print(f"(engine={engine_path}, input={input_source}, core_mode={args.core_mode}, input_dtype={input_dtype})")
 
     destroy_runtime(rh)

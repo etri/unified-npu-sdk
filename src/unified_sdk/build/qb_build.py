@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import shutil
 import importlib
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.frontends import place_provided_qb_artifact, prepare_qb_build_input
 from unified_sdk.options import QBBuildOptions, resolve_qb_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
@@ -20,15 +20,17 @@ _BUILD_PIPELINE = (
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
-    "provided_artifact": "shutil.copyfile(src_mxq, mxq_path)",
+    "provided_artifact": "frontends.place_provided_qb_artifact(provided_mxq, mxq_path)",
+    "prepare": "frontends.prepare_qb_build_input(model_or_path, mxq_path)",
     "compile": "compiler_python_api.mxq_compile(**compile_kwargs)",
-    "calibration": "calib_data_path or use_random_calib",
+    "calibration": "QBBuildOptions.calib_data_path or use_random_calib",
     "artifact": ".mxq",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "shutil.copyfile(src_mxq, mxq_path)": "build_unified(cfg) for provided .mxq",
+    "frontends.place_provided_qb_artifact(provided_mxq, mxq_path)": "build_unified(cfg) for provided .mxq",
+    "frontends.prepare_qb_build_input(model_or_path, mxq_path)": "build_unified(cfg) prepare/fetch step",
     "compiler_python_api.mxq_compile(**compile_kwargs)": "build_unified(cfg) for ONNX/torch compile",
-    "calib_data_path or use_random_calib": "BuildConfig.calib_data_path / QBBuildOptions.use_random_calib",
+    "QBBuildOptions.calib_data_path or use_random_calib": "QBBuildOptions.calib_data_path / use_random_calib",
     ".mxq artifact": "BuildResult.compiled_model_path",
 }
 
@@ -80,10 +82,6 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     return Path(out_dir) / f"{name}.mxq"
 
 
-def _looks_like_mxq(model_or_path: Any) -> bool:
-    return isinstance(model_or_path, (str, Path)) and str(model_or_path).endswith(".mxq")
-
-
 def _capability_metadata(options: QBBuildOptions, source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
@@ -91,6 +89,14 @@ def _capability_metadata(options: QBBuildOptions, source: str) -> Dict[str, Any]
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
         "compile_options": options.compile_options_metadata(),
+    }
+
+
+def _legacy_fallback_metadata(cfg: BuildConfig) -> Dict[str, Any]:
+    used = cfg.backend_options is None and bool(cfg.extra)
+    return {
+        "legacy_extra_fallback_used": used,
+        "legacy_extra_keys": sorted(dict(cfg.extra or {}).keys()) if used else [],
     }
 
 
@@ -120,38 +126,36 @@ class _QBBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"QB build adapter received backend={cfg.backend!r}")
 
-        if cfg.precision not in ("int8",):
-            raise ValueError(f"Unsupported QB precision: {cfg.precision!r} (MXQ is int8-quantized)")
-
         options = resolve_qb_build_options(cfg.backend_options, cfg.extra)
-        legacy_extra = options.to_legacy_extra()
         mxq_path = _build_output_path(cfg.out_dir, cfg.model_name)
         mxq_path.parent.mkdir(parents=True, exist_ok=True)
+        prepared_input = prepare_qb_build_input(cfg.model_or_path, mxq_path)
 
         # ---- Path 1: 사전 컴파일된 .mxq 제공 (fetch / provided) ----
-        if _looks_like_mxq(cfg.model_or_path):
-            src = Path(cfg.model_or_path).expanduser().resolve()
-            if not src.is_file():
-                raise FileNotFoundError(f"Provided .mxq not found: {src}")
-            if src != mxq_path.resolve():
-                shutil.copyfile(src, mxq_path)
+        if prepared_input.kind == "provided_artifact":
+            artifact = prepared_input.provided_artifact
+            if artifact is None:
+                raise RuntimeError("QB prepare step returned an empty provided_artifact payload")
+            placed_path = place_provided_qb_artifact(artifact)
             meta: Dict[str, Any] = {
                 "backend": self.name,
-                "mxq_path": str(mxq_path),
+                "mxq_path": str(placed_path),
                 "source": "provided",
-                "origin": str(src),
-                "precision": cfg.precision,
+                "origin": str(artifact.source_path),
                 "backend_options": options.compile_options_metadata(),
-                "extra": legacy_extra,
+                **_legacy_fallback_metadata(cfg),
                 **_capability_metadata(options, "provided"),
             }
             return BuildResult(
                 backend=self.name,
-                compiled_model_path=str(mxq_path),
+                compiled_model_path=str(placed_path),
                 meta_data=meta,
             )
 
         # ---- Path 2: compiler Python API 로 ONNX/torch -> .mxq 컴파일 ----
+        compile_source = prepared_input.compile_source
+        if compile_source is None:
+            raise RuntimeError("QB prepare step returned an empty compile_source payload")
         try:
             compiler_module_name, mxq_compile = _resolve_mxq_compile()
         except Exception as exc:  # pragma: no cover - 벤더 SDK 필요
@@ -161,23 +165,23 @@ class _QBBuildAdapter:
         quantize_method = options.quantize_method
         use_random_calib = options.use_random_calib
         if use_random_calib is None:
-            use_random_calib = cfg.calib_data_path is None
+            use_random_calib = options.calib_data_path is None
 
-        if cfg.calib_data_path is None and not use_random_calib:
+        if options.calib_data_path is None and not use_random_calib:
             raise ValueError(
-                "QB compile requires either BuildConfig.calib_data_path or "
+                "QB compile requires either QBBuildOptions.calib_data_path or "
                 "QBBuildOptions.use_random_calib=True"
             )
 
         compile_kwargs: Dict[str, Any] = {
-            "model": cfg.model_or_path,          # ONNX 경로(str) 또는 torch 모델 인스턴스
+            "model": compile_source.source,      # ONNX 경로(str) 또는 torch 모델 인스턴스
             "save_path": str(mxq_path),
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
             "target_device": options.resolved_target_device(),
         }
-        if cfg.calib_data_path:
-            compile_kwargs["calib_data_path"] = str(cfg.calib_data_path)
+        if options.calib_data_path:
+            compile_kwargs["calib_data_path"] = str(options.calib_data_path)
 
         # 선택 옵션은 있으면 그대로 compiler Python API 로 패스스루
         for opt in ("model_nickname", "optimize_option", "singlecore_compile", "save_sample"):
@@ -200,14 +204,15 @@ class _QBBuildAdapter:
             "backend": self.name,
             "mxq_path": str(mxq_path),
             "source": f"{compiler_module_name}_compile",
+            "prepared_source": compile_source.source_label,
             "compiler_module": compiler_module_name,
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
-            "calib_data_path": cfg.calib_data_path,
+            "calib_data_path": options.calib_data_path,
             "input_shape": tuple(cfg.input_shape),
-            "precision": cfg.precision,
+            "precision": "int8",
             "backend_options": options.compile_options_metadata(),
-            "extra": legacy_extra,
+            **_legacy_fallback_metadata(cfg),
             **_capability_metadata(options, f"{compiler_module_name}_compile"),
         }
         return BuildResult(
