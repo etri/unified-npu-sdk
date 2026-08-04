@@ -3,12 +3,13 @@
 이 체크아웃(`furiosa-llm-only` 브랜치)은 **FuriosaAI RNGD NPU 전용**으로 단일 백엔드만 노출합니다.
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 RNGD 1종으로 좁힌 버전입니다.
 
-`rbln-only`·`qb-only`·`furiosa-only`와 동일한 단일-백엔드 골격을 따르되, **RNGD는 LLM 스택**이라
-빌드/추론의 의미가 다릅니다. **공식 smoke 기준점은 `furiosa_llm.LLM` 기반 fetch + generate** 이며,
-custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합니다. 서빙은 **`furiosa_llm.LLM`**을 사용하며,
-권장 runtime 경로는 **`create_runtime_LLM` + `generate_LLM` + `destroy_runtime_LLM`** 입니다.
-`infer_LLM`은 남아 있지만, 이 브랜치에서는 별도 numpy-style 추론이 아니라 **`generate_LLM`의 호환 alias**입니다.
-build surface 도 같은 정책으로 **`build_unified_LLM(cfg)`** 를 public API 로 사용합니다.
+`rbln-only`·`qb-only`·`furiosa-only`와 같은 단일-백엔드 골격을 따르지만, **RNGD는 LLM 전용 스택**이기 때문에
+이 브랜치의 build/runtime 의미도 vision 계열과는 다르게 해석해야 합니다. 기본 smoke 경로는
+**`furiosa_llm.LLM`을 이용해 모델 참조를 그대로 로드한 뒤 텍스트를 생성하는 fetch/generate 흐름**이며,
+custom model 검증은 **`fxb build`로 FXB를 준비한 뒤 `LLM(..., fxb=...)`로 서빙하는 흐름**을 기준으로 합니다.
+따라서 권장 public API는 **`build_unified_LLM(cfg)`**, **`create_runtime_LLM`**, **`generate_LLM`**,
+**`destroy_runtime_LLM`** 순서의 LLM capability surface입니다. `infer_LLM`도 남아 있지만, 이 브랜치에서는
+별도의 numpy-style 추론 API가 아니라 **`generate_LLM`과 동일한 의미를 갖는 호환 alias**로 취급합니다.
 (vision 워크로드인 Warboy는 `furiosa-only` 브랜치에서 다룹니다.)
 
 ---
@@ -26,12 +27,12 @@ build surface 도 같은 정책으로 **`build_unified_LLM(cfg)`** 를 public AP
 | Vision API | `N/A` |
 | LLM API | 권장: `build_unified_LLM` / `create_runtime_LLM` / `generate_LLM` / `destroy_runtime_LLM`, 호환 alias: `infer_LLM` |
 | LLM smoke | `1) model id -> generate`, `2) local model path + compatible FXB -> generate`, `3) local model path -> fxb build -> generate` 구조 정리 |
-| LLM build | fetch 중심은 안정적, custom `fxb build`는 `gcc-aarch64-linux-gnu` 의존성 반영 후 재검증 단계 |
+| LLM build | fetch 중심은 안정적, custom `fxb build`는 `gcc-aarch64-linux-gnu` 반영 완료 후 재검증 단계 |
 
 ### 주요 이슈
 
 - `2026-07-27` 기준 vendor 답변으로, `Qwen3-8B-FP8` local custom `fxb build` 실패 원인 중 하나가 `gcc-aarch64-linux-gnu` 누락으로 특정되었습니다.
-- 재시도 시에는 `gcc-aarch64-linux-gnu` 설치 후 `~/.cache/furiosa/compiler/` 를 비우고 다시 확인하는 절차를 권장합니다.
+- 현재 Docker 정의에는 `gcc-aarch64-linux-gnu`가 이미 반영되어 있으며, 재시도 전에는 `~/.cache/furiosa/compiler/` 를 비우고 다시 확인하는 절차를 권장합니다.
 - 이 브랜치는 RNGD/LLM 전용이며, Warboy vision API 와 혼용하지 않도록 public surface 를 `*_LLM` 기준으로 분리합니다.
 
 ---
