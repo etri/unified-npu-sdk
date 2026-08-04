@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
+from unified_sdk.options import RNGDRuntimeOptions
 from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
@@ -91,10 +92,15 @@ class _RNGDRuntime:
                 "Install furiosa-llm first (see developer.furiosa.ai)."
             ) from exc
 
-        fxb_path = str(cfg.fxb_path) if cfg.fxb_path else None
+        runtime_options = RNGDRuntimeOptions.from_raw(
+            cfg.backend_options,
+            legacy_fxb_path=cfg.fxb_path,
+            legacy_devices=cfg.devices,
+        )
+        fxb_path = str(runtime_options.fxb_path) if runtime_options.fxb_path else None
         llm_kwargs: Dict[str, Any] = {}
-        if cfg.devices:
-            llm_kwargs["devices"] = cfg.devices
+        if runtime_options.devices:
+            llm_kwargs["devices"] = runtime_options.devices
         if fxb_path:
             llm_kwargs["fxb"] = fxb_path
 
@@ -123,9 +129,10 @@ class _RNGDRuntime:
             ctx={
                 "llm": llm,
                 "source": source,
-                "devices": cfg.devices,
+                "devices": runtime_options.devices,
                 "fxb_path": fxb_path,
                 "sampling_defaults": sampling_defaults,
+                "backend_options": runtime_options.to_metadata(),
                 "extra": dict(cfg.extra or {}),
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
@@ -143,6 +150,9 @@ class _RNGDRuntime:
         return SamplingParams(**params)
 
     def infer(self, rh: RuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
+        return self.generate(rh, prompt, **overrides)
+
+    def generate(self, rh: RuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
         if not rh.ctx or "llm" not in rh.ctx:
             raise RuntimeError("RNGD RuntimeHandle is closed or invalid")
 

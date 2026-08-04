@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from unified_sdk.build.registry import get_builder
-from unified_sdk.types import BuildConfig, BuildResult
+from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig
 
 # Adapter auto-registration
 from . import rngd_build as _rngd  # noqa: F401
@@ -13,7 +13,7 @@ def build_unified(cfg: BuildConfig) -> BuildResult:
     return builder.build(cfg)
 
 
-def build_unified_LLM(cfg: BuildConfig) -> BuildResult:
+def build_unified_LLM(cfg: LLMBuildConfig | BuildConfig) -> BuildResult:
     """LLM-specific build/fetch entrypoint for the RNGD-only backend."""
     return build_unified(cfg)
 

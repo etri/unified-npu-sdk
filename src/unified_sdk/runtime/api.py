@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from unified_sdk.runtime.registry import get_runtime
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import LLMRuntimeConfig, RuntimeConfig, RuntimeHandle
 
 # Adapter auto-registration
 from . import rngd_runtime as _rngd  # noqa: F401
@@ -13,7 +13,7 @@ def _create_runtime(cfg: RuntimeConfig) -> RuntimeHandle:
     return adapter.create(cfg)
 
 
-def create_runtime_LLM(cfg: RuntimeConfig) -> RuntimeHandle:
+def create_runtime_LLM(cfg: LLMRuntimeConfig | RuntimeConfig) -> RuntimeHandle:
     """LLM-specific creation entrypoint for backend-specific text generation runtimes."""
     return _create_runtime(cfg)
 
@@ -26,13 +26,14 @@ def _infer(rh: RuntimeHandle, prompt: Any, **overrides: Any) -> Any:
 
 
 def infer_LLM(rh: RuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    """LLM-specific inference/generation entrypoint."""
+    """LLM-specific text generation entrypoint with inference-style naming."""
     return _infer(rh, prompt, **overrides)
 
 
 def generate_LLM(rh: RuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    """Readability alias of `infer_LLM` for the LLM backend."""
-    return infer_LLM(rh, prompt, **overrides)
+    """Explicit LLM generation entrypoint."""
+    adapter = get_runtime(rh.backend)
+    return adapter.generate(rh, prompt, **overrides)
 
 
 def _destroy_runtime(rh: RuntimeHandle) -> None:

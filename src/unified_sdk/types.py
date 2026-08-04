@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
+from unified_sdk.options import RNGDBuildOptions, RNGDRuntimeOptions
+
 BuildBackendName = Literal["rngd"]
 RuntimeBackendName = Literal["rngd"]
 
@@ -19,7 +21,8 @@ class BuildConfig:
     tensor_parallel_size: int = 1
     pipeline_parallel_size: int = 1
     max_model_len: Optional[int] = None
-    extra: Optional[Dict[str, Any]] = None  # build_mode(fetch|fxb_build), dry_run, optim_level 등
+    backend_options: RNGDBuildOptions | Dict[str, Any] | None = None
+    extra: Optional[Dict[str, Any]] = None  # legacy fallback: build_mode(fetch|fxb_build), dry_run, optim_level 등
 
 @dataclass
 class BuildResult:
@@ -27,19 +30,30 @@ class BuildResult:
     compiled_model_path: str            # HF 모델 id 또는 FXB 파일 경로
     meta_data: Dict[str, Any]
 
+
+@dataclass
+class LLMBuildConfig(BuildConfig):
+    """Explicit LLM capability config for the RNGD-only worktree."""
+
 @dataclass
 class RuntimeConfig:
     backend: RuntimeBackendName
     engine_path: str | Path             # HF 모델 id 또는 로컬 모델 경로
-    fxb_path: Optional[str | Path] = None
-    devices: Optional[str] = None       # 예: 'npu:0'. 미지정 시 furiosa-llm 기본 선택
     # 기본 SamplingParams (호출별로 override 가능)
     max_tokens: int = 128
     temperature: float = 0.7
     top_p: float = 1.0
     top_k: int = -1
     min_tokens: int = 0
+    fxb_path: Optional[str | Path] = None     # legacy compatibility: prefer backend_options.fxb_path
+    devices: Optional[str] = None             # legacy compatibility: prefer backend_options.devices
+    backend_options: RNGDRuntimeOptions | Dict[str, Any] | None = None
     extra: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class LLMRuntimeConfig(RuntimeConfig):
+    """Explicit LLM runtime config for the RNGD-only worktree."""
 
 @dataclass
 class RuntimeHandle:
