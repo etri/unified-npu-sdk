@@ -10,13 +10,21 @@ Structure:
  - backends:  Backend adapters (FuriosaAI RNGD only in this worktree)
  - frontends: Model import and conversion helpers
 
-Note: RNGD is an LLM stack. `runtime.infer` performs text generation
-(prompt -> text), unlike the numpy vision inference of the other worktrees.
+Preferred public surface:
+ - `LLMBuildConfig`, `LLMRuntimeConfig`, `LLMRuntimeHandle`
+ - `build_unified_LLM(cfg)`
+ - `create_runtime_LLM(cfg)`, `generate_LLM(rh, prompt)`, `destroy_runtime_LLM(rh)`
+
+Compatibility aliases such as `BuildConfig`, `RuntimeConfig`, `RuntimeHandle`,
+and `infer_LLM(...)` remain available, but this worktree should be read as an
+explicit RNGD LLM capability branch rather than a generic multi-capability one.
 """
 
 __version__ = "0.1.0"
 
+from unified_sdk.build import build_unified, build_unified_LLM
 from unified_sdk.options import RNGDBuildOptions, RNGDRuntimeOptions
+from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM, infer_LLM
 from unified_sdk.types import (
     BuildConfig,
     BuildResult,
@@ -28,13 +36,19 @@ from unified_sdk.types import (
 )
 
 __all__ = [
-    "BuildConfig",
-    "BuildResult",
     "LLMBuildConfig",
-    "LLMRuntimeHandle",
     "LLMRuntimeConfig",
+    "LLMRuntimeHandle",
+    "BuildResult",
+    "build_unified_LLM",
+    "create_runtime_LLM",
+    "generate_LLM",
+    "destroy_runtime_LLM",
+    "infer_LLM",
     "RNGDBuildOptions",
     "RNGDRuntimeOptions",
+    "BuildConfig",
     "RuntimeConfig",
     "RuntimeHandle",
+    "build_unified",
 ]

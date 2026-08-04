@@ -1,13 +1,17 @@
 """
 unified_sdk.runtime
 -------------------
-Module responsible for creating runtime instances and performing inference
-with a prepared model.
+Runtime entrypoints for the RNGD-only LLM capability.
 
 This RNGD-only worktree exposes only the FuriosaAI RNGD (furiosa-llm) adapter.
-For RNGD, inference is LLM text generation (prompt -> text). This worktree
-exports only the explicit LLM API set:
-`create_runtime_LLM`, `infer_LLM`, `generate_LLM`, `destroy_runtime_LLM`.
+Preferred public surface:
+ - `create_runtime_LLM`
+ - `generate_LLM`
+ - `destroy_runtime_LLM`
+
+Compatibility aliases:
+ - `infer_LLM` remains available, but in this worktree it is an alias for
+   text generation rather than a separate numpy-style inference contract.
 """
 from .api import (
     create_runtime_LLM,

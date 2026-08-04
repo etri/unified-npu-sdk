@@ -46,16 +46,16 @@ class RNGDPublicAPITests(unittest.TestCase):
         fake_handle = SimpleNamespace(backend="rngd")
         with patch("unified_sdk.runtime.api.get_runtime") as get_runtime:
             get_runtime.return_value.create.return_value = fake_handle
-            get_runtime.return_value.infer.return_value = "infer"
             get_runtime.return_value.generate.return_value = "generate"
             created = create_runtime_LLM(cfg)
             inferred = infer_LLM(created, "hello")
             generated = generate_LLM(created, "hello")
             destroy_runtime_LLM(created)
         self.assertIs(created, fake_handle)
-        self.assertEqual(inferred, "infer")
+        self.assertEqual(inferred, "generate")
         self.assertEqual(generated, "generate")
         get_runtime.assert_any_call("rngd")
+        self.assertEqual(get_runtime.return_value.generate.call_count, 2)
 
     def test_mapping_helpers_expose_capability_families(self) -> None:
         self.assertEqual(describe_frontend_api_mapping()["capability_family"], "llm.frontend-prepare-fetch")
