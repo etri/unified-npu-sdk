@@ -92,14 +92,6 @@ def _capability_metadata(options: QBBuildOptions, source: str) -> Dict[str, Any]
     }
 
 
-def _legacy_fallback_metadata(cfg: BuildConfig) -> Dict[str, Any]:
-    used = cfg.backend_options is None and bool(cfg.extra)
-    return {
-        "legacy_extra_fallback_used": used,
-        "legacy_extra_keys": sorted(dict(cfg.extra or {}).keys()) if used else [],
-    }
-
-
 def describe_api_mapping() -> Dict[str, Any]:
     return {
         "unified_api": "build_unified(cfg)",
@@ -126,7 +118,7 @@ class _QBBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"QB build adapter received backend={cfg.backend!r}")
 
-        options = resolve_qb_build_options(cfg.backend_options, cfg.extra)
+        options = resolve_qb_build_options(cfg.backend_options)
         mxq_path = _build_output_path(cfg.out_dir, cfg.model_name)
         mxq_path.parent.mkdir(parents=True, exist_ok=True)
         prepared_input = prepare_qb_build_input(cfg.model_or_path, mxq_path)
@@ -143,7 +135,6 @@ class _QBBuildAdapter:
                 "source": "provided",
                 "origin": str(artifact.source_path),
                 "backend_options": options.compile_options_metadata(),
-                **_legacy_fallback_metadata(cfg),
                 **_capability_metadata(options, "provided"),
             }
             return BuildResult(
@@ -212,7 +203,6 @@ class _QBBuildAdapter:
             "input_shape": tuple(cfg.input_shape),
             "precision": "int8",
             "backend_options": options.compile_options_metadata(),
-            **_legacy_fallback_metadata(cfg),
             **_capability_metadata(options, f"{compiler_module_name}_compile"),
         }
         return BuildResult(

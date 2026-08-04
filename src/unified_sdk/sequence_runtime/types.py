@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Tuple
 
 from unified_sdk.options import QBSequenceRuntimeOptions
 
@@ -17,7 +17,6 @@ class SequenceRuntimeConfig:
     output_name: str
     input_shape: Tuple[int, ...]
     backend_options: QBSequenceRuntimeOptions | None = None
-    extra: Optional[Dict[str, Any]] = None  # deprecated compatibility fallback; new code should use backend_options
 
 
 @dataclass(frozen=True)

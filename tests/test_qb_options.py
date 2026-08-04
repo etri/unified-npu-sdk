@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-import warnings
 from pathlib import Path
 import sys
 
@@ -21,26 +20,20 @@ from unified_sdk.options import (
 
 
 class QBOptionsTests(unittest.TestCase):
-    def test_build_options_warn_on_legacy_extra_fallback(self) -> None:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            options = resolve_qb_build_options(None, {"quantize_method": "max"})
+    def test_build_options_default_resolution(self) -> None:
+        options = resolve_qb_build_options(None)
         self.assertIsInstance(options, QBBuildOptions)
-        self.assertTrue(any(issubclass(w.category, DeprecationWarning) for w in caught))
+        self.assertEqual(options.quantize_method, "percentile")
 
-    def test_runtime_options_warn_on_legacy_extra_fallback(self) -> None:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            options = resolve_qb_runtime_options(None, {"core_mode": "auto"})
+    def test_runtime_options_default_resolution(self) -> None:
+        options = resolve_qb_runtime_options(None)
         self.assertIsInstance(options, QBVisionRuntimeOptions)
-        self.assertTrue(any(issubclass(w.category, DeprecationWarning) for w in caught))
+        self.assertIsNone(options.core_mode)
 
-    def test_sequence_options_warn_on_legacy_extra_fallback(self) -> None:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            options = resolve_qb_sequence_runtime_options(None, {"core_mode": "global8"})
+    def test_sequence_options_default_resolution(self) -> None:
+        options = resolve_qb_sequence_runtime_options(None)
         self.assertIsInstance(options, QBSequenceRuntimeOptions)
-        self.assertTrue(any(issubclass(w.category, DeprecationWarning) for w in caught))
+        self.assertIsNone(options.core_mode)
 
 
 if __name__ == "__main__":

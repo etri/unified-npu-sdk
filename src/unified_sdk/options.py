@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping
-import warnings
+from typing import Any, Dict
 
 
 _QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
@@ -13,18 +12,6 @@ _TARGET_DEVICE_BY_PRODUCT = {
     "regulus-rb": "regulus-rb",
     "regulus-ra": "regulus-ra",
 }
-
-
-def _warn_legacy_extra_usage(context: str, extra: Mapping[str, Any] | None) -> None:
-    if not extra:
-        return
-    keys = ", ".join(sorted(dict(extra).keys()))
-    warnings.warn(
-        f"{context}.extra is deprecated; use typed backend_options instead. "
-        f"Legacy fallback keys: {keys}",
-        DeprecationWarning,
-        stacklevel=3,
-    )
 
 
 @dataclass(frozen=True)
@@ -45,21 +32,6 @@ class QBBuildOptions:
         if isinstance(self.target_device, str):
             normalized = self.target_device.strip()
             object.__setattr__(self, "target_device", normalized or None)
-
-    @classmethod
-    def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBBuildOptions":
-        extra = dict(extra or {})
-        return cls(
-            quantize_method=str(extra.get("quantize_method", "percentile")),
-            use_random_calib=extra.get("use_random_calib"),
-            calib_data_path=str(extra["calib_data_path"]).strip() if extra.get("calib_data_path") else None,
-            product=str(extra.get("product", "aries")),
-            target_device=str(extra["target_device"]).strip() if extra.get("target_device") else None,
-            model_nickname=extra.get("model_nickname"),
-            optimize_option=extra.get("optimize_option"),
-            singlecore_compile=extra.get("singlecore_compile"),
-            save_sample=extra.get("save_sample"),
-        )
 
     def validate(self) -> "QBBuildOptions":
         self._normalize_in_place()
@@ -95,28 +67,6 @@ class QBBuildOptions:
             "save_sample": self.save_sample,
         }
 
-    def to_legacy_extra(self) -> Dict[str, Any]:
-        extra: Dict[str, Any] = {
-            "quantize_method": self.quantize_method,
-            "product": self.product,
-        }
-        if self.use_random_calib is not None:
-            extra["use_random_calib"] = self.use_random_calib
-        if self.calib_data_path:
-            extra["calib_data_path"] = self.calib_data_path
-        if self.target_device:
-            extra["target_device"] = self.target_device
-        if self.model_nickname is not None:
-            extra["model_nickname"] = self.model_nickname
-        if self.optimize_option is not None:
-            extra["optimize_option"] = self.optimize_option
-        if self.singlecore_compile is not None:
-            extra["singlecore_compile"] = self.singlecore_compile
-        if self.save_sample is not None:
-            extra["save_sample"] = self.save_sample
-        return extra
-
-
 @dataclass(frozen=True)
 class QBVisionRuntimeOptions:
     core_mode: str | None = None
@@ -127,26 +77,11 @@ class QBVisionRuntimeOptions:
             normalized = self.core_mode.strip()
             object.__setattr__(self, "core_mode", normalized or None)
 
-    @classmethod
-    def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBVisionRuntimeOptions":
-        extra = dict(extra or {})
-        return cls(
-            core_mode=str(extra["core_mode"]).strip() if extra.get("core_mode") else None,
-            allow_dynamic_shape=bool(extra.get("allow_dynamic_shape", False)),
-        )
-
     def validate(self) -> "QBVisionRuntimeOptions":
         self._normalize_in_place()
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
             raise ValueError("QBVisionRuntimeOptions.core_mode must be a non-empty string when provided")
         return self
-
-    def to_legacy_extra(self) -> Dict[str, Any]:
-        extra: Dict[str, Any] = {"allow_dynamic_shape": self.allow_dynamic_shape}
-        if self.core_mode is not None:
-            extra["core_mode"] = self.core_mode
-        return extra
-
 
 @dataclass(frozen=True)
 class QBSequenceRuntimeOptions:
@@ -158,52 +93,31 @@ class QBSequenceRuntimeOptions:
             normalized = self.core_mode.strip()
             object.__setattr__(self, "core_mode", normalized or None)
 
-    @classmethod
-    def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBSequenceRuntimeOptions":
-        extra = dict(extra or {})
-        return cls(
-            core_mode=str(extra["core_mode"]).strip() if extra.get("core_mode") else None,
-            allow_dynamic_shape=bool(extra.get("allow_dynamic_shape", False)),
-        )
-
     def validate(self) -> "QBSequenceRuntimeOptions":
         self._normalize_in_place()
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
             raise ValueError("QBSequenceRuntimeOptions.core_mode must be a non-empty string when provided")
         return self
 
-    def to_legacy_extra(self) -> Dict[str, Any]:
-        extra: Dict[str, Any] = {"allow_dynamic_shape": self.allow_dynamic_shape}
-        if self.core_mode is not None:
-            extra["core_mode"] = self.core_mode
-        return extra
-
-
-def resolve_qb_build_options(options: Any, extra: Mapping[str, Any] | None) -> QBBuildOptions:
+def resolve_qb_build_options(options: Any) -> QBBuildOptions:
     if isinstance(options, QBBuildOptions):
         return options.validate()
     if options is not None:
         raise TypeError("BuildConfig.backend_options must be a QBBuildOptions instance when provided")
-    _warn_legacy_extra_usage("BuildConfig", extra)
-    return QBBuildOptions.from_legacy_extra(extra).validate()
+    return QBBuildOptions().validate()
 
 
-def resolve_qb_runtime_options(options: Any, extra: Mapping[str, Any] | None) -> QBVisionRuntimeOptions:
+def resolve_qb_runtime_options(options: Any) -> QBVisionRuntimeOptions:
     if isinstance(options, QBVisionRuntimeOptions):
         return options.validate()
     if options is not None:
         raise TypeError("RuntimeConfig.backend_options must be a QBVisionRuntimeOptions instance when provided")
-    _warn_legacy_extra_usage("RuntimeConfig", extra)
-    return QBVisionRuntimeOptions.from_legacy_extra(extra).validate()
+    return QBVisionRuntimeOptions().validate()
 
 
-def resolve_qb_sequence_runtime_options(
-    options: Any,
-    extra: Mapping[str, Any] | None,
-) -> QBSequenceRuntimeOptions:
+def resolve_qb_sequence_runtime_options(options: Any) -> QBSequenceRuntimeOptions:
     if isinstance(options, QBSequenceRuntimeOptions):
         return options.validate()
     if options is not None:
         raise TypeError("SequenceRuntimeConfig.backend_options must be a QBSequenceRuntimeOptions instance when provided")
-    _warn_legacy_extra_usage("SequenceRuntimeConfig", extra)
-    return QBSequenceRuntimeOptions.from_legacy_extra(extra).validate()
+    return QBSequenceRuntimeOptions().validate()

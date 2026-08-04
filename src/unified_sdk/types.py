@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Tuple
 
 from unified_sdk.options import QBBuildOptions, QBVisionRuntimeOptions
 
@@ -17,7 +17,6 @@ class BuildConfig:
     input_name: str = "input"
     input_shape: Tuple[int, ...] = (1, 3, 224, 224)
     backend_options: QBBuildOptions | None = None
-    extra: Optional[Dict[str, Any]] = None  # deprecated compatibility fallback; new code should use backend_options
 
 @dataclass
 class BuildResult:
@@ -33,7 +32,6 @@ class RuntimeConfig:
     output_name: str
     input_shape: Tuple[int, ...]
     backend_options: QBVisionRuntimeOptions | None = None
-    extra: Optional[Dict[str, Any]] = None  # deprecated compatibility fallback; new code should use backend_options
 
 @dataclass
 class RuntimeHandle:
