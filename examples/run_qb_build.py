@@ -45,6 +45,7 @@ if str(SRC_DIR) not in sys.path:
 
 try:
     from unified_sdk.frontends import (
+        QBFrontendBuildRequest,
         list_model_zoo_models,
         resolve_qb_build_request,
     )
@@ -145,17 +146,19 @@ if __name__ == "__main__":
 
     try:
         resolved_request = resolve_qb_build_request(
-            model_name=args.model_name,
-            models_dir=models_dir,
-            product=args.product,
-            core_mode=args.core_mode,
-            from_pth=args.from_pth,
-            from_onnx=args.from_onnx,
-            provided_mxq=args.mxq,
-            export_onnx_path=args.export_onnx_path,
-            input_name=args.input_name,
-            input_shape=args.input_shape,
-            require_mxq=args.require_mxq,
+            request=QBFrontendBuildRequest(
+                model_name=args.model_name,
+                models_dir=models_dir,
+                product=args.product,
+                core_mode=args.core_mode,
+                from_pth=args.from_pth,
+                from_onnx=args.from_onnx,
+                provided_mxq=args.mxq,
+                export_onnx_path=args.export_onnx_path,
+                input_name=args.input_name,
+                input_shape=args.input_shape,
+                require_mxq=args.require_mxq,
+            )
         )
     except FileNotFoundError as exc:
         if args.require_mxq:

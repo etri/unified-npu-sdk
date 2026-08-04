@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, Literal, Tuple
+from dataclasses import dataclass
+from typing import Literal
 
 from unified_sdk.options import QBSequenceRuntimeOptions
+from unified_sdk.types import CoreRuntimeConfig, CoreRuntimeHandle
 
 SequenceRuntimeBackendName = Literal["qb"]
 
 
-@dataclass
-class SequenceRuntimeConfig:
-    backend: SequenceRuntimeBackendName
-    engine_path: str | Path
-    input_name: str
-    output_name: str
-    input_shape: Tuple[int, ...]
+@dataclass(kw_only=True)
+class SequenceRuntimeConfig(CoreRuntimeConfig):
+    backend: SequenceRuntimeBackendName = "qb"
     backend_options: QBSequenceRuntimeOptions | None = None
 
 
@@ -26,11 +22,6 @@ class SequenceBatchParam:
     cache_id: int = 0
 
 
-@dataclass
-class SequenceRuntimeHandle:
-    backend: str
-    engine_path: str
-    input_name: str
-    output_name: str
-    input_shape: Tuple[int, ...]
-    ctx: Dict[str, Any] = field(default_factory=dict)
+@dataclass(kw_only=True)
+class SequenceRuntimeHandle(CoreRuntimeHandle):
+    pass

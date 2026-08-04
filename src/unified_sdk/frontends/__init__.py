@@ -15,13 +15,21 @@ from .qb_model_zoo import (
     normalize_mxq_into_models,
     trigger_model_zoo_fetch,
 )
-from .resolve_qb_build_request import resolve_qb_build_request
-from .types import PreparedQBBuildInput, PreparedQBCompileSource, ProvidedQBArtifact, ResolvedQBBuildRequest
+from .resolve_qb_build_request import describe_frontend_api_mapping, resolve_qb_build_request
+from .types import (
+    PreparedQBBuildInput,
+    PreparedQBCompileSource,
+    ProvidedQBArtifact,
+    QBFrontendBuildRequest,
+    ResolvedQBBuildRequest,
+)
 
 __all__ = [
     "PreparedQBBuildInput",
     "PreparedQBCompileSource",
+    "QBFrontendBuildRequest",
     "ResolvedQBBuildRequest",
+    "describe_frontend_api_mapping",
     "ProvidedQBArtifact",
     "export_supported_onnx_from_pth",
     "find_local_mxq",

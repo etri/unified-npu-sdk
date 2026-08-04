@@ -10,7 +10,12 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from unified_sdk.frontends import prepare_qb_build_input, resolve_qb_build_request
+from unified_sdk.frontends import (
+    QBFrontendBuildRequest,
+    describe_frontend_api_mapping,
+    prepare_qb_build_input,
+    resolve_qb_build_request,
+)
 
 
 class QBFrontendTests(unittest.TestCase):
@@ -35,14 +40,22 @@ class QBFrontendTests(unittest.TestCase):
             onnx_path = root / "demo.onnx"
             onnx_path.write_bytes(b"onnx")
             resolved = resolve_qb_build_request(
-                model_name="demo",
-                models_dir=root / "models",
-                product="aries",
-                core_mode="global8",
-                from_onnx=onnx_path,
+                request=QBFrontendBuildRequest(
+                    model_name="demo",
+                    models_dir=root / "models",
+                    product="aries",
+                    core_mode="global8",
+                    from_onnx=onnx_path,
+                )
             )
             self.assertEqual(resolved.model_or_path, str(onnx_path.resolve()))
             self.assertIn("compiler Python API compile", resolved.source_description)
+            self.assertEqual(resolved.kind, "local_onnx")
+
+    def test_describe_frontend_api_mapping_reports_prepare_capability(self) -> None:
+        mapping = describe_frontend_api_mapping()
+        self.assertEqual(mapping["capability_family"], "vision.frontend-prepare-fetch")
+        self.assertIn("resolve_qb_build_request", mapping["unified_frontend_api"])
 
 
 if __name__ == "__main__":
