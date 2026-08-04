@@ -54,18 +54,18 @@ RUN mkdir -p /workspace/unified-sdk \
 # 4) Python 의존성 (경량). torch/transformers 는 furiosa-llm 이 의존성으로 가져온다.
 COPY --chown=${UID}:${GID} Dockers/requirements.rngd.unified.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r /tmp/requirements.txt
+    pip install -r /tmp/requirements.txt
 
 # 5) FuriosaAI RNGD LLM 스택 (furiosa-llm). 필요 시 Furiosa 인덱스 지정.
 RUN --mount=type=cache,target=/root/.cache/pip \
     EXTRA_INDEX_ARG="" ; \
     if [ -n "${FURIOSA_PIP_INDEX}" ]; then EXTRA_INDEX_ARG="--extra-index-url ${FURIOSA_PIP_INDEX}" ; fi ; \
-    pip install --no-cache-dir ${EXTRA_INDEX_ARG} furiosa-llm
+    pip install ${EXTRA_INDEX_ARG} furiosa-llm
 
 # 6) unified-sdk 소스 복사 및 설치
 COPY --chown=${UID}:${GID} . /workspace/unified-sdk
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir . \
+    pip install . \
     && rm -f /tmp/requirements.txt
 
 CMD ["/bin/bash"]
