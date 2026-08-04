@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.options import QBBuildOptions, resolve_qb_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
 
@@ -27,19 +28,8 @@ _VENDOR_API_MAP = {
 _VENDOR_TO_UNIFIED_API_MAP = {
     "shutil.copyfile(src_mxq, mxq_path)": "build_unified(cfg) for provided .mxq",
     "compiler_python_api.mxq_compile(**compile_kwargs)": "build_unified(cfg) for ONNX/torch compile",
-    "calib_data_path or use_random_calib": "BuildConfig.calib_data_path / BuildConfig.extra",
+    "calib_data_path or use_random_calib": "BuildConfig.calib_data_path / QBBuildOptions.use_random_calib",
     ".mxq artifact": "BuildResult.compiled_model_path",
-}
-
-
-# Mobilint compiler Python API(mxq_compile) 가 지원하는 양자화 방법
-_QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
-_TARGET_DEVICE_BY_PRODUCT = {
-    "aries": "aries-rb",
-    "aries-rb": "aries-rb",
-    "regulus": "regulus-rb",
-    "regulus-rb": "regulus-rb",
-    "regulus-ra": "regulus-ra",
 }
 
 
@@ -83,22 +73,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     return shape
 
 
-def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
-    quantize_method = extra.get("quantize_method")
-    if quantize_method is not None and quantize_method not in _QUANTIZE_METHODS:
-        raise ValueError(
-            "BuildConfig.extra['quantize_method'] must be one of: "
-            + ", ".join(repr(m) for m in _QUANTIZE_METHODS)
-        )
-    core_mode = extra.get("core_mode")
-    if core_mode is not None and (not isinstance(core_mode, str) or not core_mode.strip()):
-        raise ValueError("BuildConfig.extra['core_mode'] must be a non-empty string when provided")
-    target_device = extra.get("target_device")
-    if target_device is not None and (not isinstance(target_device, str) or not target_device.strip()):
-        raise ValueError("BuildConfig.extra['target_device'] must be a non-empty string when provided")
-    return extra
-
-
 def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     name = _require_non_empty_string(model_name, "model_name")
     if name.lower().endswith(".mxq"):
@@ -106,32 +80,17 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     return Path(out_dir) / f"{name}.mxq"
 
 
-def _resolve_target_device(extra: Dict[str, Any]) -> str:
-    explicit = extra.get("target_device")
-    if isinstance(explicit, str) and explicit.strip():
-        return explicit.strip()
-    product = str(extra.get("product", "aries")).strip().lower()
-    return _TARGET_DEVICE_BY_PRODUCT.get(product, product)
-
-
 def _looks_like_mxq(model_or_path: Any) -> bool:
     return isinstance(model_or_path, (str, Path)) and str(model_or_path).endswith(".mxq")
 
 
-def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+def _capability_metadata(options: QBBuildOptions, source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
         "build_pipeline": _BUILD_PIPELINE,
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
-        "compile_options": {
-            "quantize_method": extra.get("quantize_method", "percentile"),
-            "use_random_calib": extra.get("use_random_calib"),
-            "model_nickname": extra.get("model_nickname"),
-            "optimize_option": extra.get("optimize_option"),
-            "singlecore_compile": extra.get("singlecore_compile"),
-            "save_sample": extra.get("save_sample"),
-        },
+        "compile_options": options.compile_options_metadata(),
     }
 
 
@@ -164,7 +123,8 @@ class _QBBuildAdapter:
         if cfg.precision not in ("int8",):
             raise ValueError(f"Unsupported QB precision: {cfg.precision!r} (MXQ is int8-quantized)")
 
-        extra = _validate_extra(dict(cfg.extra or {}))
+        options = resolve_qb_build_options(cfg.backend_options, cfg.extra)
+        legacy_extra = options.to_legacy_extra()
         mxq_path = _build_output_path(cfg.out_dir, cfg.model_name)
         mxq_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -181,8 +141,9 @@ class _QBBuildAdapter:
                 "source": "provided",
                 "origin": str(src),
                 "precision": cfg.precision,
-                "extra": extra,
-                **_capability_metadata(extra, "provided"),
+                "backend_options": options.compile_options_metadata(),
+                "extra": legacy_extra,
+                **_capability_metadata(options, "provided"),
             }
             return BuildResult(
                 backend=self.name,
@@ -197,13 +158,15 @@ class _QBBuildAdapter:
             raise RuntimeError(str(exc)) from exc
 
         _validate_shape(tuple(cfg.input_shape), "input_shape")
-        quantize_method = extra.get("quantize_method", "percentile")
-        use_random_calib = bool(extra.get("use_random_calib", cfg.calib_data_path is None))
+        quantize_method = options.quantize_method
+        use_random_calib = options.use_random_calib
+        if use_random_calib is None:
+            use_random_calib = cfg.calib_data_path is None
 
         if cfg.calib_data_path is None and not use_random_calib:
             raise ValueError(
                 "QB compile requires either BuildConfig.calib_data_path or "
-                "BuildConfig.extra['use_random_calib']=True"
+                "QBBuildOptions.use_random_calib=True"
             )
 
         compile_kwargs: Dict[str, Any] = {
@@ -211,15 +174,16 @@ class _QBBuildAdapter:
             "save_path": str(mxq_path),
             "quantize_method": quantize_method,
             "use_random_calib": use_random_calib,
-            "target_device": _resolve_target_device(extra),
+            "target_device": options.resolved_target_device(),
         }
         if cfg.calib_data_path:
             compile_kwargs["calib_data_path"] = str(cfg.calib_data_path)
 
         # 선택 옵션은 있으면 그대로 compiler Python API 로 패스스루
         for opt in ("model_nickname", "optimize_option", "singlecore_compile", "save_sample"):
-            if extra.get(opt) is not None:
-                compile_kwargs[opt] = extra[opt]
+            value = getattr(options, opt)
+            if value is not None:
+                compile_kwargs[opt] = value
 
         try:
             mxq_compile(**compile_kwargs)
@@ -242,8 +206,9 @@ class _QBBuildAdapter:
             "calib_data_path": cfg.calib_data_path,
             "input_shape": tuple(cfg.input_shape),
             "precision": cfg.precision,
-            "extra": extra,
-            **_capability_metadata(extra, f"{compiler_module_name}_compile"),
+            "backend_options": options.compile_options_metadata(),
+            "extra": legacy_extra,
+            **_capability_metadata(options, f"{compiler_module_name}_compile"),
         }
         return BuildResult(
             backend=self.name,

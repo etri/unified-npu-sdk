@@ -72,21 +72,25 @@ if __name__ == "__main__":
         raise SystemExit(f"Error: expected a .mxq file - {p}")
 
     try:
-        from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM
-        from unified_sdk.types import RuntimeConfig
+        from unified_sdk.options import QBSequenceRuntimeOptions
+        from unified_sdk.sequence_runtime import create_sequence_runtime, destroy_sequence_runtime
+        from unified_sdk.types import SequenceRuntimeConfig
         from qbruntime import type as qb_type
     except Exception as exc:
         raise SystemExit(f"Error: unified_sdk runtime and qbruntime are required ({type(exc).__name__}: {exc})")
 
-    cfg = RuntimeConfig(
+    cfg = SequenceRuntimeConfig(
         backend="qb",
         engine_path=str(p),
         input_name="input",
         output_name="output",
         input_shape=(1,),
-        extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
+        backend_options=QBSequenceRuntimeOptions(
+            core_mode=args.core_mode,
+            allow_dynamic_shape=True,
+        ),
     )
-    rh = create_runtime_LLM(cfg)
+    rh = create_sequence_runtime(cfg)
     model = rh.ctx["model"]
     try:
         print("== QB LLM model inspect ==")
@@ -103,4 +107,4 @@ if __name__ == "__main__":
         print("output_buffer_info =", _safe_call(model, "get_output_buffer_info"))
         print("cache_infos =", _safe_call(model, "get_cache_infos"))
     finally:
-        destroy_runtime_LLM(rh)
+        destroy_sequence_runtime(rh)

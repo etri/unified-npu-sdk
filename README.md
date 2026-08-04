@@ -19,7 +19,7 @@
 | 구분 | 현재 상태 |
 | --- | --- |
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
-| LLM API | `create_runtime_LLM` / `infer_LLM` / `destroy_runtime_LLM` 구현 |
+| Sequence low-level API | `create_sequence_runtime` / `infer_sequence` / `destroy_sequence_runtime` 구현 |
 | Vision compile | 표준 fetch / provided `.mxq` fetch / ONNX compile / `resnet50` 중심 PTH->ONNX->`.mxq` 구현 |
 | LLM compile | precompiled `.mxq` fetch 와 low-level runtime smoke 중심, custom compile 은 `planned` |
 
@@ -62,11 +62,16 @@
     │   ├── api.py                  # build_unified
     │   ├── registry.py
     │   └── qb_build.py             # QB 빌드 어댑터 (qubee/qbcompiler mxq_compile)
-    └── runtime/
+    ├── runtime/
+    │   ├── __init__.py
+    │   ├── api.py                  # vision: create_runtime/infer/destroy_runtime
+    │   ├── registry.py
+    │   └── qb_runtime.py           # QB vision 런타임 어댑터 (qbruntime)
+    └── sequence_runtime/
         ├── __init__.py
-        ├── api.py                  # vision: create_runtime/infer/destroy_runtime, LLM: create_runtime_LLM/infer_LLM/destroy_runtime_LLM
+        ├── api.py                  # low-level sequence runtime: create_sequence_runtime/infer_sequence/destroy_sequence_runtime
         ├── registry.py
-        └── qb_runtime.py           # QB 런타임 어댑터 (qbruntime)
+        └── qb_sequence_runtime.py  # QB cache-aware sequence runtime 어댑터
 ```
 
 > `builds/host_validation_tools/`는 벤더 에스컬레이션용 로컬 재현 팩입니다. `builds/`는 gitignore
@@ -75,7 +80,7 @@
 
 ### Runtime API 분리
 
-`qb-only`는 runtime wrapping API를 **vision**과 **LLM**으로 구분하며,
+`qb-only`는 runtime wrapping API를 **vision**과 **sequence low-level runtime**으로 구분하며,
 실제로는 아래처럼 `qbruntime` 함수에 매핑됩니다.
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
@@ -83,13 +88,13 @@
 | Vision `.mxq` | 생성 | `create_runtime(cfg)` | `qbruntime.model.load(...)` |
 | Vision `.mxq` | 추론 | `infer(rh, input_array)` | `model.infer([input_array])` |
 | Vision `.mxq` | 종료 | `destroy_runtime(rh)` | `model.dispose/release/unload/close` |
-| LLM / Transformer `.mxq` | 생성 | `create_runtime_LLM(cfg)` | `qbruntime.model.load(...)` |
-| LLM / Transformer `.mxq` | 추론 | `infer_LLM(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
-| LLM / Transformer `.mxq` | 종료 | `destroy_runtime_LLM(rh)` | `model.dispose/release/unload/close` |
+| Sequence / Transformer `.mxq` | 생성 | `create_sequence_runtime(cfg)` | `qbruntime.model.load(...)` |
+| Sequence / Transformer `.mxq` | 추론 | `infer_sequence(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
+| Sequence / Transformer `.mxq` | 종료 | `destroy_sequence_runtime(rh)` | `model.dispose/release/unload/close` |
 
 원칙:
 - 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
-- LLM preview는 별도 `*_LLM` API를 통해 cache-aware runtime path를 검증합니다.
+- low-level sequence preview는 별도 `sequence_runtime` capability를 통해 cache-aware runtime path를 검증합니다.
 - 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
 
 ---
@@ -377,7 +382,7 @@ python3 examples/inspect_qb_model.py builds/resnet50.mxq
 ### 7) 선택: LLM smoke (preview)
 
 Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지원하며,
-`CacheInfo`, `BatchParam`, `cache_size` 기반의 low-level LLM inference primitive를 제공합니다.
+`CacheInfo`, `SequenceBatchParam`, `cache_size` 기반의 low-level sequence inference primitive를 제공합니다.
 또한 Mobilint Model Zoo는 transformer / language / multimodal `.mxq`를 Hugging Face group을 통해 제공합니다.
 
 다만 현재 `qb-only`는 vision branch가 기본이며, **LLM custom compile wrapper는 아직 공식 smoke 대상으로 일반화하지 않았습니다.**
@@ -430,8 +435,8 @@ python3 examples/run_qb_build.py \
 # planned 로만 남겨둡니다.
 
 # 7-d) low-level runtime smoke
-# 실제 generate API 가 아니라 Unified SDK LLM infer(...)
-#   infer_LLM(rh, input_array, cache_size=..., batch_params=...)
+# 실제 generate API 가 아니라 Unified SDK sequence runtime
+#   infer_sequence(rh, input_array, cache_size=..., batch_params=...)
 # 형태로 감싼 cache-aware runtime smoke 입니다.
 python3 examples/run_qb_llm_infer.py \
   --engine-path models/Llama-3.2-1B-Instruct.mxq \
@@ -451,15 +456,15 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 
 주의:
 - 위 LLM smoke는 `generate(text)` 수준의 고수준 serving wrapper가 아니라, 문서에 나온 **cache-aware infer primitive** 기준 smoke 입니다.
-- 다만 preview helper도 이제 vendor direct API 대신 Unified SDK runtime API
-  `create_runtime_LLM(cfg) -> infer_LLM(rh, input_array, cache_size=..., batch_params=...) -> destroy_runtime_LLM(rh)`
+- 다만 preview helper도 이제 vendor direct API 대신 Unified SDK sequence runtime API
+  `create_sequence_runtime(cfg) -> infer_sequence(rh, input_array, cache_size=..., batch_params=...) -> destroy_sequence_runtime(rh)`
   경로를 우선 검증합니다.
 - transformer/LLM MXQ는 여러 코어 모드를 함께 담는 경우가 있어, preview helper는 기본 `core_mode=global8`을 사용합니다.
   `CoreMode::Auto` 오류가 나면 명시적으로 `--core-mode global8` 또는 MXQ가 지원하는 모드를 지정하세요.
 - `run_qb_llm_infer.py`는 MXQ가 보고하는 input shape / input dtype에 맞춰 synthetic zeros 입력을 만들어 low-level runtime path를 검증합니다.
 - 단일-step smoke에서 MXQ 입력 shape가 `(1, -1, hidden_dim)`처럼 동적 시퀀스 길이를 보고하면,
   preview helper는 `-1` 축을 `1 token`으로 치환해 runtime path만 검증합니다.
-- Batch LLM은 `get_cache_infos()`와 `BatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
+- Batch LLM은 `get_cache_infos()`와 `SequenceBatchParam(sequence_length, cache_size, cache_id)`를 쓰는 문서 흐름을 그대로 따릅니다.
 - 현재 브랜치의 LLM 완료 기준은 **low-level LLM smoke 통과**입니다.
 - `build_unified_LLM(cfg)`는 현재 의도적으로 비워둔 상태입니다. 이는 누락보다는,
   공개 vendor SDK 문서 기준으로 **LLM compile contract를 일반화하기 어렵기 때문**입니다.
@@ -475,6 +480,7 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 ### 컴파일 (.mxq 생성)
 
 ```python
+from unified_sdk.options import QBBuildOptions
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
 
@@ -488,7 +494,11 @@ cfg = BuildConfig(
     input_name="input",
     input_shape=(1, 3, 224, 224),
     calib_data_path=None,                    # 없으면 random calib
-    extra={"quantize_method": "percentile", "use_random_calib": True, "core_mode": "global8"},
+    backend_options=QBBuildOptions(
+        quantize_method="percentile",
+        use_random_calib=True,
+        product="aries",
+    ),
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)
@@ -505,6 +515,7 @@ print(result.compiled_model_path)
 
 ```python
 import numpy as np
+from unified_sdk.options import QBVisionRuntimeOptions
 from unified_sdk.types import RuntimeConfig
 from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
@@ -514,7 +525,7 @@ cfg = RuntimeConfig(
     input_name="input",
     output_name="output",
     input_shape=(1, 3, 224, 224),
-    extra={"device": 0, "core_mode": "auto"},
+    backend_options=QBVisionRuntimeOptions(device=0, core_mode="auto"),
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 224, 224), dtype=np.float32))
@@ -541,7 +552,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   `MBLT_CORE_MODE`/`--core-mode`는 MXQ 가 실제로 지원하는 모드(`single`, `global4`, `global8`, `auto`)에 맞춰 지정하세요.
 - 장치/모델 점검용 CLI: `mobilint-cli status`, `mobilint-cli mxqtool show <mxq>`,
   `mobilint-cli testinfer ...`, `mobilint-cli benchmark ...`.
-- `qb Runtime`은 문서상 `Batch LLM`을 지원하며, `cache_size`, `BatchParam`, `get_cache_infos()` 같은 low-level LLM primitive 를 제공합니다.
+- `qb Runtime`은 문서상 `Batch LLM`을 지원하며, `cache_size`, `SequenceBatchParam`, `get_cache_infos()` 같은 low-level sequence primitive 를 제공합니다.
 - Mobilint Model Zoo는 vision 외에도 transformer / language / multimodal `.mxq`를 제공하지만,
   현재 `qb-only`가 **공식 smoke로 일반화한 custom compile 경로는 vision 우선**입니다.
 - 따라서 `qb-only`의 LLM smoke는 현재 **precompiled MXQ fetch + low-level cache-aware infer + cache/meta inspect** 위주로 제공합니다.

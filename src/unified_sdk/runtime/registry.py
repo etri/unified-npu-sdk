@@ -1,29 +1,13 @@
 from __future__ import annotations
-from typing import Any, Dict, Optional, Protocol, Sequence
-from unified_sdk.types import BatchParam, RuntimeConfig, RuntimeHandle
+from typing import Dict, Protocol
+
+from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
 class RuntimeAdapter(Protocol):
     name: str
     def create(self, cfg: RuntimeConfig) -> RuntimeHandle: ...
-    def create_llm(self, cfg: RuntimeConfig) -> RuntimeHandle: ...
-    def infer(
-        self,
-        rh: RuntimeHandle,
-        input_array,
-        *,
-        cache_size: int = 0,
-        batch_params: Optional[Sequence[BatchParam]] = None,
-    ) -> Any: ...
-    def infer_llm(
-        self,
-        rh: RuntimeHandle,
-        input_array,
-        *,
-        cache_size: int = 0,
-        batch_params: Optional[Sequence[BatchParam]] = None,
-    ) -> Any: ...
+    def infer(self, rh: RuntimeHandle, input_array) -> "np.ndarray": ...
     def destroy(self, rh: RuntimeHandle) -> None: ...
-    def destroy_llm(self, rh: RuntimeHandle) -> None: ...
 
 _REGISTRY: Dict[str, RuntimeAdapter] = {}
 

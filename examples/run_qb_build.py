@@ -47,6 +47,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
+    from unified_sdk.options import QBBuildOptions
     from unified_sdk.types import BuildConfig
     from unified_sdk.build.api import build_unified
 except ImportError:
@@ -379,12 +380,12 @@ if __name__ == "__main__":
     models_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    extra: dict = {"quantize_method": args.quantize_method, "core_mode": args.core_mode}
-    extra["product"] = args.product
-    if args.target_device:
-        extra["target_device"] = args.target_device
-    if args.use_random_calib:
-        extra["use_random_calib"] = True
+    build_options = QBBuildOptions(
+        quantize_method=args.quantize_method,
+        use_random_calib=True if args.use_random_calib else None,
+        product=args.product,
+        target_device=args.target_device,
+    )
 
     # 우선순위:
     #   1) --from-pth    : local weights -> ONNX export -> compile
@@ -455,7 +456,7 @@ if __name__ == "__main__":
         input_name=args.input_name,
         input_shape=args.input_shape,
         calib_data_path=calib,
-        extra=extra,
+        backend_options=build_options,
     )
 
     result = build_unified(cfg)

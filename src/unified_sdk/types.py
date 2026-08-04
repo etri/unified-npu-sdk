@@ -21,7 +21,8 @@ class BuildConfig:
     # qubee 양자화 컴파일용 calibration 데이터셋 메타 파일(.txt/.json).
     # 미지정 시 build 어댑터가 random calibration(use_random_calib)로 대체.
     calib_data_path: Optional[str] = None
-    extra: Optional[Dict[str, Any]] = None  # quantize_method, core_mode, use_random_calib, save_sample 등
+    backend_options: Any | None = None      # preferred typed options (e.g. QBBuildOptions)
+    extra: Optional[Dict[str, Any]] = None  # legacy fallback; prefer backend_options
 
 @dataclass
 class BuildResult:
@@ -36,16 +37,43 @@ class RuntimeConfig:
     input_name: str
     output_name: str
     input_shape: Tuple[int, ...]
-    extra: Optional[Dict[str, Any]] = None  # device, core_mode, dev, allow_dynamic_shape 등
+    backend_options: Any | None = None      # preferred typed options (e.g. QBVisionRuntimeOptions)
+    extra: Optional[Dict[str, Any]] = None  # legacy fallback; prefer backend_options
+
+@dataclass
+class RuntimeHandle:
+    backend: str
+    engine_path: str
+    input_name: str
+    output_name: str
+    input_shape: Tuple[int, ...]
+    ctx: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SequenceRuntimeConfig:
+    backend: RuntimeBackendName
+    engine_path: str | Path
+    input_name: str
+    output_name: str
+    input_shape: Tuple[int, ...]
+    backend_options: Any | None = None      # preferred typed options (e.g. QBSequenceRuntimeOptions)
+    extra: Optional[Dict[str, Any]] = None  # legacy fallback; prefer backend_options
+
 
 @dataclass(frozen=True)
-class BatchParam:
+class SequenceBatchParam:
     sequence_length: int
     cache_size: int = 0
     cache_id: int = 0
 
+
+# Backward-compat alias for older examples/imports.
+BatchParam = SequenceBatchParam
+
+
 @dataclass
-class RuntimeHandle:
+class SequenceRuntimeHandle:
     backend: str
     engine_path: str
     input_name: str

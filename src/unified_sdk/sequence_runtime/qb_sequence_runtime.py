@@ -1,28 +1,31 @@
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any, Optional, Sequence
 
 import numpy as np
 
-from unified_sdk.options import resolve_qb_runtime_options
+from unified_sdk.options import resolve_qb_sequence_runtime_options
 from unified_sdk.runtime._qb_common import (
     build_model_config,
     load_qbruntime_modules,
+    normalize_batch_params,
+    parse_non_negative_int,
     require_non_empty_string,
     to_numpy,
     validate_mxq_path,
     validate_shape,
 )
-from unified_sdk.runtime.registry import register
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.sequence_runtime.registry import register
+from unified_sdk.types import SequenceBatchParam, SequenceRuntimeConfig, SequenceRuntimeHandle
 
 
-_CAPABILITY_FAMILY = "vision.direct-python-runtime"
+_CAPABILITY_FAMILY = "sequence.low-level-cache-aware-runtime"
 _RUNTIME_PIPELINE = (
     "validate_runtime_config",
     "resolve_model_config",
     "load_vendor_model",
     "validate_input",
+    "normalize_batch_metadata",
     "run_vendor_inference",
     "normalize_output",
     "destroy_runtime",
@@ -30,24 +33,25 @@ _RUNTIME_PIPELINE = (
 _VENDOR_API_MAP = {
     "model_config": "qbruntime.type.ModelConfig / qbruntime.type.CoreMode",
     "create_runtime": "qbruntime.model.load(str(mxq_path), model_config)",
-    "infer": "model.infer([input_array])",
+    "infer": "model.infer([input_array], cache_size=..., params=...)",
+    "batch_param": "qbruntime.BatchParam(sequence_length, cache_size, cache_id)",
     "destroy": "model.dispose/release/unload/close best-effort",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "qbruntime.type.ModelConfig / CoreMode": "QBVisionRuntimeOptions.core_mode",
-    "qbruntime.model.load(str(mxq_path), model_config)": "create_runtime(cfg)",
-    "model.infer([input_array])": "infer(rh, input_array)",
-    "qbruntime output tensor/list": "infer(...) return np.ndarray or list[np.ndarray]",
-    "model.dispose/release/unload/close": "destroy_runtime(rh)",
+    "qbruntime.type.ModelConfig / CoreMode": "QBSequenceRuntimeOptions.core_mode",
+    "qbruntime.model.load(str(mxq_path), model_config)": "create_sequence_runtime(cfg)",
+    "qbruntime.BatchParam(...)": "SequenceBatchParam(sequence_length, cache_size, cache_id)",
+    "model.infer([input_array], cache_size=..., params=...)": "infer_sequence(rh, input_array, cache_size=..., batch_params=...)",
+    "model.dispose/release/unload/close": "destroy_sequence_runtime(rh)",
 }
 
 
 def describe_api_mapping() -> dict[str, Any]:
     return {
         "unified_api": {
-            "create": "create_runtime(cfg)",
-            "infer": "infer(rh, input_array)",
-            "destroy": "destroy_runtime(rh)",
+            "create": "create_sequence_runtime(cfg)",
+            "infer": "infer_sequence(rh, input_array, cache_size=..., batch_params=...)",
+            "destroy": "destroy_sequence_runtime(rh)",
         },
         "backend": "qb",
         "capability_family": _CAPABILITY_FAMILY,
@@ -58,21 +62,21 @@ def describe_api_mapping() -> dict[str, Any]:
     }
 
 
-class _QBVisionRuntime:
-    """Mobilint ARISE(QB) vision runtime adapter."""
+class _QBSequenceRuntime:
+    """Mobilint ARISE(QB) low-level sequence runtime adapter."""
 
     name = "qb"
 
-    def create(self, cfg: RuntimeConfig) -> RuntimeHandle:
+    def create(self, cfg: SequenceRuntimeConfig) -> SequenceRuntimeHandle:
         if cfg.backend != self.name:
-            raise ValueError(f"QB runtime adapter received backend={cfg.backend!r}")
+            raise ValueError(f"QB sequence runtime adapter received backend={cfg.backend!r}")
 
         p = validate_mxq_path(cfg.engine_path)
-        input_name = require_non_empty_string(cfg.input_name, "RuntimeConfig.input_name")
-        output_name = require_non_empty_string(cfg.output_name, "RuntimeConfig.output_name")
-        input_shape = validate_shape(tuple(cfg.input_shape), "RuntimeConfig.input_shape")
+        input_name = require_non_empty_string(cfg.input_name, "SequenceRuntimeConfig.input_name")
+        output_name = require_non_empty_string(cfg.output_name, "SequenceRuntimeConfig.output_name")
+        input_shape = validate_shape(tuple(cfg.input_shape), "SequenceRuntimeConfig.input_shape")
 
-        options = resolve_qb_runtime_options(cfg.backend_options, cfg.extra)
+        options = resolve_qb_sequence_runtime_options(cfg.backend_options, cfg.extra)
         extra = options.to_legacy_extra()
         device = options.device
         core_mode = options.core_mode
@@ -88,9 +92,9 @@ class _QBVisionRuntime:
                     " Multi-core-mode MXQ cannot be loaded with core_mode=auto. "
                     "Pass an explicit core mode such as 'single', 'global4', or 'global8'."
                 )
-            raise RuntimeError(f"Failed to load QB model for {p}: {detail}") from exc
+            raise RuntimeError(f"Failed to load QB sequence model for {p}: {detail}") from exc
 
-        return RuntimeHandle(
+        return SequenceRuntimeHandle(
             backend=self.name,
             engine_path=str(p),
             input_name=input_name,
@@ -109,13 +113,23 @@ class _QBVisionRuntime:
             },
         )
 
-    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> Any:
+    def infer(
+        self,
+        rh: SequenceRuntimeHandle,
+        input_array: np.ndarray,
+        *,
+        cache_size: int = 0,
+        batch_params: Optional[Sequence[SequenceBatchParam]] = None,
+    ) -> Any:
         if not rh.ctx or "model" not in rh.ctx:
-            raise RuntimeError("QB RuntimeHandle is closed or invalid")
+            raise RuntimeError("QB SequenceRuntimeHandle is closed or invalid")
 
         model = rh.ctx["model"]
+        qbruntime_module = rh.ctx.get("qbruntime")
         runtime_options = rh.ctx.get("runtime_options")
         allow_dynamic = bool(runtime_options.allow_dynamic_shape) if runtime_options is not None else False
+        cache_size = parse_non_negative_int(cache_size, "cache_size")
+        normalized_batch_params = normalize_batch_params(batch_params, qbruntime_module)
 
         input_shape = tuple(getattr(input_array, "shape", ()))
         if (not allow_dynamic) and input_shape != tuple(rh.input_shape):
@@ -124,13 +138,18 @@ class _QBVisionRuntime:
             )
 
         try:
-            out = model.infer([input_array])
+            if normalized_batch_params is not None:
+                out = model.infer([input_array], params=normalized_batch_params)
+            elif cache_size > 0:
+                out = model.infer([input_array], cache_size=cache_size)
+            else:
+                out = model.infer([input_array])
         except Exception as exc:
-            raise RuntimeError(f"QB inference failed: {exc}") from exc
+            raise RuntimeError(f"QB sequence inference failed: {exc}") from exc
 
         return to_numpy(out)
 
-    def destroy(self, rh: RuntimeHandle) -> None:
+    def destroy(self, rh: SequenceRuntimeHandle) -> None:
         model = rh.ctx.get("model") if rh.ctx else None
         if model is not None:
             for method in ("dispose", "release", "unload", "close"):
@@ -144,4 +163,4 @@ class _QBVisionRuntime:
         rh.ctx.clear()
 
 
-register(_QBVisionRuntime())
+register(_QBSequenceRuntime())
