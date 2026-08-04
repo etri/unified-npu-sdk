@@ -45,12 +45,8 @@ if str(SRC_DIR) not in sys.path:
 
 try:
     from unified_sdk.frontends import (
-        export_supported_onnx_from_pth,
-        find_local_mxq,
-        find_model_zoo_mxq,
         list_model_zoo_models,
-        normalize_mxq_into_models,
-        trigger_model_zoo_fetch,
+        resolve_qb_build_request,
     )
     from unified_sdk.options import QBBuildOptions
     from unified_sdk.types import BuildConfig
@@ -147,62 +143,28 @@ if __name__ == "__main__":
         target_device=args.target_device,
     )
 
-    # 우선순위:
-    #   1) --from-pth    : local weights -> ONNX export -> compile
-    #   2) --from-onnx   : local/custom ONNX -> compile
-    #   3) --mxq         : custom/local precompiled .mxq fetch
-    #   4) models/       : local/custom fetch
-    #   5) ~/.mblt_model_zoo : standard fetch
-    if args.from_pth is not None:
-        weights_path = args.from_pth.expanduser().resolve()
-        if not weights_path.is_file():
-            raise FileNotFoundError(f"PTH/PT weights not found: {weights_path}")
-        export_onnx_path = (
-            args.export_onnx_path.expanduser().resolve()
-            if args.export_onnx_path is not None
-            else (models_dir / f"{args.model_name}.onnx").resolve()
-        )
-        onnx_path = export_supported_onnx_from_pth(
-            weights_path=weights_path,
-            export_onnx_path=export_onnx_path,
+    try:
+        resolved_request = resolve_qb_build_request(
             model_name=args.model_name,
+            models_dir=models_dir,
+            product=args.product,
+            core_mode=args.core_mode,
+            from_pth=args.from_pth,
+            from_onnx=args.from_onnx,
+            provided_mxq=args.mxq,
+            export_onnx_path=args.export_onnx_path,
             input_name=args.input_name,
             input_shape=args.input_shape,
+            require_mxq=args.require_mxq,
         )
-        model_or_path = str(onnx_path)
-        source_desc = f"local weights -> ONNX export -> compiler Python API compile: {weights_path} -> {onnx_path}"
-    elif args.from_onnx is not None:
-        onnx_path = args.from_onnx.expanduser().resolve()
-        if not onnx_path.is_file():
-            raise FileNotFoundError(f"ONNX not found: {onnx_path}")
-        model_or_path: str = str(onnx_path)
-        source_desc = f"local/custom ONNX -> compiler Python API compile: {onnx_path}"
-    else:
-        mxq = args.mxq.expanduser().resolve() if args.mxq else find_local_mxq(models_dir, args.model_name)
-        source_desc = ""
-        if mxq is None:
-            mxq = find_model_zoo_mxq(args.model_name, args.product, args.core_mode)
-            if mxq is None:
-                mxq = trigger_model_zoo_fetch(args.model_name, args.product, args.core_mode, models_dir)
-            if mxq is not None:
-                normalized_mxq = normalize_mxq_into_models(mxq, models_dir, args.model_name)
-                source_desc = f"standard fetch from official model zoo: {mxq} -> {normalized_mxq}"
-                mxq = normalized_mxq
-        if mxq is None:
-            msg = (
-                f"{models_dir} 또는 ~/.mblt_model_zoo/vision/{args.product}/{args.core_mode} 에서 "
-                f"{args.model_name}*.mxq 를 찾지 못했습니다.\n"
-                "표준 fetch는 ~/.mblt_model_zoo 의 .mxq 를 사용합니다.\n"
-                "custom fetch는 --mxq <mxq> 로 로컬 경로를 지정하세요.\n"
-                "custom compile은 --from-onnx <onnx> 또는 --from-pth <weights> 로 수행하세요."
-            )
-            if args.require_mxq:
-                raise FileNotFoundError(msg)
-            print("[WARN] " + msg)
-            sys.exit(1)
-        model_or_path = str(mxq)
-        if not source_desc:
-            source_desc = f"custom/local fetch from provided .mxq: {mxq}"
+    except FileNotFoundError as exc:
+        if args.require_mxq:
+            raise
+        print("[WARN] " + str(exc))
+        sys.exit(1)
+
+    model_or_path = resolved_request.model_or_path
+    source_desc = resolved_request.source_description
 
     cfg = BuildConfig(
         backend="qb",

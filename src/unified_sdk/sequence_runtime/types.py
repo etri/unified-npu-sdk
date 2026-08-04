@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from unified_sdk.options import QBSequenceRuntimeOptions
-from unified_sdk.types import RuntimeBackendName
+
+SequenceRuntimeBackendName = Literal["qb"]
 
 
 @dataclass
 class SequenceRuntimeConfig:
-    backend: RuntimeBackendName
+    backend: SequenceRuntimeBackendName
     engine_path: str | Path
     input_name: str
     output_name: str

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping
+import warnings
 
 
 _QUANTIZE_METHODS = ("percentile", "maxpercentile", "max", "kl")
@@ -12,6 +13,18 @@ _TARGET_DEVICE_BY_PRODUCT = {
     "regulus-rb": "regulus-rb",
     "regulus-ra": "regulus-ra",
 }
+
+
+def _warn_legacy_extra_usage(context: str, extra: Mapping[str, Any] | None) -> None:
+    if not extra:
+        return
+    keys = ", ".join(sorted(dict(extra).keys()))
+    warnings.warn(
+        f"{context}.extra is deprecated; use typed backend_options instead. "
+        f"Legacy fallback keys: {keys}",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 @dataclass(frozen=True)
@@ -171,6 +184,7 @@ def resolve_qb_build_options(options: Any, extra: Mapping[str, Any] | None) -> Q
         return options.validate()
     if options is not None:
         raise TypeError("BuildConfig.backend_options must be a QBBuildOptions instance when provided")
+    _warn_legacy_extra_usage("BuildConfig", extra)
     return QBBuildOptions.from_legacy_extra(extra).validate()
 
 
@@ -179,6 +193,7 @@ def resolve_qb_runtime_options(options: Any, extra: Mapping[str, Any] | None) ->
         return options.validate()
     if options is not None:
         raise TypeError("RuntimeConfig.backend_options must be a QBVisionRuntimeOptions instance when provided")
+    _warn_legacy_extra_usage("RuntimeConfig", extra)
     return QBVisionRuntimeOptions.from_legacy_extra(extra).validate()
 
 
@@ -190,4 +205,5 @@ def resolve_qb_sequence_runtime_options(
         return options.validate()
     if options is not None:
         raise TypeError("SequenceRuntimeConfig.backend_options must be a QBSequenceRuntimeOptions instance when provided")
+    _warn_legacy_extra_usage("SequenceRuntimeConfig", extra)
     return QBSequenceRuntimeOptions.from_legacy_extra(extra).validate()

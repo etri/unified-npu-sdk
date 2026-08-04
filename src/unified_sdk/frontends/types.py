@@ -25,3 +25,9 @@ class PreparedQBBuildInput:
     kind: PreparedQBSourceKind
     provided_artifact: ProvidedQBArtifact | None = None
     compile_source: PreparedQBCompileSource | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedQBBuildRequest:
+    model_or_path: str
+    source_description: str
