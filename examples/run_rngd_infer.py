@@ -69,19 +69,22 @@ if __name__ == "__main__":
                 "Custom smoke requires a successful `fxb build` first."
             )
 
-    from unified_sdk.types import RuntimeConfig
+    from unified_sdk.options import RNGDRuntimeOptions
     from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
+    from unified_sdk.types import LLMRuntimeConfig
 
-    cfg = RuntimeConfig(
+    cfg = LLMRuntimeConfig(
         backend="rngd",
         engine_path=str(args.engine_path),
-        fxb_path=str(args.fxb_path) if args.fxb_path else None,
-        devices=args.devices,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
         min_tokens=args.min_tokens,
+        backend_options=RNGDRuntimeOptions(
+            fxb_path=str(args.fxb_path) if args.fxb_path else None,
+            devices=args.devices,
+        ),
     )
 
     rh = create_runtime_LLM(cfg)

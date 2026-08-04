@@ -5,6 +5,7 @@ import subprocess
 from typing import Any, Dict, List
 
 from unified_sdk.build.registry import register
+from unified_sdk.options import RNGDBuildOptions
 from unified_sdk.types import BuildConfig, BuildResult
 
 
@@ -25,8 +26,8 @@ _VENDOR_API_MAP = {
     "artifact": "HF model id or .fxb file path",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified_LLM(cfg) when extra['build_mode'] is absent or 'fetch'",
-    "fxb build <model_id_or_path> <output_path> [options]": "build_unified_LLM(cfg) when extra['build_mode'] == 'fxb_build'",
+    "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified_LLM(cfg) when backend_options.build_mode is absent or 'fetch'",
+    "fxb build <model_id_or_path> <output_path> [options]": "build_unified_LLM(cfg) when backend_options.build_mode == 'fxb_build'",
     "fxb build --tensor-parallel-size / --pipeline-parallel-size": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
     "fxb build --max-model-len": "BuildConfig.max_model_len",
     "HF model id or .fxb file path": "BuildResult.compiled_model_path",
@@ -37,13 +38,6 @@ def _require_positive_int(value: Any, field_name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError(f"BuildConfig.{field_name} must be a positive integer, got {value!r}")
     return value
-
-
-def _normalize_build_mode(extra: Dict[str, Any]) -> str:
-    mode = str(extra.get("build_mode", "fetch")).strip().lower()
-    if mode not in {"fetch", "fxb_build"}:
-        raise ValueError(f"Unsupported RNGD build mode: {mode!r}")
-    return mode
 
 
 def _fxb_output_path(out_dir: Path, model_name: str) -> Path:
@@ -73,15 +67,13 @@ def _looks_like_qwen3_8b_fp8(model_ref: str, model_name: str) -> bool:
     return "qwen3-8b-fp8" in text
 
 
-def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+def _capability_metadata(options: RNGDBuildOptions, source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
         "build_pipeline": _BUILD_PIPELINE,
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
-        "build_mode": _normalize_build_mode(extra),
-        "dry_run": bool(extra.get("dry_run", False)),
-        "optim_level": extra.get("optim_level"),
+        **options.to_metadata(),
     }
 
 
@@ -114,8 +106,9 @@ class _RNGDBuildAdapter:
             raise ValueError(f"RNGD build adapter received backend={cfg.backend!r}")
 
         extra = dict(cfg.extra or {})
+        options = RNGDBuildOptions.from_raw(cfg.backend_options, legacy_extra=extra)
         model_ref = str(cfg.model_or_path)
-        mode = _normalize_build_mode(extra)
+        mode = options.build_mode
 
         if mode == "fetch":
             meta: Dict[str, Any] = {
@@ -123,8 +116,9 @@ class _RNGDBuildAdapter:
                 "source": "provided",
                 "model_ref": model_ref,
                 "note": "HF model id or local model path; loaded by furiosa_llm.LLM at runtime",
+                "backend_options": options.to_metadata(),
                 "extra": extra,
-                **_capability_metadata(extra, "model_ref"),
+                **_capability_metadata(options, "model_ref"),
             }
             return BuildResult(
                 backend=self.name,
@@ -166,14 +160,14 @@ class _RNGDBuildAdapter:
         ]
         if cfg.max_model_len:
             cmd.extend(["--max-model-len", str(int(cfg.max_model_len))])
-        if extra.get("optim_level"):
-            cmd.extend(["--optim-level", str(extra["optim_level"])])
-        if extra.get("dry_run"):
+        if options.optim_level:
+            cmd.extend(["--optim-level", str(options.optim_level)])
+        if options.dry_run:
             cmd.append("--dry-run")
-        if extra.get("build_report"):
+        if options.build_report:
             cmd.append("--build-report")
-        if extra.get("concurrency"):
-            cmd.extend(["--concurrency", str(extra["concurrency"])])
+        if options.concurrency:
+            cmd.extend(["--concurrency", str(options.concurrency)])
 
         try:
             proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -197,7 +191,7 @@ class _RNGDBuildAdapter:
                 )
             raise RuntimeError(f"FXB build failed: {detail}")
 
-        if not extra.get("dry_run") and not output_path.is_file():
+        if not options.dry_run and not output_path.is_file():
             raise RuntimeError(f"`fxb build` reported success but FXB file not found at {output_path}")
 
         meta = {
@@ -211,8 +205,9 @@ class _RNGDBuildAdapter:
             "command": cmd,
             "stdout": (proc.stdout or "").strip(),
             "stderr": (proc.stderr or "").strip(),
+            "backend_options": options.to_metadata(),
             "extra": extra,
-            **_capability_metadata(extra, "fxb_build"),
+            **_capability_metadata(options, "fxb_build"),
         }
         return BuildResult(
             backend=self.name,

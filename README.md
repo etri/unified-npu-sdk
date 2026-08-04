@@ -6,7 +6,7 @@
 `rbln-only`·`qb-only`·`furiosa-only`와 동일한 단일-백엔드 골격을 따르되, **RNGD는 LLM 스택**이라
 빌드/추론의 의미가 다릅니다. **공식 smoke 기준점은 `furiosa_llm.LLM` 기반 fetch + generate** 이며,
 custom model 검증은 **`fxb build` + `LLM(..., fxb=...)`** 경로로 연결합니다. 서빙은 **`furiosa_llm.LLM`**을 사용하며,
-`infer_LLM`은 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)**입니다(`generate_LLM` 별칭 제공).
+`infer_LLM`과 `generate_LLM`은 모두 numpy 추론이 아니라 **LLM 텍스트 생성(프롬프트 → 텍스트)** capability를 가리킵니다.
 build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** 를 public API 로 사용합니다.
 (vision 워크로드인 Warboy는 `furiosa-only` 브랜치에서 다룹니다.)
 
@@ -321,22 +321,26 @@ python3 examples/inspect_rngd_model.py models/Qwen3-8B-FP8 \
 ### 모델 준비
 
 ```python
-from unified_sdk.types import BuildConfig
+from unified_sdk.options import RNGDBuildOptions
 from unified_sdk.build.api import build_unified_LLM
+from unified_sdk.types import LLMBuildConfig
 
 # (a) fetch (기본): HF 모델 id 또는 로컬 모델 경로를 그대로 사용
-cfg = BuildConfig(backend="rngd", model_or_path="furiosa-ai/Qwen2.5-0.5B-Instruct")
+cfg = LLMBuildConfig(
+    backend="rngd",
+    model_or_path="furiosa-ai/Qwen2.5-0.5B-Instruct",
+)
 result = build_unified_LLM(cfg)
 print(result.compiled_model_path)   # 모델 id 또는 로컬 모델 경로
 
 # (b) custom build smoke: FXB 빌드
-cfg = BuildConfig(
+cfg = LLMBuildConfig(
     backend="rngd",
     model_or_path="models/Qwen3-8B-FP8",
     out_dir="artifacts",
     model_name="qwen3_8b_fp8",
     tensor_parallel_size=8,
-    extra={"build_mode": "fxb_build"},
+    backend_options=RNGDBuildOptions(build_mode="fxb_build"),
 )
 result = build_unified_LLM(cfg)
 print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
@@ -360,16 +364,18 @@ README와 smoke 예제는 아래 LLM API를 기준으로 설명합니다.
 ### 텍스트 생성
 
 ```python
-from unified_sdk.types import RuntimeConfig
+from unified_sdk.options import RNGDRuntimeOptions
 from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
+from unified_sdk.types import LLMRuntimeConfig
 
-cfg = RuntimeConfig(
+cfg = LLMRuntimeConfig(
     backend="rngd",
     engine_path="furiosa-ai/Qwen2.5-0.5B-Instruct",  # 모델 id 또는 로컬 모델 경로
     max_tokens=128,
     temperature=0.7,
     top_p=0.3,
     top_k=100,
+    backend_options=RNGDRuntimeOptions(),
 )
 rh = create_runtime_LLM(cfg)
 text = generate_LLM(rh, "What is the capital of South Korea?")
@@ -378,14 +384,17 @@ destroy_runtime_LLM(rh)
 ```
 
 ```python
-from unified_sdk.types import RuntimeConfig
+from unified_sdk.options import RNGDRuntimeOptions
 from unified_sdk.runtime import create_runtime_LLM, generate_LLM, destroy_runtime_LLM
+from unified_sdk.types import LLMRuntimeConfig
 
-cfg = RuntimeConfig(
+cfg = LLMRuntimeConfig(
     backend="rngd",
     engine_path="models/Qwen3-8B-FP8",
-    fxb_path="/root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb",
     max_tokens=128,
+    backend_options=RNGDRuntimeOptions(
+        fxb_path="/root/.cache/furiosa/llm/fxb/.../Qwen3-8B-FP8-....fxb",
+    ),
 )
 rh = create_runtime_LLM(cfg)
 text = generate_LLM(rh, "What is the capital of South Korea?")

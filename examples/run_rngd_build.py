@@ -44,8 +44,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:
-    from unified_sdk.types import BuildConfig
+    from unified_sdk.options import RNGDBuildOptions
     from unified_sdk.build.api import build_unified_LLM
+    from unified_sdk.types import LLMBuildConfig
 except ImportError:
     print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
     sys.exit(1)
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     model_name = args.model_name or Path(str(args.model)).name or "model"
     out_dir = args.out_dir.expanduser().resolve()
 
-    cfg = BuildConfig(
+    cfg = LLMBuildConfig(
         backend="rngd",
         model_or_path=str(args.model),
         out_dir=str(out_dir),
@@ -102,13 +103,13 @@ if __name__ == "__main__":
         tensor_parallel_size=args.tensor_parallel_size,
         pipeline_parallel_size=args.pipeline_parallel_size,
         max_model_len=args.max_model_len,
-        extra={
-            "build_mode": "fxb_build" if args.fxb_build else "fetch",
-            "dry_run": bool(args.dry_run),
-            "optim_level": args.optim_level,
-            "build_report": bool(args.build_report),
-            "concurrency": args.concurrency,
-        },
+        backend_options=RNGDBuildOptions(
+            build_mode="fxb_build" if args.fxb_build else "fetch",
+            dry_run=bool(args.dry_run),
+            optim_level=args.optim_level,
+            build_report=bool(args.build_report),
+            concurrency=args.concurrency,
+        ),
     )
 
     result = build_unified_LLM(cfg)
