@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 import numpy as np
 
@@ -65,7 +65,7 @@ _CORE_MODE_SETTERS = {
 }
 
 
-def build_model_config(qb_type: Any, core_mode: Optional[str]):
+def build_model_config(qb_type: Any, core_mode: Optional[str]) -> Any:
     ModelConfig = getattr(qb_type, "ModelConfig", None)
     if ModelConfig is None:
         return None
