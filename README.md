@@ -3,8 +3,8 @@
 이 체크아웃(`qb-only` 브랜치)은 **Mobilint ARISE(QB) NPU 전용**으로 단일 백엔드만 노출합니다.
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 QB 1종으로 좁힌 버전입니다.
 
-`main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되, `rbln-only`·`trt-only`와 동일한 단일-백엔드 패턴을 따릅니다.
-컴파일은 **Mobilint compiler Python API**(`qubee` 또는 `qbcompiler`로 노출될 수 있음), 추론은 **`qbruntime`**(QB-RUNTIME)을 사용합니다. `qb-only`는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지 + 벤더 제공 `qbcompiler` wheel + `pip install mobilint-qb-runtime` + Mobilint APT 저장소를 통한 `apt install mobilint-cli`** 조합을 기본 경로로 사용합니다. (ARISE는 `maccel`이 아니라 `qbruntime`)
+이 브랜치는 `main`과 같은 Unified SDK 표면을 유지하되, 실제 구현은 `rbln-only`·`trt-only`처럼 QB 백엔드 하나에만 집중한 단일-백엔드 분기입니다.
+모델 컴파일은 Mobilint compiler Python API(`qubee` 또는 `qbcompiler`로 노출될 수 있음)로 수행하고, 추론은 `qbruntime`을 사용합니다. 기본 개발/검증 경로는 Mobilint 공식 문서 흐름에 맞춰 **공식 `qbcompiler` Docker 이미지**, **벤더 제공 `qbcompiler` wheel**, **`pip install mobilint-qb-runtime`**, **Mobilint APT 저장소의 `mobilint-cli`** 조합을 기준으로 정리했습니다.
 
 ---
 
@@ -18,15 +18,15 @@
 
 | 구분 | 현재 상태 |
 | --- | --- |
-| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
-| Sequence low-level API | `create_sequence_runtime` / `infer_sequence` / `destroy_sequence_runtime` 구현 |
-| Vision compile | 표준 fetch / provided `.mxq` fetch / ONNX compile / `resnet50` 중심 PTH->ONNX->`.mxq` 구현 |
-| LLM compile | precompiled `.mxq` fetch 와 low-level runtime smoke 중심, custom compile 은 `planned` |
+| Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 지원 |
+| Sequence low-level API | `create_sequence_runtime` / `infer_sequence` / `destroy_sequence_runtime` 지원 |
+| Vision compile | 표준 fetch, 사전 컴파일된 `.mxq` fetch, ONNX compile, `resnet50` 기준 PTH->ONNX->`.mxq` 경로 지원 |
+| LLM compile | precompiled `.mxq` fetch 및 low-level runtime smoke 중심, custom compile 은 `planned` |
 
 ### 주요 이슈
 
-- 현재 공개 Mobilint 문서 기준으로는 **local LLM source/checkpoint -> qb compiler -> `.mxq`** compile workflow 를 branch public API 로 일반화하기 어려워 `build_unified_LLM(cfg)`는 planned 로 남겨둡니다.
-- 현재 LLM 완료 기준은 high-level generate 가 아니라 **low-level cache-aware infer smoke 통과**입니다.
+- 현재 공개 Mobilint 문서 기준으로는 **local LLM source/checkpoint -> qb compiler -> `.mxq`** 경로를 branch public API로 일반화하기 어려워 `build_unified_LLM(cfg)`는 `planned` 상태로 남겨둡니다.
+- 현재 LLM 지원 완료 기준은 high-level generate 가 아니라 **low-level cache-aware infer smoke 통과**입니다.
 
 ---
 
@@ -92,7 +92,7 @@
 | Sequence / Transformer `.mxq` | 추론 | `infer_sequence(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
 | Sequence / Transformer `.mxq` | 종료 | `destroy_sequence_runtime(rh)` | `model.dispose/release/unload/close` |
 
-원칙:
+기본 원칙:
 - 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
 - low-level sequence preview는 별도 `sequence_runtime` capability를 통해 cache-aware runtime path를 검증합니다.
 - 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
@@ -108,14 +108,14 @@
 - 별도 worktree 폴더 예: `.../qb-only/`
 - 일반 저장소 루트 예: `.../unified-npu-sdk/`에서 `git switch qb-only`
 
-Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler`로 나뉩니다. 이 브랜치는:
+Mobilint 공식 문서 기준으로 SDK qb는 `Driver / qb Runtime / qb Compiler`로 나뉩니다. 이 브랜치는 아래 조합을 기본 경로로 사용합니다.
 
 - **Compiler base**: Mobilint 공식 `qbcompiler` Docker 이미지
 - **Compiler Python API**: 벤더 제공 `qbcompiler-*.whl` (`qubee` 또는 `qbcompiler` import로 노출될 수 있음)
 - **Runtime**: `pip install mobilint-qb-runtime`
 - **CLI Utility**: Mobilint APT 저장소 등록 후 `apt install mobilint-cli`
 
-조합을 기본 경로로 사용합니다. 따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 둡니다. 패키지 버전에 따라 compiler Python import 이름은 `qubee` 또는 `qbcompiler`일 수 있습니다.
+따라서 `vendor/`에는 **`qbcompiler` compiler wheel만** 두는 것을 기준으로 설명합니다. 패키지 버전에 따라 compiler Python import 이름은 `qubee` 또는 `qbcompiler`일 수 있습니다.
 
 > 권장: `vendor/`에는 `qbcompiler` wheel을 **한 버전만** 두세요. 여러 버전을 같이 두면 어떤 wheel 기준으로
 > base image를 추론할지 헷갈릴 수 있으므로, 테스트에 사용할 버전 하나만 남기는 것이 안전합니다.
@@ -175,7 +175,7 @@ sudo systemctl status docker.service --no-pager -l
 docker run --rm hello-world
 ```
 
-문제 해결 힌트:
+자주 겪는 문제:
 
 > `docker: unknown command: docker buildx` 또는 `BuildKit is enabled but the buildx component is missing or broken`
 > 가 뜨면 `docker-buildx-plugin`이 없는 상태입니다.
@@ -266,8 +266,8 @@ python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for 
 
 ## 🚀 Backend Docker smoke
 
-아래 흐름은 **Mobilint ARISE 장치가 호스트에 잡혀 있는 단일 머신**에서 Docker로 `qb-only`
-백엔드를 검증하는 표준 smoke 절차입니다. 추가 wrapper 계층 없이 Unified SDK의 QB adapter가
+아래 흐름은 **Mobilint ARISE 장치가 호스트에 연결된 단일 머신**에서 Docker로 `qb-only`
+백엔드를 검증하는 표준 smoke 절차입니다. 이 경로에서는 별도 중간 래퍼 없이 Unified SDK의 QB adapter가
 vendor SDK(compiler Python API `qubee`/`qbcompiler`, runtime `qbruntime`)를 직접 호출합니다.
 
 ```bash
@@ -287,10 +287,11 @@ python3 -c "import importlib, pkgutil; m = next((importlib.import_module(n) for 
 ### 4-a) 표준 fetching smoke
 
 Mobilint 공식 문서 흐름대로 이미 생성된 `.mxq`가 `~/.mblt_model_zoo/...` 아래에 있으면,
-`run_qb_build.py --model-name ...`가 그 경로를 자동 탐색해서 fetch 합니다.
+`run_qb_build.py --model-name ...`가 해당 경로를 자동 탐색해 fetch 합니다.
 없으면 `mblt_model_zoo.vision.*` 심볼에서 `--model-name`과 이름이 맞는 클래스를 찾아
 1회 실행해 `.mxq`를 materialize 한 뒤 다시 fetch 합니다.
-이때 workspace 내부에서는 최종적으로 `./models/<model-name>.mxq`로 한 번 더 정규화해서, 이후 흐름은 `./models` 기준으로 통일합니다.
+이후 workspace 내부에서는 최종 산출물을 `./models/<model-name>.mxq`로 다시 정규화해,
+이후 절차가 모두 `./models` 기준으로 동작하도록 맞춥니다.
 
 ```bash
 python3 examples/run_qb_build.py --model-name resnet50
@@ -386,16 +387,16 @@ Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지�
 또한 Mobilint Model Zoo는 transformer / language / multimodal `.mxq`를 Hugging Face group을 통해 제공합니다.
 
 다만 현재 `qb-only`는 vision branch가 기본이며, **LLM custom compile wrapper는 아직 공식 smoke 대상으로 일반화하지 않았습니다.**
-이유는 현재 공개 Mobilint 문서 기준으로는 **precompiled transformer/LLM `.mxq` fetch 와 low-level runtime primitive** 근거는 충분하지만,
-**local LLM checkpoint/source model -> qb compiler -> `.mxq`** 를 branch public API 로 일반화할 만큼 선명한 vendor compile workflow 가 부족하기 때문입니다.
-즉 현재 preview는:
+이유는 현재 공개 Mobilint 문서 기준으로 **precompiled transformer/LLM `.mxq` fetch**와 **low-level runtime primitive**에 대한 근거는 충분하지만,
+**local LLM checkpoint/source model -> qb compiler -> `.mxq`** 경로를 branch public API로 일반화할 만큼 선명한 vendor compile workflow는 아직 부족하기 때문입니다.
+따라서 현재 preview 범위는 다음과 같습니다.
 
 - `1) model zoo LLM fetch`
 - `2) local precompiled LLM .mxq fetch`
 - `4) low-level runtime smoke`
 - `5) cache/meta inspect`
 
-를 우선 제공합니다.
+위 네 가지를 우선 제공합니다.
 
 현재 완료 기준:
 - `prepare_qb_transformer_model.py`로 precompiled LLM `.mxq` 확보
@@ -407,7 +408,7 @@ Mobilint 문서 기준으로 `qb Runtime`은 v1.2.0부터 **Batch LLM**을 지�
 - `3) local model/checkpoint -> qb compiler -> LLM .mxq`
 - high-level `generate(text)` 스타일 serving helper
 
-위 항목들은 단순 미구현이라기보다, **vendor SDK 공개 지원 범위 추가 확인 후 반영할 planned 항목**으로 보는 것이 맞습니다.
+위 항목들은 단순 미구현이라기보다, **vendor SDK 공개 지원 범위를 추가로 확인한 뒤 반영할 planned 항목**으로 보는 편이 정확합니다.
 
 참고 문서:
 - Batch LLM support added in qb Runtime v1.2.0
@@ -454,7 +455,7 @@ python3 examples/run_qb_llm_infer.py \
 python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core-mode global8
 ```
 
-주의:
+주의 사항:
 - 위 LLM smoke는 `generate(text)` 수준의 고수준 serving wrapper가 아니라, 문서에 나온 **cache-aware infer primitive** 기준 smoke 입니다.
 - 다만 preview helper도 이제 vendor direct API 대신 Unified SDK sequence runtime API
   `create_sequence_runtime(cfg) -> infer_sequence(rh, input_array, cache_size=..., batch_params=...) -> destroy_sequence_runtime(rh)`
@@ -468,7 +469,7 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 - 현재 브랜치의 LLM 완료 기준은 **low-level LLM smoke 통과**입니다.
 - `build_unified_LLM(cfg)`는 현재 의도적으로 비워둔 상태입니다. 이는 누락보다는,
   공개 vendor SDK 문서 기준으로 **LLM compile contract를 일반화하기 어렵기 때문**입니다.
-- high-level generation/helper 경로는 벤더 경로 의존성과 제약이 남아 있어, 향후 vendor 공식 지원/가이드에 맞춰 업데이트 예정입니다.
+- high-level generation/helper 경로는 벤더 경로 의존성과 제약이 남아 있어, 향후 vendor 공식 지원/가이드에 맞춰 업데이트할 예정입니다.
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
 `/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
@@ -544,7 +545,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 ## 📌 참고
 
 - 본 체크아웃은 QB(Mobilint ARISE) 어댑터만 노출합니다. 다중 백엔드는 `main` 브랜치에서 사용하세요.
-- ARISE 런타임은 **`qbruntime`(QB-RUNTIME)** 을 사용합니다. 구형 ARIES용 `maccel`이 아닙니다.
+- ARISE 런타임은 **`qbruntime`(QB-RUNTIME)** 을 사용합니다.
 - compiler Python API(`qubee` 또는 `qbcompiler`)는 **ONNX**를 입력으로 받아 int8 양자화 `.mxq`를 생성합니다. calibration 데이터셋이
   없으면 `use_random_calib=True`로 smoke 컴파일할 수 있습니다.
 - `.mxq`의 입력 layout/dtype은 컴파일 시 결정(compiler `preprocess_dict`)되므로, 추론 입력을 이에 맞춰야 합니다.
