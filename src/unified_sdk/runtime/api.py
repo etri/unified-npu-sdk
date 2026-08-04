@@ -14,24 +14,21 @@ def _create_runtime(cfg: RuntimeConfig) -> LLMRuntimeHandle:
 
 
 def create_runtime_LLM(cfg: LLMRuntimeConfig | RuntimeConfig) -> LLMRuntimeHandle:
-    """LLM-specific creation entrypoint for backend-specific text generation runtimes."""
+    """Primary LLM runtime creation entrypoint for this RNGD-only worktree."""
     return _create_runtime(cfg)
 
 
-def _infer(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    """RNGD: LLM text generation. `prompt` is a str or list[str]; returns
-    generated text (str) or list[str]. Sampling params may be overridden per call."""
-    adapter = get_runtime(rh.backend)
-    return adapter.infer(rh, prompt, **overrides)
-
-
 def infer_LLM(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    """LLM-specific text generation entrypoint with inference-style naming."""
-    return _infer(rh, prompt, **overrides)
+    """Compatibility alias for RNGD text generation.
+
+    In this worktree, inference semantics are LLM generation semantics.
+    Prefer `generate_LLM(rh, prompt, **overrides)` as the primary public API.
+    """
+    return generate_LLM(rh, prompt, **overrides)
 
 
 def generate_LLM(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    """Explicit LLM generation entrypoint."""
+    """Primary LLM text-generation entrypoint."""
     adapter = get_runtime(rh.backend)
     return adapter.generate(rh, prompt, **overrides)
 
@@ -42,7 +39,7 @@ def _destroy_runtime(rh: LLMRuntimeHandle) -> None:
 
 
 def destroy_runtime_LLM(rh: LLMRuntimeHandle) -> None:
-    """LLM-specific destroy entrypoint."""
+    """Primary LLM runtime destroy entrypoint."""
     return _destroy_runtime(rh)
 
 

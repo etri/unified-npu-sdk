@@ -1,13 +1,15 @@
 """
-Unified build entrypoints (backend-agnostic)
+LLM build entrypoints for the RNGD-only worktree.
 
-This package provides backend-independent model preparation interfaces.
-Each backend registers its build adapter in the registry at import time.
+Preferred public surface:
+ - `build_unified_LLM(cfg)` for RNGD LLM fetch / FXB build workflows
 
-This RNGD-only worktree exposes only the FuriosaAI RNGD (furiosa-llm) adapter.
+Compatibility surface:
+ - `build_unified(cfg)` remains available for callers that still use the
+   generic name, but this branch should be read as an LLM capability branch.
 """
 
-from .api import build_unified, build_unified_LLM  # Re-export high-level API
+from .api import build_unified, build_unified_LLM  # Re-export public API
 
 # Internal adapters (auto-registration)
 from . import rngd_build as _rngd  # noqa: F401

@@ -29,7 +29,10 @@ class LLMBuildConfig(CoreBuildConfig):
 
 @dataclass(kw_only=True)
 class BuildConfig(LLMBuildConfig):
-    """Backward-compatible alias for the RNGD build surface."""
+    """Backward-compatible generic alias.
+
+    Prefer `LLMBuildConfig` in this RNGD-only worktree.
+    """
 
 
 @dataclass
@@ -61,7 +64,10 @@ class LLMRuntimeConfig(CoreRuntimeConfig):
 
 @dataclass(kw_only=True)
 class RuntimeConfig(LLMRuntimeConfig):
-    """Backward-compatible alias for the RNGD runtime surface."""
+    """Backward-compatible generic alias.
+
+    Prefer `LLMRuntimeConfig` in this RNGD-only worktree.
+    """
 
 
 @dataclass(kw_only=True)
@@ -78,4 +84,7 @@ class LLMRuntimeHandle(CoreRuntimeHandle):
 
 @dataclass(kw_only=True)
 class RuntimeHandle(LLMRuntimeHandle):
-    """Backward-compatible alias for runtime handles."""
+    """Backward-compatible generic alias.
+
+    Prefer `LLMRuntimeHandle` in this RNGD-only worktree.
+    """
