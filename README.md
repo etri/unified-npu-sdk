@@ -350,8 +350,10 @@ cfg = LLMBuildConfig(
     model_or_path="models/Qwen3-8B-FP8",
     out_dir="artifacts",
     model_name="qwen3_8b_fp8",
-    tensor_parallel_size=8,
-    backend_options=RNGDBuildOptions(build_mode="fxb_build"),
+    backend_options=RNGDBuildOptions(
+        build_mode="fxb_build",
+        tensor_parallel_size=8,
+    ),
 )
 result = build_unified_LLM(cfg)
 print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
