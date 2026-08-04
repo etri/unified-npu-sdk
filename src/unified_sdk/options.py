@@ -25,6 +25,13 @@ class QBBuildOptions:
     singlecore_compile: Any = None
     save_sample: Any = None
 
+    def _normalize_in_place(self) -> None:
+        if isinstance(self.product, str):
+            object.__setattr__(self, "product", self.product.strip())
+        if isinstance(self.target_device, str):
+            normalized = self.target_device.strip()
+            object.__setattr__(self, "target_device", normalized or None)
+
     @classmethod
     def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBBuildOptions":
         extra = dict(extra or {})
@@ -40,6 +47,7 @@ class QBBuildOptions:
         )
 
     def validate(self) -> "QBBuildOptions":
+        self._normalize_in_place()
         if self.quantize_method not in _QUANTIZE_METHODS:
             raise ValueError(
                 "QBBuildOptions.quantize_method must be one of: "
@@ -95,6 +103,11 @@ class QBVisionRuntimeOptions:
     core_mode: str | None = None
     allow_dynamic_shape: bool = False
 
+    def _normalize_in_place(self) -> None:
+        if isinstance(self.core_mode, str):
+            normalized = self.core_mode.strip()
+            object.__setattr__(self, "core_mode", normalized or None)
+
     @classmethod
     def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBVisionRuntimeOptions":
         extra = dict(extra or {})
@@ -105,6 +118,7 @@ class QBVisionRuntimeOptions:
         )
 
     def validate(self) -> "QBVisionRuntimeOptions":
+        self._normalize_in_place()
         if not isinstance(self.device, int) or self.device < 0:
             raise ValueError("QBVisionRuntimeOptions.device must be an integer >= 0")
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
@@ -127,6 +141,11 @@ class QBSequenceRuntimeOptions:
     core_mode: str | None = None
     allow_dynamic_shape: bool = False
 
+    def _normalize_in_place(self) -> None:
+        if isinstance(self.core_mode, str):
+            normalized = self.core_mode.strip()
+            object.__setattr__(self, "core_mode", normalized or None)
+
     @classmethod
     def from_legacy_extra(cls, extra: Mapping[str, Any] | None) -> "QBSequenceRuntimeOptions":
         extra = dict(extra or {})
@@ -137,6 +156,7 @@ class QBSequenceRuntimeOptions:
         )
 
     def validate(self) -> "QBSequenceRuntimeOptions":
+        self._normalize_in_place()
         if not isinstance(self.device, int) or self.device < 0:
             raise ValueError("QBSequenceRuntimeOptions.device must be an integer >= 0")
         if self.core_mode is not None and (not isinstance(self.core_mode, str) or not self.core_mode.strip()):
