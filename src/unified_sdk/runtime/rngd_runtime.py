@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-from unified_sdk.options import RNGDRuntimeOptions
+from unified_sdk.options import resolve_rngd_runtime_options
 from unified_sdk.runtime.registry import register
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import LLMRuntimeHandle, RuntimeConfig
 
 
 _CAPABILITY_FAMILY = "llm.artifact-and-generation-runtime"
@@ -79,7 +79,7 @@ class _RNGDRuntime:
 
     name = "rngd"
 
-    def create(self, cfg: RuntimeConfig) -> RuntimeHandle:
+    def create(self, cfg: RuntimeConfig) -> LLMRuntimeHandle:
         if cfg.backend != self.name:
             raise ValueError(f"RNGD runtime adapter received backend={cfg.backend!r}")
 
@@ -92,11 +92,7 @@ class _RNGDRuntime:
                 "Install furiosa-llm first (see developer.furiosa.ai)."
             ) from exc
 
-        runtime_options = RNGDRuntimeOptions.from_raw(
-            cfg.backend_options,
-            legacy_fxb_path=cfg.fxb_path,
-            legacy_devices=cfg.devices,
-        )
+        runtime_options = resolve_rngd_runtime_options(cfg.backend_options)
         fxb_path = str(runtime_options.fxb_path) if runtime_options.fxb_path else None
         llm_kwargs: Dict[str, Any] = {}
         if runtime_options.devices:
@@ -123,7 +119,7 @@ class _RNGDRuntime:
             "min_tokens": cfg.min_tokens,
         }
 
-        return RuntimeHandle(
+        return LLMRuntimeHandle(
             backend=self.name,
             engine_path=engine,
             ctx={
@@ -133,14 +129,13 @@ class _RNGDRuntime:
                 "fxb_path": fxb_path,
                 "sampling_defaults": sampling_defaults,
                 "backend_options": runtime_options.to_metadata(),
-                "extra": dict(cfg.extra or {}),
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 
-    def _make_sampling_params(self, rh: RuntimeHandle, overrides: Dict[str, Any]):
+    def _make_sampling_params(self, rh: LLMRuntimeHandle, overrides: Dict[str, Any]):
         from furiosa_llm import SamplingParams
 
         params = dict(rh.ctx.get("sampling_defaults", {}))
@@ -149,10 +144,10 @@ class _RNGDRuntime:
                 params[key] = value
         return SamplingParams(**params)
 
-    def infer(self, rh: RuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
+    def infer(self, rh: LLMRuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
         return self.generate(rh, prompt, **overrides)
 
-    def generate(self, rh: RuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
+    def generate(self, rh: LLMRuntimeHandle, prompt: Union[str, List[str]], **overrides: Any) -> Union[str, List[str]]:
         if not rh.ctx or "llm" not in rh.ctx:
             raise RuntimeError("RNGD RuntimeHandle is closed or invalid")
 
@@ -172,7 +167,7 @@ class _RNGDRuntime:
         texts = [_extract_text(o) for o in outputs]
         return texts[0] if single else texts
 
-    def destroy(self, rh: RuntimeHandle) -> None:
+    def destroy(self, rh: LLMRuntimeHandle) -> None:
         llm = rh.ctx.get("llm") if rh.ctx else None
         if llm is not None:
             for method in ("shutdown", "close", "dispose"):

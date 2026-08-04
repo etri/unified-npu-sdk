@@ -55,14 +55,24 @@ build surface 도 runtime 과 같은 정책으로 **`build_unified_LLM(cfg)`** �
 │   ├── run_rngd_build.py           # HF 모델 id/local path 전달(fetch) 또는 FXB 빌드
 │   ├── run_rngd_infer.py           # LLM 텍스트 생성 (프롬프트 → 텍스트)
 │   └── inspect_rngd_model.py       # 모델/FXB 메타 확인
+├── tests/
+│   ├── test_rngd_options.py
+│   ├── test_rngd_frontends.py
+│   ├── test_rngd_adapters.py
+│   └── test_rngd_public_api.py
 └── src/unified_sdk/
     ├── __init__.py
-    ├── types.py                    # 공통 데이터 구조 (LLM 친화적으로 슬림화)
+    ├── types.py                    # core + LLM capability 데이터 구조
+    ├── options.py                  # RNGDBuildOptions / RNGDRuntimeOptions
     ├── build/
     │   ├── __init__.py
     │   ├── api.py                  # build_unified_LLM
     │   ├── registry.py
     │   └── rngd_build.py           # RNGD 빌드 어댑터 (fetch 기본, 선택적 FXB build)
+    ├── frontends/
+    │   ├── __init__.py
+    │   ├── types.py
+    │   └── resolve_rngd_build_request.py
     └── runtime/
         ├── __init__.py
         ├── api.py                  # create_runtime_LLM / infer_LLM / generate_LLM / destroy_runtime_LLM

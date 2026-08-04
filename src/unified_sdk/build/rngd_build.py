@@ -5,7 +5,8 @@ import subprocess
 from typing import Any, Dict, List
 
 from unified_sdk.build.registry import register
-from unified_sdk.options import RNGDBuildOptions
+from unified_sdk.frontends import RNGDFrontendBuildRequest, resolve_rngd_build_request
+from unified_sdk.options import resolve_rngd_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
 
@@ -28,38 +29,10 @@ _VENDOR_API_MAP = {
 _VENDOR_TO_UNIFIED_API_MAP = {
     "HF model id or local model path passed through to furiosa_llm.LLM(...)": "build_unified_LLM(cfg) when backend_options.build_mode is absent or 'fetch'",
     "fxb build <model_id_or_path> <output_path> [options]": "build_unified_LLM(cfg) when backend_options.build_mode == 'fxb_build'",
-    "fxb build --tensor-parallel-size / --pipeline-parallel-size": "BuildConfig.tensor_parallel_size / pipeline_parallel_size",
-    "fxb build --max-model-len": "BuildConfig.max_model_len",
+    "fxb build --tensor-parallel-size / --pipeline-parallel-size": "RNGDBuildOptions.tensor_parallel_size / pipeline_parallel_size",
+    "fxb build --max-model-len": "RNGDBuildOptions.max_model_len",
     "HF model id or .fxb file path": "BuildResult.compiled_model_path",
 }
-
-
-def _require_positive_int(value: Any, field_name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise ValueError(f"BuildConfig.{field_name} must be a positive integer, got {value!r}")
-    return value
-
-
-def _fxb_output_path(out_dir: Path, model_name: str) -> Path:
-    output = out_dir / model_name
-    if output.suffix != ".fxb":
-        output = output.with_suffix(".fxb")
-    return output
-
-
-def _detect_prebuilt_artifact_dir(model_ref: str) -> str | None:
-    p = Path(model_ref)
-    if not p.is_dir():
-        return None
-
-    markers = []
-    for name in ("artifact.json", "binary_bundle.zip", "model_metadata.json"):
-        if (p / name).exists():
-            markers.append(name)
-
-    if not markers:
-        return None
-    return ", ".join(markers)
 
 
 def _looks_like_qwen3_8b_fp8(model_ref: str, model_name: str) -> bool:
@@ -105,19 +78,26 @@ class _RNGDBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"RNGD build adapter received backend={cfg.backend!r}")
 
-        extra = dict(cfg.extra or {})
-        options = RNGDBuildOptions.from_raw(cfg.backend_options, legacy_extra=extra)
-        model_ref = str(cfg.model_or_path)
+        options = resolve_rngd_build_options(cfg.backend_options)
         mode = options.build_mode
+        request = resolve_rngd_build_request(
+            request=RNGDFrontendBuildRequest(
+                model_or_path=str(cfg.model_or_path),
+                out_dir=Path(cfg.out_dir),
+                model_name=cfg.model_name,
+                build_mode=mode,
+            )
+        )
+        model_ref = request.model_ref
 
         if mode == "fetch":
             meta: Dict[str, Any] = {
                 "backend": self.name,
                 "source": "provided",
                 "model_ref": model_ref,
+                "resolved_kind": request.kind,
                 "note": "HF model id or local model path; loaded by furiosa_llm.LLM at runtime",
                 "backend_options": options.to_metadata(),
-                "extra": extra,
                 **_capability_metadata(options, "model_ref"),
             }
             return BuildResult(
@@ -126,16 +106,8 @@ class _RNGDBuildAdapter:
                 meta_data=meta,
             )
 
-        tp = _require_positive_int(cfg.tensor_parallel_size, "tensor_parallel_size")
-        pp = _require_positive_int(cfg.pipeline_parallel_size, "pipeline_parallel_size")
-        artifact_markers = _detect_prebuilt_artifact_dir(model_ref)
-        if artifact_markers:
-            raise RuntimeError(
-                "FXB build expects an upstream/raw Hugging Face model snapshot or a local model directory, "
-                f"but {model_ref!r} looks like a prebuilt Furiosa artifact repo ({artifact_markers}). "
-                "Use this path with the standard smoke (`model id/local artifact -> generate`) instead, "
-                "or prepare an upstream model snapshot such as 'Qwen/Qwen3-8B-FP8' for custom FXB smoke."
-            )
+        tp = options.tensor_parallel_size
+        pp = options.pipeline_parallel_size
 
         if _looks_like_qwen3_8b_fp8(model_ref, cfg.model_name) and tp == 1:
             raise RuntimeError(
@@ -144,9 +116,9 @@ class _RNGDBuildAdapter:
                 "documented by FuriosaAI."
             )
 
-        out_dir = Path(cfg.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        output_path = _fxb_output_path(out_dir, cfg.model_name)
+        if request.output_path is None:
+            raise RuntimeError("RNGD prepare step returned no FXB output path for fxb_build mode")
+        output_path = request.output_path
 
         cmd: List[str] = [
             "fxb",
@@ -158,8 +130,8 @@ class _RNGDBuildAdapter:
             "--pipeline-parallel-size",
             str(pp),
         ]
-        if cfg.max_model_len:
-            cmd.extend(["--max-model-len", str(int(cfg.max_model_len))])
+        if options.max_model_len:
+            cmd.extend(["--max-model-len", str(int(options.max_model_len))])
         if options.optim_level:
             cmd.extend(["--optim-level", str(options.optim_level)])
         if options.dry_run:
@@ -199,14 +171,14 @@ class _RNGDBuildAdapter:
             "source": "fxb_build",
             "model_ref": model_ref,
             "fxb_path": str(output_path),
+            "resolved_kind": request.kind,
             "tensor_parallel_size": tp,
             "pipeline_parallel_size": pp,
-            "max_model_len": cfg.max_model_len,
+            "max_model_len": options.max_model_len,
             "command": cmd,
             "stdout": (proc.stdout or "").strip(),
             "stderr": (proc.stderr or "").strip(),
             "backend_options": options.to_metadata(),
-            "extra": extra,
             **_capability_metadata(options, "fxb_build"),
         }
         return BuildResult(
