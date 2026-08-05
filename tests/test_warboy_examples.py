@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from io import StringIO
-from pathlib import Path
 import runpy
+from pathlib import Path
 import sys
 import tempfile
 import types
@@ -25,6 +25,38 @@ from unified_sdk.frontends import (  # noqa: E402
 
 
 class WarboyExamplesTest(unittest.TestCase):
+    def test_runtime_loop_always_destroys_runtime_on_error(self) -> None:
+        script_path = REPO_ROOT / "examples" / "run_warboy_infer.py"
+        module_globals = runpy.run_path(str(script_path), run_name="warboy_infer_test")
+        run_runtime_loop = module_globals["_run_runtime_loop"]
+
+        fake_handle = object()
+        created = []
+        destroyed = []
+
+        def _create_runtime(_cfg):
+            created.append(True)
+            return fake_handle
+
+        def _infer(_rh, _batch):
+            raise RuntimeError("boom")
+
+        def _destroy_runtime(rh):
+            destroyed.append(rh)
+
+        with self.assertRaises(RuntimeError):
+            run_runtime_loop(
+                cfg=object(),
+                batch=object(),
+                iters=1,
+                create_runtime_fn=_create_runtime,
+                infer_fn=_infer,
+                destroy_runtime_fn=_destroy_runtime,
+            )
+
+        self.assertTrue(created)
+        self.assertEqual(destroyed, [fake_handle])
+
     def test_run_warboy_build_uses_keyword_frontend_request(self) -> None:
         script_path = REPO_ROOT / "examples" / "run_warboy_build.py"
         with tempfile.TemporaryDirectory() as tmpdir:

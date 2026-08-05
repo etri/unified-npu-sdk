@@ -192,6 +192,23 @@ def _format_output_shape(output) -> str:
     return str(tuple(output.shape))
 
 
+def _run_runtime_loop(cfg, batch, *, iters: int, create_runtime_fn, infer_fn, destroy_runtime_fn):
+    rh = create_runtime_fn(cfg)
+    try:
+        _ = infer_fn(rh, batch)  # warmup
+
+        times = []
+        y = None
+        for _ in range(iters):
+            t0 = timeit.default_timer()
+            y = infer_fn(rh, batch)
+            t1 = timeit.default_timer()
+            times.append((t1 - t0) * 1000)
+        return y, times
+    finally:
+        destroy_runtime_fn(rh)
+
+
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
@@ -241,6 +258,7 @@ if __name__ == "__main__":
         else:
             batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
             input_source = f"synthetic zeros float32 {args.input_shape}"
+        print(f"[WARN] image not found; using {input_source}")
 
     # NOTE: quantized ENF 의 입력 dtype/layout 은 컴파일 시 고정된다(int8/uint8 인 경우가 많음).
     # 정확한 정합이 필요하면 Furiosa Model Zoo 의 preprocess 를 쓰거나 ONNX 입력 스펙에 맞춰야 한다.
@@ -258,18 +276,15 @@ if __name__ == "__main__":
         ),
     )
 
-    rh = create_runtime(cfg)
-
     x = batch
-    _ = infer(rh, x)  # warmup
-
-    times = []
-    y = None
-    for _ in range(args.iters):
-        t0 = timeit.default_timer()
-        y = infer(rh, x)
-        t1 = timeit.default_timer()
-        times.append((t1 - t0) * 1000)
+    y, times = _run_runtime_loop(
+        cfg,
+        x,
+        iters=args.iters,
+        create_runtime_fn=create_runtime,
+        infer_fn=infer,
+        destroy_runtime_fn=destroy_runtime,
+    )
 
     if isinstance(y, list):
         y = [np.ascontiguousarray(item) for item in y]
@@ -302,5 +317,3 @@ if __name__ == "__main__":
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={_format_output_shape(y)}")
     print(f"(engine={engine_path}, input={input_source}, device={args.device})")
-
-    destroy_runtime(rh)
