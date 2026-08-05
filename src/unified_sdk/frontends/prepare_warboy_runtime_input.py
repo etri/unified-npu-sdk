@@ -42,6 +42,18 @@ def _normalize_dtype_name(value: Any) -> str | None:
     return text
 
 
+def _infer_dtype_from_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    upper = text.upper()
+    if "UINT8" in upper or "U8" == upper.strip():
+        return "uint8"
+    if "FLOAT32" in upper or "FP32" in upper or "F32" == upper.strip():
+        return "float32"
+    return None
+
+
 def _load_image_batch_float32(image_path: Path, input_shape: tuple[int, ...]):
     from PIL import Image
 
@@ -141,6 +153,13 @@ def inspect_warboy_input_contract(engine_path: Path, *, device: str | None = Non
                 expected_dtype = _normalize_dtype_name(getattr(first, attr, None))
                 if expected_dtype:
                     break
+            if expected_dtype is None:
+                expected_dtype = _infer_dtype_from_text(first)
+            if expected_dtype is None:
+                for attr in ("name", "desc", "description", "format"):
+                    expected_dtype = _infer_dtype_from_text(getattr(first, attr, None))
+                    if expected_dtype:
+                        break
 
         return {"expected_dtype": expected_dtype, "inspection_warning": None}
     except Exception as exc:
@@ -152,28 +171,45 @@ def inspect_warboy_input_contract(engine_path: Path, *, device: str | None = Non
                 close() if callable(close) else None
 
 
-def _load_with_model_zoo_preprocess(model_helper, image_path: Path, expected_dtype: str | None):
+def _run_model_zoo_preprocess_candidates(model_helper, image_path: Path):
+    results = []
     preprocess_error = None
-    kwargs_candidates = ({}, {"with_scaling": True}) if expected_dtype == "uint8" else ({"with_scaling": True}, {})
-    best_candidate = None
-
-    for kwargs in kwargs_candidates:
+    for kwargs in ({"with_scaling": True}, {}):
         for candidate in ([str(image_path)], str(image_path)):
             try:
                 inputs, contexts = model_helper.preprocess(candidate, **kwargs)
                 arr = _extract_first_input(inputs)
-                actual_dtype = _normalize_dtype_name(arr)
-                if expected_dtype is not None and actual_dtype != expected_dtype:
-                    best_candidate = best_candidate or (inputs, contexts, kwargs, actual_dtype)
-                    continue
-                return inputs, contexts, kwargs, actual_dtype
+                results.append((inputs, contexts, kwargs, _normalize_dtype_name(arr)))
+                break
             except Exception as exc:
                 preprocess_error = exc
+    if not results:
+        raise RuntimeError(f"Model Zoo preprocess failed: {preprocess_error!r}")
+    return results
 
-    if best_candidate is not None:
-        inputs, contexts, kwargs, actual_dtype = best_candidate
+
+def _load_with_model_zoo_preprocess(model_helper, image_path: Path, expected_dtype: str | None):
+    results = _run_model_zoo_preprocess_candidates(model_helper, image_path)
+    if expected_dtype is not None:
+        for inputs, contexts, kwargs, actual_dtype in results:
+            if actual_dtype == expected_dtype:
+                return inputs, contexts, kwargs, actual_dtype
+        available = sorted({dtype or "unknown" for _, _, _, dtype in results})
+        raise RuntimeError(
+            f"Model Zoo preprocess did not yield expected dtype={expected_dtype!r}; "
+            f"available candidates={available}"
+        )
+
+    available_dtypes = sorted({dtype or "unknown" for _, _, _, dtype in results})
+    if len(available_dtypes) == 1:
+        inputs, contexts, kwargs, actual_dtype = results[0]
         return inputs, contexts, kwargs, actual_dtype
-    raise RuntimeError(f"Model Zoo preprocess failed: {preprocess_error!r}")
+
+    raise RuntimeError(
+        "Unable to resolve Warboy input dtype automatically; "
+        f"model-zoo preprocess yielded multiple dtype candidates={available_dtypes}. "
+        "Re-run with an explicit input dtype override."
+    )
 
 
 def _load_synthetic_with_model_zoo_preprocess(model_helper, input_shape: tuple[int, ...], expected_dtype: str | None):
@@ -199,15 +235,20 @@ def prepare_warboy_runtime_input(
     image_path: str | Path,
     input_shape: tuple[int, ...],
     device: str | None = None,
+    preferred_dtype: str | None = None,
 ) -> PreparedWarboyRuntimeInput:
     engine = Path(engine_path).expanduser().resolve()
     image = Path(image_path).expanduser().resolve()
 
     contract = inspect_warboy_input_contract(engine, device=device)
-    expected_dtype = contract.get("expected_dtype")
+    expected_dtype = preferred_dtype or contract.get("expected_dtype")
     warnings: list[str] = []
     if contract.get("inspection_warning"):
         warnings.append(str(contract["inspection_warning"]))
+    if preferred_dtype is not None:
+        warnings.append(f"using explicit input dtype override: {preferred_dtype}")
+    elif expected_dtype is None:
+        warnings.append("input contract dtype could not be resolved automatically")
 
     model_helper, helper_warning = _maybe_create_model_zoo_helper(engine)
     if helper_warning is not None:
@@ -234,10 +275,15 @@ def prepare_warboy_runtime_input(
             batch = _load_image_batch_uint8(image, input_shape)
             actual_dtype = "uint8"
             source_description = f"{image} (generic uint8 image fallback)"
-        else:
+        elif expected_dtype == "float32":
             batch = _load_image_batch_float32(image, input_shape)
             actual_dtype = "float32"
             source_description = f"{image} (generic float32 image fallback)"
+        else:
+            raise RuntimeError(
+                "Unable to determine Warboy runtime input dtype for generic image fallback. "
+                "Re-run with --input-dtype uint8 or --input-dtype float32."
+            )
 
         return PreparedWarboyRuntimeInput(
             batch=batch,
@@ -272,10 +318,15 @@ def prepare_warboy_runtime_input(
         batch = np.zeros(input_shape, dtype=np.uint8)
         actual_dtype = "uint8"
         source_description = f"synthetic zeros uint8 {input_shape} (generic fallback)"
-    else:
+    elif expected_dtype == "float32":
         batch = np.zeros(input_shape, dtype=np.float32)
         actual_dtype = "float32"
         source_description = f"synthetic zeros float32 {input_shape} (generic fallback)"
+    else:
+        raise RuntimeError(
+            "Unable to determine Warboy runtime input dtype for synthetic fallback. "
+            "Re-run with --input-dtype uint8 or --input-dtype float32."
+        )
 
     return PreparedWarboyRuntimeInput(
         batch=batch,
