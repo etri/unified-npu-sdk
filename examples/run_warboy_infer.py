@@ -1,9 +1,11 @@
 import argparse
+import contextlib
 import timeit
 from pathlib import Path
 import sys
 import os
 import re
+import tempfile
 
 
 def _center_crop_resize_pil(image, size: int):
@@ -178,6 +180,23 @@ def _load_with_model_zoo_preprocess(model_helper, image_path: Path, prefer_uint8
     raise RuntimeError(f"Model Zoo preprocess failed: {preprocess_error!r}")
 
 
+def _load_synthetic_with_model_zoo_preprocess(model_helper, input_shape: tuple[int, ...]):
+    from PIL import Image
+
+    size = input_shape[-1]
+    synthetic = Image.new("RGB", (size, size), color=(127, 127, 127))
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        synthetic.save(tmp_path, format="JPEG")
+        return _load_with_model_zoo_preprocess(model_helper, tmp_path, prefer_uint8=False)
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(FileNotFoundError):
+                tmp_path.unlink()
+
+
 def _extract_prediction_id(output_array, torch_module) -> int:
     y_t = torch_module.from_numpy(output_array)
     if y_t.ndim == 1 and y_t.numel() == 1:
@@ -249,12 +268,20 @@ if __name__ == "__main__":
             input_source = str(image_path)
     else:
         if model_helper is not None:
-            if _prefers_uint8_fallback(engine_path.stem):
-                batch = np.zeros(args.input_shape, dtype=np.uint8)
-                input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo fallback)"
-            else:
-                batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
-                input_source = f"synthetic zeros float32 {args.input_shape} (model-zoo fallback)"
+            try:
+                batch, contexts, preprocess_kwargs = _load_synthetic_with_model_zoo_preprocess(
+                    model_helper,
+                    args.input_shape,
+                )
+                input_source = f"synthetic RGB image via model-zoo preprocess {preprocess_kwargs}"
+            except Exception as exc:
+                print(f"[WARN] model-zoo synthetic preprocess failed; falling back to heuristic zeros: {exc!r}")
+                if _prefers_uint8_fallback(engine_path.stem):
+                    batch = np.zeros(args.input_shape, dtype=np.uint8)
+                    input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo heuristic fallback)"
+                else:
+                    batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
+                    input_source = f"synthetic zeros float32 {args.input_shape} (model-zoo heuristic fallback)"
         else:
             batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
             input_source = f"synthetic zeros float32 {args.input_shape}"

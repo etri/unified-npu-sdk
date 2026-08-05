@@ -10,6 +10,8 @@ import types
 import unittest
 from unittest import mock
 
+import numpy as np
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = REPO_ROOT / "src"
@@ -25,6 +27,21 @@ from unified_sdk.frontends import (  # noqa: E402
 
 
 class WarboyExamplesTest(unittest.TestCase):
+    def test_synthetic_model_zoo_preprocess_produces_vendor_dtype(self) -> None:
+        script_path = REPO_ROOT / "examples" / "run_warboy_infer.py"
+        module_globals = runpy.run_path(str(script_path), run_name="warboy_infer_test")
+        load_synthetic = module_globals["_load_synthetic_with_model_zoo_preprocess"]
+
+        class _FakeModelHelper:
+            def preprocess(self, candidate, **kwargs):
+                arr = np.zeros((1, 3, 224, 224), dtype=np.uint8)
+                return [arr], {"candidate": candidate, "kwargs": kwargs}
+
+        batch, contexts, preprocess_kwargs = load_synthetic(_FakeModelHelper(), (1, 3, 224, 224))
+        self.assertEqual(batch[0].dtype, np.uint8)
+        self.assertIsNotNone(contexts)
+        self.assertIsInstance(preprocess_kwargs, dict)
+
     def test_runtime_loop_always_destroys_runtime_on_error(self) -> None:
         script_path = REPO_ROOT / "examples" / "run_warboy_infer.py"
         module_globals = runpy.run_path(str(script_path), run_name="warboy_infer_test")
