@@ -7,7 +7,7 @@ Each backend registers its build adapter in the registry at import time.
 This Warboy-only worktree exposes only the FuriosaAI Warboy adapter.
 """
 
-from .api import build_unified  # Re-export high-level API
+from .api import build_unified, describe_build_api_mapping  # Re-export high-level API
 
 # Internal adapters (auto-registration)
 from . import warboy_build as _warboy  # noqa: F401

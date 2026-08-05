@@ -53,7 +53,14 @@
 │   └── inspect_warboy_model.py     # .enf 입출력 메타 확인
 └── src/unified_sdk/
     ├── __init__.py
-    ├── types.py                    # 공통 데이터 구조 (Warboy 슬림화)
+    ├── types.py                    # core build/runtime config + Warboy capability contract
+    ├── options.py                  # typed backend options (target_npu / runtime device 등)
+    ├── frontends/
+    │   ├── __init__.py
+    │   ├── types.py                # prepare/fetch request/result contract
+    │   ├── prepare_warboy_source.py
+    │   ├── resolve_warboy_build_request.py
+    │   └── warboy_model_zoo.py
     ├── build/
     │   ├── __init__.py
     │   ├── api.py                  # build_unified
@@ -141,7 +148,7 @@ docker version
   자세한 절차는 <https://developer.furiosa.ai/docs/latest/en/> 참조.
 - 컨테이너 실행 시 존재하는 장치 노드(`/dev/npu*`)만 `--device`로 전달합니다.
 - 기본 컴파일 타깃은 `warboy-2pe` 입니다.
-- 1 PE 환경에서는 `--target-npu warboy` 또는 `extra={"target_npu": "warboy"}` 를 명시해 사용하세요.
+- 1 PE 환경에서는 `--target-npu warboy` 또는 `WarboyBuildOptions(target_npu="warboy")` 를 사용하세요.
 
 ### 4. Docker 빌드 & 실행
 
@@ -334,8 +341,9 @@ python3 examples/run_warboy_infer.py \
 ### 컴파일 (.enf 생성)
 
 ```python
+from unified_sdk.build import build_unified
+from unified_sdk.options import WarboyBuildOptions
 from unified_sdk.types import BuildConfig
-from unified_sdk.build.api import build_unified
 
 # (a) standard fetch from model zoo ENF
 cfg = BuildConfig(
@@ -343,7 +351,6 @@ cfg = BuildConfig(
     model_or_path="models/resnet50.enf",
     out_dir="builds",
     model_name="resnet50",
-    precision="int8",
     input_name="input",
     input_shape=(1, 3, 224, 224),
 )
@@ -356,24 +363,27 @@ cfg = BuildConfig(
     model_or_path="models/resnet50_quantized.onnx",  # quantized ONNX 경로
     out_dir="builds",
     model_name="resnet50",
-    precision="int8",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    extra={"target_npu": "warboy-2pe", "target_ir": "enf"},
+    backend_options=WarboyBuildOptions(
+        target_npu="warboy-2pe",
+        target_ir="enf",
+    ),
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)
 
 # 1 PE 환경 예시:
-#     extra={"target_npu": "warboy", "target_ir": "enf"}
+#     backend_options=WarboyBuildOptions(target_npu="warboy")
 ```
 
 ### 추론
 
 ```python
 import numpy as np
-from unified_sdk.types import RuntimeConfig
 from unified_sdk.runtime import create_runtime, infer, destroy_runtime
+from unified_sdk.options import WarboyRuntimeOptions
+from unified_sdk.types import RuntimeConfig
 
 cfg = RuntimeConfig(
     backend="warboy",
@@ -381,7 +391,7 @@ cfg = RuntimeConfig(
     input_name="input",
     output_name="output",
     input_shape=(1, 3, 224, 224),
-    extra={"device": None},   # 예: "warboy(0)*2"
+    backend_options=WarboyRuntimeOptions(device=None),   # 예: "warboy(0)*2"
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 224, 224), dtype=np.float32))
