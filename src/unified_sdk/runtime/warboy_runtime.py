@@ -6,7 +6,7 @@ import numpy as np
 
 from unified_sdk.options import resolve_warboy_runtime_options
 from unified_sdk.runtime.registry import register
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import InferOutput, RuntimeConfig, RuntimeHandle
 
 
 _CAPABILITY_FAMILY = "vision.cli-compiled-runtime"
@@ -26,7 +26,7 @@ _VENDOR_API_MAP = {
 _VENDOR_TO_UNIFIED_API_MAP = {
     "furiosa.runtime.sync.create_runner(str(enf_path), device=...)": "create_runtime(cfg)",
     "runner.run([input_array])": "infer(rh, input_array)",
-    "runner output tensor/list": "infer(...) return np.ndarray",
+    "runner output tensor/list": "infer(...) return np.ndarray | list[np.ndarray]",
     "runner.close() / runner.__exit__(...)": "destroy_runtime(rh)",
 }
 
@@ -72,7 +72,7 @@ def _one_to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _to_numpy(output: Any) -> np.ndarray:
+def _to_numpy(output: Any) -> InferOutput:
     if isinstance(output, (list, tuple)):
         if len(output) == 1:
             return _one_to_numpy(output[0])
@@ -103,7 +103,7 @@ class _WarboyRuntime:
             raise ValueError(f"Expected a .enf model file, got: {p}")
 
         input_name = _require_non_empty_string(cfg.input_name, "input_name")
-        output_name = _require_non_empty_string(cfg.output_name, "output_name")
+        output_name = _require_non_empty_string(cfg.output_name, "output_name") if cfg.output_name is not None else None
         input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
         options = resolve_warboy_runtime_options(cfg.backend_options)
         device = options.device  # 예: "warboy(0)*2" 또는 None (기본)
@@ -143,7 +143,7 @@ class _WarboyRuntime:
             },
         )
 
-    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> np.ndarray:
+    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> InferOutput:
         if not rh.ctx or "runner" not in rh.ctx:
             raise RuntimeError("Warboy RuntimeHandle is closed or invalid")
 

@@ -154,6 +154,7 @@ if __name__ == "__main__":
             target_ir="enf",
             compiler_config=tuple(args.compiler_config),
         ),
+        prepared_input=prepared_input,
     )
 
     result = build_unified(cfg)

@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.frontends.types import (
+    PreparedWarboyBuildInput,
+    PreparedWarboyCompileSource,
+    ProvidedWarboyArtifact,
+)
 from unified_sdk.options import WarboyBuildOptions, resolve_warboy_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
@@ -69,6 +74,30 @@ def _resolve_model_source(model_or_path: str | Path) -> tuple[str, Path]:
     )
 
 
+def _coerce_prepared_input(cfg: BuildConfig, enf_path: Path) -> PreparedWarboyBuildInput:
+    if cfg.prepared_input is not None:
+        return cfg.prepared_input
+
+    source_kind, source_path = _resolve_model_source(cfg.model_or_path)
+    if source_kind == "provided":
+        return PreparedWarboyBuildInput(
+            kind="provided_artifact",
+            provided_artifact=ProvidedWarboyArtifact(
+                source_path=source_path,
+                destination_path=enf_path,
+            ),
+            compile_source=None,
+        )
+    return PreparedWarboyBuildInput(
+        kind="compile_source",
+        compile_source=PreparedWarboyCompileSource(
+            source=str(source_path),
+            source_label="quantized_onnx",
+        ),
+        provided_artifact=None,
+    )
+
+
 def _capability_metadata(options: WarboyBuildOptions, source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
@@ -110,10 +139,13 @@ class _WarboyBuildAdapter:
         options = resolve_warboy_build_options(cfg.backend_options)
         enf_path = _build_output_path(cfg.out_dir, cfg.model_name)
         enf_path.parent.mkdir(parents=True, exist_ok=True)
-        source_kind, source_path = _resolve_model_source(cfg.model_or_path)
+        prepared_input = _coerce_prepared_input(cfg, enf_path)
 
-        if source_kind == "provided":
-            src = source_path
+        if prepared_input.kind == "provided_artifact":
+            artifact = prepared_input.provided_artifact
+            if artifact is None:
+                raise RuntimeError("Warboy prepared_input.kind='provided_artifact' requires provided_artifact payload")
+            src = artifact.source_path
             if not src.is_file():
                 raise FileNotFoundError(f"Provided .enf not found: {src}")
             if src != enf_path:
@@ -133,7 +165,11 @@ class _WarboyBuildAdapter:
                 meta_data=meta,
             )
 
-        onnx_path = source_path
+        compile_source = prepared_input.compile_source
+        if compile_source is None:
+            raise RuntimeError("Warboy prepared_input.kind='compile_source' requires compile_source payload")
+
+        onnx_path = Path(compile_source.source).expanduser().resolve()
         if not onnx_path.is_file():
             raise FileNotFoundError(f"quantized ONNX not found: {onnx_path}")
 
@@ -144,7 +180,8 @@ class _WarboyBuildAdapter:
                 "(APT: furiosa-compiler; see developer.furiosa.ai)."
             )
 
-        _validate_shape(tuple(cfg.input_shape), "input_shape")
+        if cfg.input_shape is not None:
+            _validate_shape(tuple(cfg.input_shape), "input_shape")
         command = [
             compiler,
             str(onnx_path),
@@ -177,7 +214,7 @@ class _WarboyBuildAdapter:
             "target_npu": options.target_npu,
             "target_ir": options.target_ir,
             "onnx_path": str(onnx_path),
-            "input_shape": tuple(cfg.input_shape),
+            "input_shape": tuple(cfg.input_shape) if cfg.input_shape is not None else None,
             "precision": "int8",
             "backend_options": options.to_metadata(),
             **_capability_metadata(options, "furiosa_compiler"),

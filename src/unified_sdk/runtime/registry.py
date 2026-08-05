@@ -1,11 +1,11 @@
 from __future__ import annotations
 from typing import Dict, Protocol
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import InferOutput, RuntimeConfig, RuntimeHandle
 
 class RuntimeAdapter(Protocol):
     name: str
     def create(self, cfg: RuntimeConfig) -> RuntimeHandle: ...
-    def infer(self, rh: RuntimeHandle, input_array) -> "np.ndarray": ...
+    def infer(self, rh: RuntimeHandle, input_array) -> InferOutput: ...
     def destroy(self, rh: RuntimeHandle) -> None: ...
 
 _REGISTRY: Dict[str, RuntimeAdapter] = {}
@@ -18,4 +18,3 @@ def get_runtime(name: str) -> RuntimeAdapter:
         return _REGISTRY[name]
     except KeyError:
         raise ValueError(f"Runtime backend '{name}' not registered. Available: {list(_REGISTRY)}")
-

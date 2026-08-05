@@ -48,6 +48,7 @@ class WarboyExamplesTest(unittest.TestCase):
                 )
 
             fake_result = types.SimpleNamespace(compiled_model_path=str(out_dir / "resnet50.enf"))
+            captured_cfg = {}
             argv = [
                 str(script_path),
                 "--models-dir",
@@ -60,14 +61,19 @@ class WarboyExamplesTest(unittest.TestCase):
                 "resnet50",
             ]
 
+            def _fake_build(cfg):
+                captured_cfg["cfg"] = cfg
+                return fake_result
+
             stdout = StringIO()
             with mock.patch("unified_sdk.frontends.resolve_warboy_build_request", side_effect=_fake_resolve):
-                with mock.patch("unified_sdk.build.build_unified", return_value=fake_result):
+                with mock.patch("unified_sdk.build.build_unified", side_effect=_fake_build):
                     with mock.patch.object(sys, "argv", argv):
                         with redirect_stdout(stdout):
                             runpy.run_path(str(script_path), run_name="__main__")
 
             self.assertIn("Complete!", stdout.getvalue())
+            self.assertIsNotNone(captured_cfg["cfg"].prepared_input)
 
 
 if __name__ == "__main__":
