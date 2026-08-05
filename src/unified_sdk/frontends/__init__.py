@@ -80,7 +80,7 @@ def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -
     destination = Path(rbln_path).expanduser().resolve()
     source_path = Path(model_or_path).expanduser().resolve() if isinstance(model_or_path, (str, Path)) else None
 
-    if source_path is not None and source_path.suffix == ".rbln":
+    if source_path is not None and (source_path.suffix == ".rbln" or source_path.is_dir()):
         return PreparedRBLNVisionBuildInput(
             kind="provided_artifact",
             provided_artifact=ProvidedRBLNArtifact(
