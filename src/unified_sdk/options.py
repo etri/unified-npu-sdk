@@ -36,8 +36,6 @@ class RBLNVisionBuildOptions:
     npu: str | None = None
     precision: Literal["fp32", "fp16"] = "fp16"
     model_trace_method: str | None = None
-    compile_frontend: Literal["rebel", "optimum_image_classification"] = "rebel"
-    source_cache_dir: str | Path | None = None
 
     def normalized(self) -> "RBLNVisionBuildOptions":
         npu = _normalize_optional_str(self.npu)
@@ -50,21 +48,10 @@ class RBLNVisionBuildOptions:
                 "RBLNVisionBuildOptions.model_trace_method must be one of: "
                 + ", ".join(repr(item) for item in _TRACE_METHODS)
             )
-        compile_frontend = str(self.compile_frontend).strip().lower()
-        if compile_frontend not in _VISION_FRONTENDS:
-            raise ValueError(
-                "RBLNVisionBuildOptions.compile_frontend must be one of: "
-                + ", ".join(repr(item) for item in _VISION_FRONTENDS)
-            )
-        source_cache_dir = None
-        if self.source_cache_dir is not None:
-            source_cache_dir = Path(self.source_cache_dir).expanduser().resolve()
         return RBLNVisionBuildOptions(
             npu=npu,
             precision=precision,  # type: ignore[arg-type]
             model_trace_method=model_trace_method,
-            compile_frontend=compile_frontend,  # type: ignore[arg-type]
-            source_cache_dir=source_cache_dir,
         )
 
     def to_metadata(self) -> Dict[str, Any]:
@@ -73,8 +60,6 @@ class RBLNVisionBuildOptions:
             "npu": normalized.npu,
             "precision": normalized.precision,
             "model_trace_method": normalized.model_trace_method,
-            "compile_frontend": normalized.compile_frontend,
-            "source_cache_dir": str(normalized.source_cache_dir) if normalized.source_cache_dir is not None else None,
         }
 
     @classmethod
@@ -83,8 +68,6 @@ class RBLNVisionBuildOptions:
             npu=extra.get("npu"),
             precision=extra.get("precision", "fp16"),
             model_trace_method=extra.get("model_trace_method"),
-            compile_frontend=extra.get("compile_frontend", "rebel"),
-            source_cache_dir=extra.get("source_cache_dir"),
         ).normalized()
 
 
@@ -186,6 +169,8 @@ class RBLNLLMBuildOptions:
 @dataclass(frozen=True)
 class RBLNLLMRuntimeOptions:
     runtime_impl: Literal["vllm"] = "vllm"
+    tensor_parallel_size: int = 1
+    max_model_len: int = 512
     block_size: int | None = None
     trust_remote_code: bool = False
     enforce_eager: bool = False
@@ -197,6 +182,12 @@ class RBLNLLMRuntimeOptions:
         runtime_impl = str(self.runtime_impl).strip().lower()
         if runtime_impl != "vllm":
             raise ValueError("RBLNLLMRuntimeOptions.runtime_impl currently supports only 'vllm'")
+        tensor_parallel_size = int(self.tensor_parallel_size)
+        if tensor_parallel_size <= 0:
+            raise ValueError("RBLNLLMRuntimeOptions.tensor_parallel_size must be > 0")
+        max_model_len = int(self.max_model_len)
+        if max_model_len <= 0:
+            raise ValueError("RBLNLLMRuntimeOptions.max_model_len must be > 0")
         block_size = None if self.block_size is None else int(self.block_size)
         if block_size is not None and block_size <= 0:
             raise ValueError("RBLNLLMRuntimeOptions.block_size must be > 0 when provided")
@@ -210,6 +201,8 @@ class RBLNLLMRuntimeOptions:
             additional_config = dict(self.additional_config)
         return RBLNLLMRuntimeOptions(
             runtime_impl=runtime_impl,  # type: ignore[arg-type]
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
             block_size=block_size,
             trust_remote_code=_parse_bool(self.trust_remote_code, "RBLNLLMRuntimeOptions.trust_remote_code"),
             enforce_eager=_parse_bool(self.enforce_eager, "RBLNLLMRuntimeOptions.enforce_eager"),
@@ -222,6 +215,8 @@ class RBLNLLMRuntimeOptions:
         normalized = self.normalized()
         return {
             "runtime_impl": normalized.runtime_impl,
+            "tensor_parallel_size": normalized.tensor_parallel_size,
+            "max_model_len": normalized.max_model_len,
             "block_size": normalized.block_size,
             "trust_remote_code": normalized.trust_remote_code,
             "enforce_eager": normalized.enforce_eager,
@@ -234,6 +229,8 @@ class RBLNLLMRuntimeOptions:
     def from_legacy_extra(cls, extra: Dict[str, Any]) -> "RBLNLLMRuntimeOptions":
         return cls(
             runtime_impl=extra.get("runtime_impl", "vllm"),
+            tensor_parallel_size=extra.get("tensor_parallel_size", 1),
+            max_model_len=extra.get("max_model_len", 512),
             block_size=extra.get("block_size"),
             trust_remote_code=extra.get("trust_remote_code", False),
             enforce_eager=extra.get("enforce_eager", False),

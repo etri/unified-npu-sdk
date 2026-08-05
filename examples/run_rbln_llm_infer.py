@@ -64,8 +64,6 @@ if __name__ == "__main__":
     cfg = LLMRuntimeConfig(
         backend="rbln",
         engine_path=args.engine_path,
-        tensor_parallel_size=args.tensor_parallel_size,
-        max_model_len=args.max_model_len,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
@@ -73,6 +71,8 @@ if __name__ == "__main__":
         min_tokens=args.min_tokens,
         backend_options=RBLNLLMRuntimeOptions(
             runtime_impl=args.runtime_impl,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=args.max_model_len,
             block_size=args.block_size,
             trust_remote_code=args.trust_remote_code,
         ),

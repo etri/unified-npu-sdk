@@ -89,10 +89,10 @@ class _RBLNLLMRuntimeAdapter:
         engine = str(cfg.engine_path)
         llm_kwargs: Dict[str, Any] = {
             "model": engine,
-            "tensor_parallel_size": cfg.tensor_parallel_size,
-            "max_model_len": cfg.max_model_len,
+            "tensor_parallel_size": options.tensor_parallel_size,
+            "max_model_len": options.max_model_len,
         }
-        llm_kwargs["block_size"] = int(options.block_size) if options.block_size is not None else int(cfg.max_model_len)
+        llm_kwargs["block_size"] = int(options.block_size) if options.block_size is not None else int(options.max_model_len)
         llm_kwargs["trust_remote_code"] = options.trust_remote_code
         llm_kwargs["enforce_eager"] = options.enforce_eager
         if options.dtype:

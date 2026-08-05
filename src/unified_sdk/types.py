@@ -93,9 +93,6 @@ class LLMBuildConfig(CoreLLMBuildConfig):
 @dataclass(kw_only=True)
 class CoreLLMRuntimeConfig:
     engine_path: str | Path
-    tokenizer_path: Optional[str | Path] = None
-    tensor_parallel_size: int = 1
-    max_model_len: int = 512
     max_tokens: int = 128
     temperature: float = 0.7
     top_p: float = 1.0

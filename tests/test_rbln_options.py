@@ -57,9 +57,17 @@ class RBLNOptionsTest(unittest.TestCase):
 
     def test_resolve_llm_runtime_options_from_instance(self) -> None:
         options = resolve_rbln_llm_runtime_options(
-            RBLNLLMRuntimeOptions(runtime_impl="vllm", block_size=256, dtype="float16")
+            RBLNLLMRuntimeOptions(
+                runtime_impl="vllm",
+                tensor_parallel_size=2,
+                max_model_len=1024,
+                block_size=256,
+                dtype="float16",
+            )
         )
         self.assertEqual(options.runtime_impl, "vllm")
+        self.assertEqual(options.tensor_parallel_size, 2)
+        self.assertEqual(options.max_model_len, 1024)
         self.assertEqual(options.block_size, 256)
         self.assertEqual(options.dtype, "float16")
 
