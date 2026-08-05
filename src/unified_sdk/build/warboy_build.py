@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -37,6 +38,53 @@ _VENDOR_TO_UNIFIED_API_MAP = {
     "prepare_warboy_quantized_onnx.py": "prepare quantized ONNX before build_unified(cfg)",
     ".enf artifact": "BuildResult.compiled_model_path",
 }
+
+
+def _metadata_sidecar_path(enf_path: Path) -> Path:
+    return Path(f"{enf_path}.json")
+
+
+def _read_sidecar_metadata(enf_path: Path) -> Dict[str, Any] | None:
+    sidecar = _metadata_sidecar_path(enf_path)
+    if not sidecar.is_file():
+        return None
+    try:
+        data = json.loads(sidecar.read_text())
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_sidecar_metadata(enf_path: Path, metadata: Dict[str, Any]) -> None:
+    sidecar = _metadata_sidecar_path(enf_path)
+    sidecar.write_text(json.dumps(metadata, indent=2, sort_keys=True))
+
+
+def _inspect_onnx_input_contract(onnx_path: Path) -> Dict[str, Any]:
+    try:
+        import onnx
+        from onnx import TensorProto
+    except Exception:
+        return {"input_dtype": None, "input_shape": None, "inspection_warning": "onnx unavailable"}
+
+    try:
+        model = onnx.load(str(onnx_path))
+        if not model.graph.input:
+            return {"input_dtype": None, "input_shape": None, "inspection_warning": "onnx graph has no inputs"}
+        first = model.graph.input[0]
+        tensor_type = first.type.tensor_type
+        dtype = TensorProto.DataType.Name(tensor_type.elem_type).lower() if tensor_type.elem_type else None
+        shape: list[int | str] = []
+        for dim in tensor_type.shape.dim:
+            if dim.HasField("dim_value"):
+                shape.append(int(dim.dim_value))
+            elif dim.HasField("dim_param"):
+                shape.append(str(dim.dim_param))
+            else:
+                shape.append("?")
+        return {"input_dtype": dtype, "input_shape": shape, "inspection_warning": None}
+    except Exception as exc:
+        return {"input_dtype": None, "input_shape": None, "inspection_warning": f"onnx inspect failed: {exc!r}"}
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
@@ -150,6 +198,7 @@ class _WarboyBuildAdapter:
                 raise FileNotFoundError(f"Provided .enf not found: {src}")
             if src != enf_path:
                 shutil.copyfile(src, enf_path)
+            inherited_metadata = _read_sidecar_metadata(src) or {}
             meta: Dict[str, Any] = {
                 "backend": self.name,
                 "enf_path": str(enf_path),
@@ -157,8 +206,10 @@ class _WarboyBuildAdapter:
                 "origin": str(src),
                 "precision": "int8",
                 "backend_options": options.to_metadata(),
+                "input_contract": inherited_metadata.get("input_contract"),
                 **_capability_metadata(options, "provided"),
             }
+            _write_sidecar_metadata(enf_path, meta)
             return BuildResult(
                 backend=self.name,
                 compiled_model_path=str(enf_path),
@@ -207,6 +258,7 @@ class _WarboyBuildAdapter:
         if not enf_path.is_file():
             raise RuntimeError(f"furiosa-compiler reported success but .enf not found at {enf_path}")
 
+        input_contract = _inspect_onnx_input_contract(onnx_path)
         meta = {
             "backend": self.name,
             "enf_path": str(enf_path),
@@ -215,10 +267,12 @@ class _WarboyBuildAdapter:
             "target_ir": options.target_ir,
             "onnx_path": str(onnx_path),
             "input_shape": tuple(cfg.input_shape) if cfg.input_shape is not None else None,
+            "input_contract": input_contract,
             "precision": "int8",
             "backend_options": options.to_metadata(),
             **_capability_metadata(options, "furiosa_compiler"),
         }
+        _write_sidecar_metadata(enf_path, meta)
         return BuildResult(
             backend=self.name,
             compiled_model_path=str(enf_path),
