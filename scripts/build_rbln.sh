@@ -26,6 +26,7 @@ DOCKER_DIR="${PROJECT_ROOT}/Dockers"
 DOCKERFILE_PATH="${DOCKER_DIR}/docker.rbln.unified"
 
 DOCKER_DEVICE_ARGS=()
+DOCKER_GROUP_ARGS=()
 
 print_usage() {
   echo "Usage: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--compiler-version <version>] [--pytorch-index-url <url>]"
@@ -74,11 +75,29 @@ detect_runtime_mounts() {
   DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
 }
 
+detect_device_group() {
+  local dev=""
+  local group_id=""
+
+  for dev in /dev/rbln0 /dev/rbln1 /dev/rebellions0 /dev/rebellions1; do
+    if [ -e "${dev}" ]; then
+      group_id="$(stat -c '%g' "${dev}" 2>/dev/null || true)"
+      if [ -n "${group_id}" ] && [ "${group_id}" != "0" ]; then
+        DOCKER_GROUP_ARGS+=( "--group-add" "${group_id}" )
+        return
+      fi
+    fi
+  done
+}
+
 print_run_hint() {
   echo "docker run -it --security-opt seccomp=unconfined \\"
   echo "  --name ${CONTAINER_NAME} \\"
   for ((i=0; i<${#DOCKER_DEVICE_ARGS[@]}; i+=2)); do
     echo "  ${DOCKER_DEVICE_ARGS[i]} ${DOCKER_DEVICE_ARGS[i+1]} \\"
+  done
+  for ((i=0; i<${#DOCKER_GROUP_ARGS[@]}; i+=2)); do
+    echo "  ${DOCKER_GROUP_ARGS[i]} ${DOCKER_GROUP_ARGS[i+1]} \\"
   done
   echo "  --user ${UID_VALUE}:${GID_VALUE} \\"
   echo "  -w /workspace/unified-sdk \\"
@@ -171,6 +190,7 @@ DOCKER_BUILDKIT=1 docker build \
   .
 
 detect_runtime_mounts
+detect_device_group
 
 echo "Build complete!"
 echo ""
@@ -197,6 +217,7 @@ echo ""
 echo "Sanity check inside container:"
 echo "  command -v rbln-smi && rbln-smi || true"
 echo "  python3 -c \"import unified_sdk, rebel; print('OK')\""
+echo "  RBLN_DEVICES=0 python3 -c \"import rebel; print('npu_is_available=', rebel.npu_is_available())\""
 echo "  python3 -c \"import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))\""
 echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
 echo "  RBLN_DEVICES=0 python3 examples/run_rbln_build.py"

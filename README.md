@@ -197,6 +197,8 @@ docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
   이 경우 위 예시처럼 `--runtime docker`를 명시하면 됩니다.
 
 - `./build.sh`는 CDI를 기준으로 `--device rebellions.ai/npu=all` 실행 예시를 출력합니다.
+  가능하면 `/dev/rbln*` 또는 `/dev/rebellions*`의 그룹 GID도 감지해 `--group-add <gid>`를 함께 넣어,
+  컨테이너 안의 `rebel.npu_is_available()` probe가 실제 장치 권한까지 확인할 수 있게 맞춥니다.
 - `/var/run/cdi/rbln.yaml` 또는 `/etc/cdi/rbln.yaml`이 없고, `rbln-ctk cdi list`로도 CDI 구성이 확인되지 않으면 build 완료 후 경고를 출력하며, 이 경우 먼저
   `rbln-ctk cdi generate`, `rbln-ctk runtime configure --runtime docker`,
   `sudo systemctl restart docker`를 완료한 뒤 다시 컨테이너를 띄우는 것이 맞습니다.
@@ -222,6 +224,7 @@ CUDA wheel이 필요 없고, CUDA wheel 조합은 compiler frontend 진단을 �
 docker run -it --security-opt seccomp=unconfined \
   --name rbln-only \
   --device rebellions.ai/npu=all \
+  --group-add <rbln_device_gid> \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
   unified-sdk:rbln
@@ -230,6 +233,10 @@ docker run -it --security-opt seccomp=unconfined \
 공식 Container Toolkit 가이드 기준으로는, `rbln-smi`와 RBLN 라이브러리는 CDI를 통해 자동으로
 주입됩니다. 따라서 `/dev/rbln0` 또는 `/usr/bin/rbln-smi`를 수동으로 볼륨 마운트하는 방식은
 이 브랜치의 권장 경로가 아닙니다.
+
+다만 Python 레벨의 `rebel.npu_is_available()`까지 정상적으로 `True`를 받으려면, 단순 CDI device
+노출만으로는 부족하고 장치 노드 그룹 권한도 같이 전달돼야 하는 경우가 있습니다. 그래서 실제 사용 시에는
+README의 손작성 예시보다 **`./build.sh`가 출력한 `docker run` 명령을 그대로 쓰는 것**을 권장합니다.
 
 컨테이너 내부 점검:
 
@@ -242,6 +249,7 @@ cd /workspace/unified-sdk
 
 rbln-smi
 python3 -c "import unified_sdk, rebel; print('OK')"
+RBLN_DEVICES=0 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py
 ```
 
@@ -262,13 +270,13 @@ RBLN adapter가 vendor SDK(`rebel`, `optimum-rbln`, `vllm-rbln`)를 감쌉니다
 # 3) 컨테이너 내부에서 장치/패키지 확인
 command -v rbln-smi && rbln-smi || true
 python3 -c "import unified_sdk, rebel; print('OK')"
+RBLN_DEVICES=0 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
 
 # NOTE:
-# CDI/container 안에서는 `rebel.npu_is_available()`가 보수적으로 False를 줄 수 있어,
-# 본 README의 기본 smoke 판단 기준에서는 사용하지 않습니다.
-# 이 브랜치에서는 `rbln-smi`가 보이고, Python import가 되고, 실제 fetch/runtime smoke가 통과하는지를
-# 더 신뢰할 수 있는 readiness 신호로 봅니다.
+# `rebel.npu_is_available()`가 False라면, 손작성 docker run 대신
+# `./build.sh`가 출력한 명령을 다시 사용해 `--group-add <rbln_device_gid>`가 빠지지 않았는지 먼저 확인합니다.
+# 이 브랜치에서는 `npu_is_available()`, `rbln-smi`, 실제 fetch/runtime smoke를 함께 readiness 신호로 봅니다.
 
 # NOTE:
 # 이전에 root 사용자로 실행한 컨테이너가 bind mount 경로에 root 소유 산출물을 남겼다면,
