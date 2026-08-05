@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 
 PreparedRBLNSourceKind = Literal["provided_artifact", "compile_source"]
+PreparedRBLNLLMBuildKind = Literal["runtime_model_ref", "artifact_build"]
 ResolvedRBLNVisionBuildKind = Literal[
     "provided_artifact",
     "compiled_dir",
@@ -13,6 +14,7 @@ ResolvedRBLNVisionBuildKind = Literal[
     "torch_model",
     "onnx_restore",
 ]
+ResolvedRBLNLLMBuildKind = Literal["runtime_model_ref", "artifact_build"]
 
 
 @dataclass(frozen=True)
@@ -55,3 +57,25 @@ class ResolvedRBLNVisionBuildRequest:
     source_description: str
     kind: ResolvedRBLNVisionBuildKind
     prepared_input: PreparedRBLNVisionBuildInput
+
+
+@dataclass(frozen=True)
+class RBLNLLMFrontendBuildRequest:
+    model_ref: str | Path
+    out_dir: Path
+    model_name: str
+    build_mode: Literal["fetch", "optimum_compile"] = "fetch"
+
+
+@dataclass(frozen=True)
+class PreparedRBLNLLMBuildInput:
+    kind: PreparedRBLNLLMBuildKind
+    model_ref: str
+    artifact_dir: Path | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedRBLNLLMBuildRequest:
+    source_description: str
+    kind: ResolvedRBLNLLMBuildKind
+    prepared_input: PreparedRBLNLLMBuildInput

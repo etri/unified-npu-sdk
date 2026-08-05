@@ -50,18 +50,22 @@ class RBLNPublicApiTest(unittest.TestCase):
         self.assertEqual(out.shape, (1, 1))
 
     def test_build_unified_llm_calls_llm_builder(self) -> None:
+        fake_builder = mock.Mock()
+        fake_builder.build.return_value = "llm-ok"
         cfg = LLMBuildConfig(
             backend="rbln",
             model_or_path="Qwen/Qwen3-0.6B",
             backend_options=RBLNLLMBuildOptions(build_mode="fetch"),
         )
-        with mock.patch("unified_sdk.build.api._rbln_llm.build_llm", return_value="llm-ok"):
+        with mock.patch("unified_sdk.build.api.get_llm_builder", return_value=fake_builder):
             result = build_unified_LLM(cfg)
         self.assertEqual(result, "llm-ok")
 
     def test_generate_llm_surface_delegates(self) -> None:
-        fake_handle = mock.Mock()
-        with mock.patch("unified_sdk.runtime.api._rbln_llm.generate_llm", return_value="hello"):
+        fake_handle = mock.Mock(backend="rbln")
+        fake_adapter = mock.Mock()
+        fake_adapter.generate.return_value = "hello"
+        with mock.patch("unified_sdk.runtime.api.get_llm_runtime", return_value=fake_adapter):
             text = generate_LLM(fake_handle, "prompt")
         self.assertEqual(text, "hello")
 

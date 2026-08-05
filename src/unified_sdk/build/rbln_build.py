@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from unified_sdk.build.registry import register
-from unified_sdk.frontends import PreparedRBLNVisionBuildInput, PreparedRBLNCompileSource, ProvidedRBLNArtifact
+from unified_sdk.frontends import PreparedRBLNCompileSource, PreparedRBLNVisionBuildInput, ProvidedRBLNArtifact
 from unified_sdk.options import RBLNVisionBuildOptions, resolve_rbln_vision_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
@@ -92,14 +92,11 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _coerce_prepared_input(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVisionBuildInput:
-    if cfg.prepared_input is not None:
-        return cfg.prepared_input
-
+def _resolve_legacy_provided_artifact(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVisionBuildInput | None:
     source_path = Path(cfg.model_or_path).expanduser().resolve() if isinstance(cfg.model_or_path, (str, Path)) else None
-    if _looks_like_path(cfg.model_or_path, ".rbln") or (source_path is not None and source_path.is_dir()):
-        if source_path is None:
-            raise FileNotFoundError("Provided RBLN artifact path is invalid")
+    if source_path is None:
+        return None
+    if _looks_like_path(cfg.model_or_path, ".rbln") or source_path.is_dir():
         if source_path.is_dir():
             source_path = _resolve_compiled_dir(source_path)
         return PreparedRBLNVisionBuildInput(
@@ -109,16 +106,21 @@ def _coerce_prepared_input(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVis
                 destination_path=rbln_path,
             ),
         )
+    return None
 
-    source_label = "onnx_restore" if _looks_like_path(cfg.model_or_path, ".onnx") else "torch_model"
-    return PreparedRBLNVisionBuildInput(
-        kind="compile_source",
-        compile_source=PreparedRBLNCompileSource(
-            source=cfg.model_or_path,
-            source_label=source_label,
-            compile_frontend="rebel",
-            source_cache_dir=None,
-        ),
+
+def _ensure_prepared_input(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVisionBuildInput:
+    if cfg.prepared_input is not None:
+        return cfg.prepared_input
+
+    legacy_artifact = _resolve_legacy_provided_artifact(cfg, rbln_path)
+    if legacy_artifact is not None:
+        return legacy_artifact
+
+    raise RuntimeError(
+        "RBLN vision compile now expects a prepared frontend contract for compile sources. "
+        "Call resolve_rbln_vision_build_request(...) first and pass BuildConfig(prepared_input=...). "
+        "Only provided .rbln / compiled artifact directories are still accepted as a legacy direct path."
     )
 
 
@@ -148,7 +150,7 @@ class _RBLNBuildAdapter:
         extra = options.to_metadata()
         rbln_path = _build_output_path(cfg.out_dir, cfg.model_name)
         rbln_path.parent.mkdir(parents=True, exist_ok=True)
-        prepared_input = _coerce_prepared_input(cfg, rbln_path)
+        prepared_input = _ensure_prepared_input(cfg, rbln_path)
 
         if prepared_input.kind == "provided_artifact":
             artifact = prepared_input.provided_artifact
@@ -239,6 +241,7 @@ class _RBLNBuildAdapter:
                     "origin": model_id,
                     "compiled_dir": str(compiled_dir),
                     "rbln_path": str(rbln_path),
+                    "prepared_kind": prepared_input.kind,
                     "backend_options": extra,
                     **_capability_metadata(extra),
                 },
@@ -315,6 +318,7 @@ class _RBLNBuildAdapter:
             "npu": npu,
             "precision": options.precision,
             "source": compile_source.source_label,
+            "prepared_kind": prepared_input.kind,
             "backend_options": extra,
             **_capability_metadata(extra),
         }

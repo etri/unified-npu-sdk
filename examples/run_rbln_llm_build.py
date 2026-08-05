@@ -36,6 +36,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from unified_sdk.build.api import build_unified_LLM
+from unified_sdk.frontends import RBLNLLMFrontendBuildRequest, resolve_rbln_llm_build_request
 from unified_sdk.options import RBLNLLMBuildOptions
 from unified_sdk.types import LLMBuildConfig
 
@@ -58,9 +59,18 @@ def _build_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     args = _build_parser().parse_args()
 
+    resolved = resolve_rbln_llm_build_request(
+        RBLNLLMFrontendBuildRequest(
+            model_ref=args.model,
+            out_dir=args.out_dir,
+            model_name=args.model_name,
+            build_mode=args.build_mode,
+        )
+    )
+
     cfg = LLMBuildConfig(
         backend="rbln",
-        model_or_path=args.model,
+        model_or_path=resolved.prepared_input.model_ref,
         out_dir=str(args.out_dir),
         model_name=args.model_name,
         batch_size=args.batch_size,
@@ -72,9 +82,10 @@ if __name__ == "__main__":
             revision=args.revision,
             rbln_create_runtimes=args.create_runtimes,
         ),
+        prepared_input=resolved.prepared_input,
     )
 
     result = build_unified_LLM(cfg)
     print("Complete!", result.compiled_model_path)
     print(f"(repo_root={REPO_ROOT})")
-    print(f"(build_mode={args.build_mode})")
+    print(f"(source={resolved.source_description})")
