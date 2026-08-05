@@ -422,6 +422,7 @@ LLM 메모:
 import torch
 from torchvision.models import resnet50
 
+from unified_sdk.frontends import prepare_rbln_vision_build_input
 from unified_sdk.options import RBLNVisionBuildOptions
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
@@ -440,6 +441,7 @@ cfg = BuildConfig(
         npu="RBLN-CA22",  # 또는 os.environ["RBLN_NPU_NAME"]
         precision="fp32",
     ),
+    prepared_input=prepare_rbln_vision_build_input(model, "builds/resnet50.rbln"),
     # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],  # 옵션
 )
 result = build_unified(cfg)

@@ -108,6 +108,28 @@ class RBLNFrontendsTest(unittest.TestCase):
         self.assertEqual(resolved.kind, "torch_model")
         self.assertEqual(resolved.prepared_input.compile_source.source_label, "torch_model")
 
+    def test_resolve_request_for_from_onnx_restores_model_in_frontend(self) -> None:
+        class _FakeModel:
+            def eval(self):
+                return self
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            models_dir = Path(tmpdir)
+            onnx_path = models_dir / "resnet50.onnx"
+            onnx_path.write_text("placeholder")
+
+            with mock.patch("unified_sdk.frontends._restore_torch_model_from_onnx", return_value=_FakeModel()):
+                resolved = resolve_rbln_vision_build_request(
+                    RBLNVisionFrontendBuildRequest(
+                        model_name="resnet50",
+                        models_dir=models_dir,
+                        from_onnx=onnx_path,
+                    )
+                )
+
+        self.assertEqual(resolved.kind, "onnx_restore")
+        self.assertEqual(resolved.prepared_input.compile_source.source_label, "torch_model")
+
     def test_resolve_llm_fetch_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             resolved = resolve_rbln_llm_build_request(

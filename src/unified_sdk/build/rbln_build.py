@@ -249,26 +249,10 @@ class _RBLNBuildAdapter:
             )
 
         model = compile_source.source
-        if compile_source.source_label == "onnx_restore":
-            onnx_path = Path(compile_source.source).expanduser().resolve()
-            if not onnx_path.is_file():
-                raise FileNotFoundError(f"ONNX file not found: {onnx_path}")
-            try:
-                import onnx
-                from onnx2torch import convert
-            except Exception as exc:
-                raise RuntimeError(
-                    "ONNX restore path requires `onnx` and `onnx2torch`. Install them first."
-                ) from exc
-            try:
-                model = convert(onnx.load(str(onnx_path)))
-            except Exception as exc:
-                raise RuntimeError(f"Failed to restore torch model from ONNX {onnx_path}: {exc}") from exc
-
         if not hasattr(model, "eval") or not callable(model.eval):
             raise TypeError(
                 "For rbln backend, BuildConfig.model_or_path must be a torch.nn.Module-like object, "
-                "a provided .rbln path, or an experimental .onnx path."
+                "a provided .rbln path, or a frontend-prepared compile source."
             )
         model.eval()
 
