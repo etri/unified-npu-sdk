@@ -87,7 +87,6 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
         "compile_options": {
             "npu": extra.get("npu"),
             "model_trace_method": extra.get("model_trace_method"),
-            "compile_frontend": extra.get("compile_frontend", "rebel"),
         },
     }
 
@@ -241,6 +240,8 @@ class _RBLNBuildAdapter:
                     "origin": model_id,
                     "compiled_dir": str(compiled_dir),
                     "rbln_path": str(rbln_path),
+                    "compile_frontend": compile_frontend,
+                    "source_cache_dir": str(source_cache_dir) if source_cache_dir is not None else None,
                     "prepared_kind": prepared_input.kind,
                     "backend_options": extra,
                     **_capability_metadata(extra),
@@ -318,6 +319,8 @@ class _RBLNBuildAdapter:
             "npu": npu,
             "precision": options.precision,
             "source": compile_source.source_label,
+            "compile_frontend": compile_frontend,
+            "source_cache_dir": str(compile_source.source_cache_dir) if compile_source.source_cache_dir is not None else None,
             "prepared_kind": prepared_input.kind,
             "backend_options": extra,
             **_capability_metadata(extra),

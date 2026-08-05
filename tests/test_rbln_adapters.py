@@ -88,7 +88,7 @@ class RBLNAdaptersTest(unittest.TestCase):
             model_or_path="microsoft/resnet-50",
             out_dir="builds",
             model_name="resnet50",
-            backend_options=RBLNVisionBuildOptions(compile_frontend="optimum_image_classification"),
+            backend_options=RBLNVisionBuildOptions(),
         )
         with self.assertRaises(RuntimeError):
             adapter.build(cfg)
@@ -140,13 +140,22 @@ class RBLNAdaptersTest(unittest.TestCase):
         cfg = LLMRuntimeConfig(
             backend="rbln",
             engine_path="Qwen/Qwen3-0.6B",
-            backend_options=RBLNLLMRuntimeOptions(runtime_impl="vllm", block_size=256, dtype="float16"),
+            backend_options=RBLNLLMRuntimeOptions(
+                runtime_impl="vllm",
+                tensor_parallel_size=2,
+                max_model_len=1024,
+                block_size=256,
+                dtype="float16",
+            ),
         )
         with mock.patch.dict(sys.modules, {"vllm": fake_vllm}):
             rh = create_llm(cfg)
             text = generate_llm(rh, "hello")
             destroy_llm(rh)
         fake_vllm.LLM.assert_called_once()
+        llm_kwargs = fake_vllm.LLM.call_args.kwargs
+        self.assertEqual(llm_kwargs["tensor_parallel_size"], 2)
+        self.assertEqual(llm_kwargs["max_model_len"], 1024)
         self.assertEqual(text, "hello")
 
 

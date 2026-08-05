@@ -87,9 +87,11 @@ if __name__ == "__main__":
         cfg = LLMRuntimeConfig(
             backend="rbln",
             engine_path=args.model_ref,
-            tensor_parallel_size=args.tensor_parallel_size,
-            max_model_len=args.max_model_len,
-            backend_options=RBLNLLMRuntimeOptions(runtime_impl=args.runtime_impl),
+            backend_options=RBLNLLMRuntimeOptions(
+                runtime_impl=args.runtime_impl,
+                tensor_parallel_size=args.tensor_parallel_size,
+                max_model_len=args.max_model_len,
+            ),
         )
         rh = create_runtime_LLM(cfg)
         try:

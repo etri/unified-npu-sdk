@@ -187,16 +187,6 @@ if __name__ == "__main__":
             npu=args.npu,
             precision=args.precision,
             model_trace_method=args.model_trace_method,
-            compile_frontend=(
-                resolved.prepared_input.compile_source.compile_frontend
-                if resolved.prepared_input.compile_source is not None
-                else "rebel"
-            ),
-            source_cache_dir=(
-                resolved.prepared_input.compile_source.source_cache_dir
-                if resolved.prepared_input.compile_source is not None
-                else None
-            ),
         ),
         prepared_input=resolved.prepared_input,
     )
