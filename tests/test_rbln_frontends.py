@@ -59,6 +59,27 @@ class RBLNFrontendsTest(unittest.TestCase):
                     )
                 )
 
+    def test_resolve_request_for_local_compiled_dir_stays_provided_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            models_dir = root / "models"
+            compiled_dir = root / "builds" / "compiled_resnet50"
+            compiled_dir.mkdir(parents=True)
+            (compiled_dir / "resnet50.rbln").write_text("rbln")
+            (compiled_dir / "rbln_config.json").write_text("{}")
+
+            resolved = resolve_rbln_vision_build_request(
+                RBLNVisionFrontendBuildRequest(
+                    model_name="resnet50",
+                    models_dir=models_dir,
+                    compiled_model_ref=str(compiled_dir),
+                )
+            )
+
+        self.assertEqual(resolved.kind, "compiled_dir")
+        self.assertEqual(resolved.prepared_input.kind, "provided_artifact")
+        self.assertEqual(resolved.prepared_input.provided_artifact.source_path.name, "compiled_resnet50")
+
     def test_resolve_request_for_weights_path(self) -> None:
         class _FakeModel:
             def eval(self):
