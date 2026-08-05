@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Dict
 
 import numpy as np
 
 from unified_sdk.runtime.registry import get_runtime
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import InferOutput, RuntimeConfig, RuntimeHandle
 
 # Adapter auto-registration
 from . import warboy_runtime as _warboy  # noqa: F401
@@ -15,7 +15,7 @@ def create_runtime(cfg: RuntimeConfig) -> RuntimeHandle:
     return adapter.create(cfg)
 
 
-def infer(rh: RuntimeHandle, input_array: "np.ndarray") -> Any:
+def infer(rh: RuntimeHandle, input_array: "np.ndarray") -> InferOutput:
     adapter = get_runtime(rh.backend)
     return adapter.infer(rh, input_array)
 
