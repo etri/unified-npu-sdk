@@ -203,8 +203,9 @@ if __name__ == "__main__":
         print("Error: 'numpy', 'torch', and 'pillow' are required for the Warboy inference example.")
         sys.exit(1)
 
-    from unified_sdk.types import RuntimeConfig
+    from unified_sdk.options import WarboyRuntimeOptions
     from unified_sdk.runtime import create_runtime, infer, destroy_runtime
+    from unified_sdk.types import RuntimeConfig
 
     engine_path = args.engine_path.expanduser().resolve()
     image_path = args.image.expanduser().resolve()
@@ -251,10 +252,10 @@ if __name__ == "__main__":
         input_name=args.input_name,
         output_name=args.output_name,
         input_shape=args.input_shape,
-        extra={
-            "device": args.device,
-            "allow_dynamic_shape": args.allow_dynamic_shape,
-        },
+        backend_options=WarboyRuntimeOptions(
+            device=args.device,
+            allow_dynamic_shape=args.allow_dynamic_shape,
+        ),
     )
 
     rh = create_runtime(cfg)

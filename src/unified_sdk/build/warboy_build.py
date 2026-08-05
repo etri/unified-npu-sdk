@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.frontends import prepare_warboy_build_input
+from unified_sdk.options import WarboyBuildOptions, resolve_warboy_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
 
@@ -19,21 +21,18 @@ _BUILD_PIPELINE = (
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
-    "provided_artifact": "shutil.copyfile(src_enf, enf_path)",
+    "provided_artifact": "frontends.prepare_warboy_build_input(model_or_path, enf_path) -> shutil.copyfile(src_enf, enf_path)",
     "compile": "furiosa-compiler <quantized_onnx> -o <enf_path> --target-npu <target_npu> --target-ir enf",
-    "pre_quantization": "furiosa.quantizer (not wrapped here; quantized ONNX is expected)",
+    "prepare": "prepare_warboy_quantized_onnx.py or equivalent frontend helper before build_unified(cfg)",
     "artifact": ".enf",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
+    "frontends.prepare_warboy_build_input(... )": "build_unified(cfg) prepare/fetch step",
     "shutil.copyfile(src_enf, enf_path)": "build_unified(cfg) for provided .enf",
     "furiosa-compiler <quantized_onnx> -o <enf_path> ...": "build_unified(cfg) for quantized ONNX compile",
-    "furiosa.quantizer": "not wrapped; prepare quantized ONNX before build_unified(cfg)",
+    "prepare_warboy_quantized_onnx.py": "prepare quantized ONNX before build_unified(cfg)",
     ".enf artifact": "BuildResult.compiled_model_path",
 }
-
-
-# furiosa-compiler 타깃 (기본은 2 PE warboy-2pe, 1 PE 환경은 warboy 명시)
-_TARGET_NPUS = ("warboy", "warboy-2pe")
 
 
 def _require_non_empty_string(value: str, field_name: str) -> str:
@@ -50,18 +49,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     return shape
 
 
-def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
-    target_npu = extra.get("target_npu")
-    if target_npu is not None and target_npu not in _TARGET_NPUS:
-        raise ValueError(
-            "BuildConfig.extra['target_npu'] must be one of: " + ", ".join(repr(t) for t in _TARGET_NPUS)
-        )
-    target_ir = extra.get("target_ir")
-    if target_ir is not None and (not isinstance(target_ir, str) or not target_ir.strip()):
-        raise ValueError("BuildConfig.extra['target_ir'] must be a non-empty string when provided")
-    return extra
-
-
 def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     name = _require_non_empty_string(model_name, "model_name")
     path = Path(out_dir) / name
@@ -70,21 +57,13 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     return path
 
 
-def _looks_like_enf(model_or_path: Any) -> bool:
-    return isinstance(model_or_path, (str, Path)) and str(model_or_path).endswith(".enf")
-
-
-def _capability_metadata(extra: Dict[str, Any], source: str) -> Dict[str, Any]:
+def _capability_metadata(options: WarboyBuildOptions, source: str) -> Dict[str, Any]:
     return {
         "capability_family": _CAPABILITY_FAMILY,
         "build_pipeline": _BUILD_PIPELINE,
         "vendor_api_map": _VENDOR_API_MAP,
         "selected_path": source,
-        "compile_options": {
-            "target_npu": extra.get("target_npu", "warboy-2pe"),
-            "target_ir": extra.get("target_ir", "enf"),
-            "compiler_config": extra.get("compiler_config"),
-        },
+        "compile_options": options.to_metadata(),
     }
 
 
@@ -103,12 +82,11 @@ def describe_api_mapping() -> Dict[str, Any]:
 class _WarboyBuildAdapter:
     """FuriosaAI Warboy build adapter.
 
-    두 가지 경로를 지원한다 (fetch 기본 + compile 훅):
-      1) 이미 컴파일된 .enf 를 제공받은 경우  -> 검증 후 out_dir 로 배치 (provided/fetch)
-      2) quantized ONNX 를 받은 경우          -> furiosa-compiler 로 .enf 컴파일 (compile hook)
+    두 가지 경로를 지원한다:
+      1) 이미 컴파일된 .enf 를 제공받은 경우 -> out_dir 로 배치 (provided/fetch)
+      2) quantized ONNX 를 받은 경우         -> furiosa-compiler 로 .enf 컴파일 (compile)
 
-    양자화(f32 ONNX -> quantized ONNX)는 furiosa.quantizer 로 별도 수행한다
-    (host_validation_tools 및 참조 가이드 9.3A 참고).
+    양자화(f32 ONNX -> quantized ONNX)는 build core가 아니라 prepare capability로 본다.
     """
 
     name = "warboy"
@@ -117,37 +95,40 @@ class _WarboyBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"Warboy build adapter received backend={cfg.backend!r}")
 
-        if cfg.precision not in ("int8",):
-            raise ValueError(f"Unsupported Warboy precision: {cfg.precision!r} (ENF is int8-quantized)")
-
-        extra = _validate_extra(dict(cfg.extra or {}))
+        options = resolve_warboy_build_options(cfg.backend_options)
         enf_path = _build_output_path(cfg.out_dir, cfg.model_name)
         enf_path.parent.mkdir(parents=True, exist_ok=True)
+        prepared_input = prepare_warboy_build_input(cfg.model_or_path, enf_path)
 
-        # ---- Path 1: 사전 컴파일된 .enf 제공 (fetch / provided) ----
-        if _looks_like_enf(cfg.model_or_path):
-            src = Path(cfg.model_or_path).expanduser().resolve()
+        if prepared_input.kind == "provided_artifact":
+            artifact = prepared_input.provided_artifact
+            if artifact is None:
+                raise RuntimeError("Warboy prepare step returned an empty provided_artifact payload")
+            src = artifact.source_path
             if not src.is_file():
                 raise FileNotFoundError(f"Provided .enf not found: {src}")
-            if src != enf_path.resolve():
-                shutil.copyfile(src, enf_path)
+            if src != artifact.destination_path:
+                shutil.copyfile(src, artifact.destination_path)
             meta: Dict[str, Any] = {
                 "backend": self.name,
-                "enf_path": str(enf_path),
+                "enf_path": str(artifact.destination_path),
                 "source": "provided",
                 "origin": str(src),
-                "precision": cfg.precision,
-                "extra": extra,
-                **_capability_metadata(extra, "provided"),
+                "precision": "int8",
+                "backend_options": options.to_metadata(),
+                **_capability_metadata(options, "provided"),
             }
             return BuildResult(
                 backend=self.name,
-                compiled_model_path=str(enf_path),
+                compiled_model_path=str(artifact.destination_path),
                 meta_data=meta,
             )
 
-        # ---- Path 2: furiosa-compiler 로 quantized ONNX -> .enf (compile hook) ----
-        onnx_path = Path(cfg.model_or_path).expanduser().resolve()
+        compile_source = prepared_input.compile_source
+        if compile_source is None:
+            raise RuntimeError("Warboy prepare step returned an empty compile_source payload")
+
+        onnx_path = Path(compile_source.source).expanduser().resolve()
         if not onnx_path.is_file():
             raise FileNotFoundError(f"quantized ONNX not found: {onnx_path}")
 
@@ -159,23 +140,18 @@ class _WarboyBuildAdapter:
             )
 
         _validate_shape(tuple(cfg.input_shape), "input_shape")
-        target_npu = extra.get("target_npu", "warboy-2pe")
-        target_ir = extra.get("target_ir", "enf")
-
         command = [
             compiler,
             str(onnx_path),
             "-o",
             str(enf_path),
             "--target-npu",
-            target_npu,
+            options.target_npu,
             "--target-ir",
-            target_ir,
+            options.target_ir,
         ]
-        # 선택 컴파일 옵션 패스스루 (예: extra['compiler_config'] = ['--batch-size', '1'])
-        compiler_config = extra.get("compiler_config")
-        if isinstance(compiler_config, (list, tuple)):
-            command.extend(str(a) for a in compiler_config)
+        if options.compiler_config:
+            command.extend(str(arg) for arg in options.compiler_config)
 
         try:
             completed = subprocess.run(command, check=False, text=True, capture_output=True)
@@ -193,13 +169,13 @@ class _WarboyBuildAdapter:
             "backend": self.name,
             "enf_path": str(enf_path),
             "source": "furiosa_compiler",
-            "target_npu": target_npu,
-            "target_ir": target_ir,
+            "target_npu": options.target_npu,
+            "target_ir": options.target_ir,
             "onnx_path": str(onnx_path),
             "input_shape": tuple(cfg.input_shape),
-            "precision": cfg.precision,
-            "extra": extra,
-            **_capability_metadata(extra, "furiosa_compiler"),
+            "precision": "int8",
+            "backend_options": options.to_metadata(),
+            **_capability_metadata(options, "furiosa_compiler"),
         }
         return BuildResult(
             backend=self.name,
