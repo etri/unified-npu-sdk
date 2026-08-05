@@ -76,6 +76,22 @@ def _load_state_dict(path: Path, torch_module) -> dict:
     return cleaned
 
 
+def _restore_torch_model_from_onnx(path: Path):
+    try:
+        import onnx
+        from onnx2torch import convert
+    except Exception as exc:
+        raise RuntimeError(
+            "ONNX restore path requires `onnx` and `onnx2torch`. Install them first."
+        ) from exc
+    try:
+        model = convert(onnx.load(str(path)))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to restore torch model from ONNX {path}: {exc}") from exc
+    model.eval()
+    return model
+
+
 def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -> PreparedRBLNVisionBuildInput:
     destination = Path(rbln_path).expanduser().resolve()
     source_path = Path(model_or_path).expanduser().resolve() if isinstance(model_or_path, (str, Path)) else None
@@ -92,8 +108,9 @@ def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -
     compile_frontend = "rebel"
     source_label = "torch_model"
     source_cache_dir = None
+    source = model_or_path
     if source_path is not None and source_path.suffix == ".onnx":
-        source_label = "onnx_restore"
+        source = _restore_torch_model_from_onnx(source_path)
     elif isinstance(model_or_path, str):
         source_label = "optimum_source_model"
         compile_frontend = "optimum_image_classification"
@@ -101,7 +118,7 @@ def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -
     return PreparedRBLNVisionBuildInput(
         kind="compile_source",
         compile_source=PreparedRBLNCompileSource(
-            source=model_or_path,
+            source=source,
             source_label=source_label,
             compile_frontend=compile_frontend,  # type: ignore[arg-type]
             source_cache_dir=source_cache_dir,
@@ -195,11 +212,12 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
 
     if request.from_onnx is not None:
         onnx_path = request.from_onnx.expanduser().resolve()
+        model = _restore_torch_model_from_onnx(onnx_path)
         return ResolvedRBLNVisionBuildRequest(
-            model_or_path=str(onnx_path),
+            model_or_path=model,
             source_description=f"experimental/unverified ONNX restore -> .rbln: {onnx_path}",
             kind="onnx_restore",
-            prepared_input=prepare_rbln_vision_build_input(str(onnx_path), models_dir / f"{model_name}.rbln"),
+            prepared_input=prepare_rbln_vision_build_input(model, models_dir / f"{model_name}.rbln"),
         )
 
     model_zoo_target = _normalize_model_name(request.model_zoo_model or "")
