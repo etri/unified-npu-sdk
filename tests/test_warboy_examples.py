@@ -59,6 +59,43 @@ class WarboyExamplesTest(unittest.TestCase):
         self.assertEqual(result.batch.dtype, np.uint8)
         self.assertIsNotNone(result.contexts)
 
+    def test_prepare_runtime_input_prefers_sidecar_contract(self) -> None:
+        module = importlib.import_module("unified_sdk.frontends.prepare_warboy_runtime_input")
+        prepare_runtime_input = module.prepare_warboy_runtime_input
+
+        class _AmbiguousModelHelper:
+            def preprocess(self, candidate, **kwargs):
+                if kwargs.get("with_scaling"):
+                    arr = np.zeros((1, 3, 224, 224), dtype=np.float32)
+                else:
+                    arr = np.zeros((1, 3, 224, 224), dtype=np.uint8)
+                return [arr], {"candidate": candidate, "kwargs": kwargs}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            engine_path = tmp_path / "resnet50.enf"
+            engine_path.write_text("enf")
+            Path(f"{engine_path}.json").write_text(
+                '{"input_contract": {"input_dtype": "float32", "input_shape": [1, 3, 224, 224]}}'
+            )
+            image_path = tmp_path / "input.jpg"
+            image_path.write_text("placeholder")
+
+            with mock.patch.object(
+                module,
+                "_maybe_create_model_zoo_helper",
+                return_value=(_AmbiguousModelHelper(), None),
+            ):
+                result = prepare_runtime_input(
+                    engine_path=engine_path,
+                    image_path=image_path,
+                    input_shape=(1, 3, 224, 224),
+                )
+
+        self.assertEqual(result.expected_dtype, "float32")
+        self.assertEqual(result.actual_dtype, "float32")
+        self.assertEqual(result.batch.dtype, np.float32)
+
     def test_prepare_runtime_input_generic_uint8_fallback(self) -> None:
         module = importlib.import_module("unified_sdk.frontends.prepare_warboy_runtime_input")
         prepare_runtime_input = module.prepare_warboy_runtime_input

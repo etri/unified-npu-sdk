@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from pathlib import Path
 import re
 import tempfile
@@ -115,6 +116,46 @@ def _maybe_create_model_zoo_helper(engine_path: Path):
         return None, f"failed to construct model-zoo helper {resolved!r}: {exc!r}"
 
 
+def _metadata_sidecar_path(enf_path: Path) -> Path:
+    return Path(f"{enf_path}.json")
+
+
+def _read_sidecar_input_contract(engine_path: Path) -> dict[str, Any] | None:
+    sidecar = _metadata_sidecar_path(engine_path)
+    if not sidecar.is_file():
+        return None
+    try:
+        payload = json.loads(sidecar.read_text())
+    except Exception as exc:
+        return {
+            "expected_dtype": None,
+            "input_shape": None,
+            "inspection_warning": f"sidecar metadata parse failed: {exc!r}",
+            "contract_source": "sidecar",
+        }
+    if not isinstance(payload, dict):
+        return {
+            "expected_dtype": None,
+            "input_shape": None,
+            "inspection_warning": "sidecar metadata is not a JSON object",
+            "contract_source": "sidecar",
+        }
+    contract = payload.get("input_contract")
+    if not isinstance(contract, dict):
+        return {
+            "expected_dtype": None,
+            "input_shape": None,
+            "inspection_warning": "sidecar metadata does not include input_contract",
+            "contract_source": "sidecar",
+        }
+    return {
+        "expected_dtype": _normalize_dtype_name(contract.get("input_dtype")),
+        "input_shape": contract.get("input_shape"),
+        "inspection_warning": contract.get("inspection_warning"),
+        "contract_source": "sidecar",
+    }
+
+
 def _extract_first_input(inputs: Any):
     if isinstance(inputs, (list, tuple)) and len(inputs) == 1:
         return inputs[0]
@@ -122,10 +163,21 @@ def _extract_first_input(inputs: Any):
 
 
 def inspect_warboy_input_contract(engine_path: Path, *, device: str | None = None) -> dict[str, Any]:
+    sidecar_contract = _read_sidecar_input_contract(engine_path)
+    if sidecar_contract is not None and sidecar_contract.get("expected_dtype") is not None:
+        return sidecar_contract
+
     try:
         from furiosa.runtime import sync
     except Exception:
-        return {"expected_dtype": None, "inspection_warning": "furiosa.runtime unavailable"}
+        warning = "furiosa.runtime unavailable"
+        if sidecar_contract is not None and sidecar_contract.get("inspection_warning"):
+            warning = f"{sidecar_contract['inspection_warning']}; {warning}"
+        return {
+            "expected_dtype": None,
+            "inspection_warning": warning,
+            "contract_source": "runtime_inspect",
+        }
 
     runner = None
     try:
@@ -161,9 +213,23 @@ def inspect_warboy_input_contract(engine_path: Path, *, device: str | None = Non
                     if expected_dtype:
                         break
 
-        return {"expected_dtype": expected_dtype, "inspection_warning": None}
+        warning = None
+        if expected_dtype is None and sidecar_contract is not None:
+            warning = sidecar_contract.get("inspection_warning")
+        return {
+            "expected_dtype": expected_dtype,
+            "inspection_warning": warning,
+            "contract_source": "runtime_inspect",
+        }
     except Exception as exc:
-        return {"expected_dtype": None, "inspection_warning": f"input contract inspect failed: {exc!r}"}
+        warning = f"input contract inspect failed: {exc!r}"
+        if sidecar_contract is not None and sidecar_contract.get("inspection_warning"):
+            warning = f"{sidecar_contract['inspection_warning']}; {warning}"
+        return {
+            "expected_dtype": None,
+            "inspection_warning": warning,
+            "contract_source": "runtime_inspect",
+        }
     finally:
         if runner is not None:
             close = getattr(runner, "close", None)

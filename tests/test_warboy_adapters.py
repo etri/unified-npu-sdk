@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -43,6 +44,7 @@ class WarboyAdaptersTest(unittest.TestCase):
             tmp_path = Path(tmpdir)
             src = tmp_path / "source.enf"
             src.write_text("enf")
+            Path(f"{src}.json").write_text(json.dumps({"input_contract": {"input_dtype": "uint8"}}))
             cfg = BuildConfig(
                 backend="warboy",
                 model_or_path=str(src),
@@ -55,6 +57,8 @@ class WarboyAdaptersTest(unittest.TestCase):
             result = adapter.build(cfg)
             self.assertTrue(Path(result.compiled_model_path).is_file())
             self.assertEqual(result.meta_data["source"], "provided")
+            self.assertEqual(result.meta_data["input_contract"]["input_dtype"], "uint8")
+            self.assertTrue(Path(f"{result.compiled_model_path}.json").is_file())
 
     def test_build_adapter_prefers_prepared_input_contract(self) -> None:
         adapter = _WarboyBuildAdapter()
@@ -105,9 +109,16 @@ class WarboyAdaptersTest(unittest.TestCase):
             )
             with mock.patch("unified_sdk.build.warboy_build.shutil.which", return_value="/usr/bin/furiosa-compiler"):
                 with mock.patch("unified_sdk.build.warboy_build.subprocess.run", side_effect=_fake_run):
-                    result = adapter.build(cfg)
+                    with mock.patch(
+                        "unified_sdk.build.warboy_build._inspect_onnx_input_contract",
+                        return_value={"input_dtype": "float32", "input_shape": [1, 3, 224, 224], "inspection_warning": None},
+                    ):
+                        result = adapter.build(cfg)
             self.assertTrue(Path(result.compiled_model_path).is_file())
             self.assertEqual(result.meta_data["target_npu"], "warboy")
+            self.assertEqual(result.meta_data["input_contract"]["input_dtype"], "float32")
+            sidecar = Path(f"{result.compiled_model_path}.json")
+            self.assertTrue(sidecar.is_file())
 
     def test_runtime_adapter_uses_backend_options(self) -> None:
         adapter = _WarboyRuntime()
