@@ -64,6 +64,24 @@ class WarboyFrontendsTest(unittest.TestCase):
             self.assertEqual(resolved.kind, "local_enf")
             self.assertEqual(resolved.prepared_input.kind, "provided_artifact")
 
+    def test_resolve_warboy_build_request_require_enf_blocks_model_zoo_fetch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            models_dir = Path(tmpdir)
+            request = WarboyFrontendBuildRequest(
+                model_name="resnet50",
+                models_dir=models_dir,
+                target_npu="warboy-2pe",
+                require_enf=True,
+            )
+            frontend_module = importlib.import_module("unified_sdk.frontends.resolve_warboy_build_request")
+            with mock.patch.object(
+                frontend_module,
+                "fetch_model_zoo_enf",
+                side_effect=AssertionError("model zoo fetch should not run when require_enf=True"),
+            ):
+                with self.assertRaises(FileNotFoundError):
+                    resolve_warboy_build_request(request=request)
+
 
 if __name__ == "__main__":
     unittest.main()

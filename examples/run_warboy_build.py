@@ -132,7 +132,7 @@ if __name__ == "__main__":
         from_onnx=args.from_onnx.expanduser().resolve() if args.from_onnx else None,
         require_enf=args.require_enf,
     )
-    resolved = resolve_warboy_build_request(request)
+    resolved = resolve_warboy_build_request(request=request)
 
     prepared_input = resolved.prepared_input
     if prepared_input.kind == "provided_artifact":

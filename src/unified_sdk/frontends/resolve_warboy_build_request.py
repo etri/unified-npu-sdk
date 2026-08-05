@@ -49,6 +49,13 @@ def resolve_warboy_build_request(*, request: WarboyFrontendBuildRequest) -> Reso
     fetched_from_model_zoo = False
     enf = request.provided_enf.expanduser().resolve() if request.provided_enf else find_local_enf(models_dir, request.model_name)
     if enf is None:
+        if request.require_enf:
+            msg = (
+                f"{models_dir} 에서 {request.model_name}*.enf 를 찾지 못했습니다.\n"
+                "require_enf=True 이므로 model-zoo fetch 로 fallback 하지 않습니다.\n"
+                "사전 컴파일된 .enf 를 제공하거나 require_enf 없이 다시 시도하세요."
+            )
+            raise FileNotFoundError(msg)
         enf = fetch_model_zoo_enf(request.model_name, request.target_npu, models_dir)
         fetched_from_model_zoo = enf is not None
 
