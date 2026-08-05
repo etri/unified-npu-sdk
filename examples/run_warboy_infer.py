@@ -89,6 +89,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-shape", type=_parse_shape, default=(1, 3, 224, 224))
     parser.add_argument("--device", default=os.getenv("FURIOSA_DEVICES", None),
                         help="예: 'warboy(0)*2'. 미지정 시 furiosa-runtime 기본 선택.")
+    parser.add_argument(
+        "--input-dtype",
+        choices=("auto", "uint8", "float32"),
+        default="auto",
+        help="입력 dtype override. 기본값 auto는 frontend가 ENF 입력 계약을 해석하려고 시도합니다.",
+    )
     parser.add_argument("--iters", type=int, default=50)
     parser.add_argument("--allow-dynamic-shape", action="store_true")
     return parser
@@ -258,6 +264,7 @@ if __name__ == "__main__":
         image_path=image_path,
         input_shape=args.input_shape,
         device=args.device,
+        preferred_dtype=None if args.input_dtype == "auto" else args.input_dtype,
     )
     for warning in prepared_input.warnings:
         print(f"[WARN] {warning}")
@@ -267,10 +274,6 @@ if __name__ == "__main__":
     contexts = prepared_input.contexts
     model_helper = prepared_input.model_helper
     input_source = prepared_input.source_description
-
-    # NOTE: quantized ENF 의 입력 dtype/layout 은 컴파일 시 고정된다(int8/uint8 인 경우가 많음).
-    # 정확한 정합이 필요하면 Furiosa Model Zoo 의 preprocess 를 쓰거나 ONNX 입력 스펙에 맞춰야 한다.
-    # 아래는 구조 검증용 float32 NCHW 입력이다.
 
     cfg = RuntimeConfig(
         backend="warboy",
@@ -324,4 +327,8 @@ if __name__ == "__main__":
                 print(f"pred_id: {cls_id} (labels file not found: {labels_path})")
 
     print(f"Avg latency: {np.mean(times):.3f} ms, shape={_format_output_shape(y)}")
+    print(
+        f"(expected_dtype={prepared_input.expected_dtype or 'unknown'}, "
+        f"actual_dtype={prepared_input.actual_dtype or 'unknown'})"
+    )
     print(f"(engine={engine_path}, input={input_source}, device={args.device})")
