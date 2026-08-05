@@ -20,7 +20,7 @@
 | --- | --- |
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
 | LLM API | `build_unified_LLM` / `create_runtime_LLM` / `generate_LLM` / `infer_LLM` / `destroy_runtime_LLM` 구현 |
-| Vision compile | source fetch / provided `.rbln` / PyTorch 기반 compile 구현, ONNX bridge 는 experimental |
+| Vision compile | frontend request/prepare + provided `.rbln` / PyTorch 기반 compile 구현, ONNX bridge 는 experimental |
 | LLM compile | host native 기준 `1/2/3` smoke 확인, Docker/CDI container 에서는 compiler backend 이슈 영향 가능 |
 
 ### 주요 이슈
@@ -58,13 +58,17 @@
 │   └── inspect_rbln_llm_model.py   # LLM model/precompiled dir inspect
 └── src/unified_sdk/
     ├── __init__.py
-    ├── types.py                    # 공통 데이터 구조 (RBLN 슬림화)
+    ├── types.py                    # core config / runtime handle (RBLN 슬림화)
+    ├── options.py                  # RBLN vision / LLM backend options
     ├── build/
     │   ├── __init__.py
     │   ├── api.py                  # build_unified / build_unified_LLM
     │   ├── registry.py
     │   └── rbln_build.py           # RBLN 빌드 어댑터
     │   └── rbln_llm_build.py       # RBLN LLM 빌드 어댑터 (optimum-rbln)
+    ├── frontends/
+    │   ├── __init__.py             # vision fetch / restore / prepare helper
+    │   └── types.py                # frontend request / prepared input contract
     └── runtime/
         ├── __init__.py
         ├── api.py                  # create_runtime / infer / destroy_runtime / create_runtime_LLM / generate_LLM
@@ -396,7 +400,7 @@ python3 examples/inspect_rbln_llm_model.py artifacts/qwen3_0_6b_rbln --load
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
 | --- | --- | --- | --- |
-| Vision `.rbln` | 빌드 | `build_unified(cfg)` | `optimum.rbln.RBLNAutoModelForImageClassification.from_pretrained(..., export=True)` 또는 `rebel.compile_from_torch(...)` 또는 experimental `onnx2torch -> compile_from_torch(...)` 또는 provided `.rbln` 복사 |
+| Vision `.rbln` | 빌드 | `build_unified(cfg)` | frontend resolve 후 `optimum.rbln.RBLNAutoModelForImageClassification.from_pretrained(..., export=True)` 또는 `rebel.compile_from_torch(...)` 또는 experimental `onnx2torch -> compile_from_torch(...)` 또는 provided `.rbln` 복사 |
 | Vision `.rbln` | 생성 | `create_runtime(cfg)` | `rebel.Runtime(str(path), device=..., tensor_type=...)` |
 | Vision `.rbln` | 추론 | `infer(rh, input_array)` | `runtime(input_array)` |
 | Vision `.rbln` | 종료 | `destroy_runtime(rh)` | `RuntimeHandle.ctx.clear()` |
@@ -418,6 +422,7 @@ LLM 메모:
 import torch
 from torchvision.models import resnet50
 
+from unified_sdk.options import RBLNVisionBuildOptions
 from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
 
@@ -429,10 +434,12 @@ cfg = BuildConfig(
     model_or_path=model,
     out_dir="builds",
     model_name="resnet50",
-    precision="fp32",
     input_name="input",
     input_shape=(1, 3, 224, 224),
-    extra={"npu": "RBLN-CA22"},  # 또는 os.environ["RBLN_NPU_NAME"]
+    backend_options=RBLNVisionBuildOptions(
+        npu="RBLN-CA22",  # 또는 os.environ["RBLN_NPU_NAME"]
+        precision="fp32",
+    ),
     # bucketing_shapes=[(1, 3, 224, 224), (4, 3, 224, 224)],  # 옵션
 )
 result = build_unified(cfg)
@@ -443,6 +450,7 @@ print(result.compiled_model_path)
 
 ```python
 import numpy as np
+from unified_sdk.options import RBLNVisionRuntimeOptions
 from unified_sdk.types import RuntimeConfig
 from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
@@ -452,7 +460,7 @@ cfg = RuntimeConfig(
     input_name="input",
     output_name="output",
     input_shape=(1, 3, 224, 224),
-    extra={"tensor_type": "np", "device": 0},
+    backend_options=RBLNVisionRuntimeOptions(tensor_type="np", device=0),
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.random.rand(1, 3, 224, 224).astype(np.float32))
@@ -472,7 +480,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 
 - 본 체크아웃은 RBLN 어댑터만 노출합니다. 다중 백엔드(TRT+RBLN)는 `main` 브랜치에서 사용하세요.
 - `types.py`는 RBLN 친화적으로 슬림화되어 있어 `main`의 `BuildConfig`와 일부 필드(`min/opt/max_input_shape`, `use_execute_v3` 등)가 다릅니다. (`input_shape` + 옵션 `bucketing_shapes`로 대체)
-- 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `BuildConfig.extra["npu"]`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
+- 일부 물리 서버/컨테이너 조합에서는 RBLN 컴파일 시 `RBLNVisionBuildOptions(npu=...)`로 장치명(예: `RBLN-CA22`)을 명시해야 할 수 있습니다. 예제는 `RBLN_NPU_NAME` 환경 변수를 우선적으로 읽고, 없으면 `RBLN-CA22`를 기본값으로 사용합니다.
 - 2026년 7월 24일 기준, `RBLN-CA22 + rebel-compiler 0.11.0` 조합에서 **host native compile은 성공하지만 CDI/container 내부 `compile_from_torch(...)`는 실패**하는 사례를 확인했습니다. `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 compiler backend를 사용하므로 같은 종류의 compile failure가 재현될 수 있습니다. Unified SDK 관리 목적상 본 branch의 기준 흐름은 Docker-first로 두고, vendor 답변 전까지는 `4) 표준 fetching`과 `6) custom compile`을 container compile known issue로 메모합니다. 현재 Docker 안에서 안정적으로 확인 가능한 vision 경로는 `5) provided .rbln fetch -> 7) infer -> 8) inspect`입니다. `host native compile -> container provided .rbln fetch`는 필요 시 원인 분리용 임시 우회로만 봅니다.
 - 2026년 7월 24일 기준, LLM도 비슷한 경향을 보입니다. host native에서는 `1) model id -> generate`, `2) precompiled artifact -> generate`, `3) optimum-rbln compile -> generate`가 통과했지만, CDI/container에서는 `3)`의 `optimum-rbln` compile이 같은 compiler backend 이슈로 실패할 수 있습니다. 또한 host에서 미리 만든 artifact가 있어도 `2)`의 `create_runtime_LLM(...)` / `generate_LLM(...)` 경로에서 `vllm-rbln` runtime warmup, sampler 준비, fallback 처리 때문에 vendor-side internal compile이 다시 일어날 수 있습니다. 이 경우 Docker 이미지에 작동하는 C++ compiler(`build-essential`, `g++`)가 없으면 PyTorch inductor CPU fallback이 `InvalidCxxCompiler`로 추가 실패할 수 있습니다.
 - 현재 README에서 `표준 fetching`은 **허브/model-zoo에서 원본 pretrained 모델을 받아 `./models` 아래에 준비하고, 이후 `.rbln` compile까지 이어지는 경로**를 뜻합니다. 반면 `provided .rbln fetch`는 이미 컴파일된 artifact를 직접 받아 셋업하는 별도 경로입니다.

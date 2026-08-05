@@ -37,6 +37,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM
+from unified_sdk.options import RBLNLLMRuntimeOptions
 from unified_sdk.types import LLMRuntimeConfig
 
 
@@ -88,7 +89,7 @@ if __name__ == "__main__":
             engine_path=args.model_ref,
             tensor_parallel_size=args.tensor_parallel_size,
             max_model_len=args.max_model_len,
-            extra={"runtime_impl": args.runtime_impl},
+            backend_options=RBLNLLMRuntimeOptions(runtime_impl=args.runtime_impl),
         )
         rh = create_runtime_LLM(cfg)
         try:

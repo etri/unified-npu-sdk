@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 import numpy as np
 
+from unified_sdk.options import resolve_rbln_vision_runtime_options
 from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
@@ -46,9 +47,6 @@ def describe_api_mapping() -> Dict[str, Any]:
     }
 
 
-_TENSOR_TYPES = {"np", "pt"}
-
-
 def _require_non_empty_string(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"RuntimeConfig.{field_name} must be a non-empty string")
@@ -61,51 +59,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     if not all(isinstance(dim, int) and dim > 0 for dim in shape):
         raise ValueError(f"RuntimeConfig.{field_name} must contain only positive integers: {shape!r}")
     return shape
-
-
-def _parse_device(value: Any) -> int:
-    try:
-        device = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"RuntimeConfig.extra['device'] must be an integer, got {value!r}") from exc
-    if device < 0:
-        raise ValueError("RuntimeConfig.extra['device'] must be >= 0")
-    return device
-
-
-def _parse_tensor_type(value: Any) -> str:
-    tensor_type = str(value)
-    if tensor_type not in _TENSOR_TYPES:
-        raise ValueError(
-            f"RuntimeConfig.extra['tensor_type'] must be one of {sorted(_TENSOR_TYPES)}, got {value!r}"
-        )
-    return tensor_type
-
-
-def _parse_timeout(value: Any) -> Any:
-    if value is None:
-        return None
-    try:
-        timeout = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"RuntimeConfig.extra['timeout'] must be numeric, got {value!r}") from exc
-    if timeout <= 0:
-        raise ValueError("RuntimeConfig.extra['timeout'] must be > 0")
-    return timeout
-
-
-def _parse_bool(value: Any, field_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    if value in (0, 1):
-        return bool(value)
-    raise ValueError(f"RuntimeConfig.extra['{field_name}'] must be a boolean-like value, got {value!r}")
 
 
 def _to_numpy(output: Any) -> np.ndarray:
@@ -139,21 +92,18 @@ class _RBLNRuntime:
         output_name = _require_non_empty_string(cfg.output_name, "output_name")
         input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
 
-        extra = dict(cfg.extra or {})
-        device = _parse_device(extra.get("device", 0))
-        tensor_type = _parse_tensor_type(extra.get("tensor_type", "np"))
-        timeout = _parse_timeout(extra.get("timeout", None))
-        activate_profiler = _parse_bool(extra.get("activate_profiler", False), "activate_profiler")
+        options = resolve_rbln_vision_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        options_meta = options.to_metadata()
 
         import rebel
 
         try:
             runtime = rebel.Runtime(
                 str(p),
-                device=device,
-                tensor_type=tensor_type,
-                activate_profiler=activate_profiler,
-                timeout=timeout,
+                device=options.device,
+                tensor_type=options.tensor_type,
+                activate_profiler=options.activate_profiler,
+                timeout=options.timeout,
             )
         except Exception as exc:
             raise RuntimeError(f"Failed to create RBLN runtime for {p}: {exc}") from exc
@@ -166,9 +116,7 @@ class _RBLNRuntime:
             input_shape=input_shape,
             ctx={
                 "runtime": runtime,
-                "tensor_type": tensor_type,
-                "device": device,
-                "extra": extra,
+                "backend_options": options_meta,
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
@@ -180,8 +128,8 @@ class _RBLNRuntime:
             raise RuntimeError("RBLN RuntimeHandle is closed or invalid")
 
         rt = rh.ctx["runtime"]
-        extra = rh.ctx.get("extra", {})
-        allow_dynamic = _parse_bool(extra.get("allow_dynamic_shape", False), "allow_dynamic_shape")
+        options_meta = dict(rh.ctx.get("backend_options", {}))
+        allow_dynamic = bool(options_meta.get("allow_dynamic_shape", False))
 
         input_shape = tuple(getattr(input_array, "shape", ()))
         if (not allow_dynamic) and input_shape != tuple(rh.input_shape):

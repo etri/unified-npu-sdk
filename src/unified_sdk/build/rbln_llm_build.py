@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
+from unified_sdk.options import resolve_rbln_llm_build_options
 from unified_sdk.types import BuildResult, LLMBuildConfig
 
 
@@ -33,13 +34,6 @@ def _require_positive_int(value: Any, field_name: str) -> int:
     return value
 
 
-def _normalize_build_mode(extra: Dict[str, Any]) -> str:
-    mode = str(extra.get("build_mode", "fetch")).strip().lower()
-    if mode not in {"fetch", "optimum_compile"}:
-        raise ValueError(f"Unsupported RBLN LLM build mode: {mode!r}")
-    return mode
-
-
 def _artifact_dir(out_dir: str | Path, model_name: str) -> Path:
     name = str(model_name).strip()
     if not name:
@@ -63,8 +57,9 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
     if cfg.backend != "rbln":
         raise ValueError(f"RBLN LLM build adapter received backend={cfg.backend!r}")
 
-    extra = dict(cfg.extra or {})
-    mode = _normalize_build_mode(extra)
+    options = resolve_rbln_llm_build_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+    options_meta = options.to_metadata()
+    mode = options.build_mode
     model_ref = str(cfg.model_or_path)
 
     if mode == "fetch":
@@ -76,7 +71,7 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
                 "source": "provided",
                 "model_ref": model_ref,
                 "note": "model id or local model path; loaded by the selected LLM runtime implementation",
-                "extra": extra,
+                "backend_options": options_meta,
                 "capability_family": _CAPABILITY_FAMILY,
                 "build_pipeline": _BUILD_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
@@ -106,14 +101,10 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
         "rbln_max_seq_len": cfg.max_model_len,
         "rbln_num_devices": cfg.num_devices,
     }
-    if "trust_remote_code" in extra:
-        compile_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
-    if "revision" in extra and extra["revision"]:
-        compile_kwargs["revision"] = str(extra["revision"])
-    if "rbln_create_runtimes" in extra:
-        compile_kwargs["rbln_create_runtimes"] = bool(extra["rbln_create_runtimes"])
-    else:
-        compile_kwargs["rbln_create_runtimes"] = False
+    compile_kwargs["trust_remote_code"] = options.trust_remote_code
+    if options.revision:
+        compile_kwargs["revision"] = options.revision
+    compile_kwargs["rbln_create_runtimes"] = options.rbln_create_runtimes
 
     try:
         compiled = RBLNAutoModelForCausalLM.from_pretrained(model_ref, **compile_kwargs)
@@ -132,7 +123,7 @@ def build_llm(cfg: LLMBuildConfig) -> BuildResult:
             "batch_size": cfg.batch_size,
             "max_model_len": cfg.max_model_len,
             "num_devices": cfg.num_devices,
-            "extra": extra,
+            "backend_options": options_meta,
             "capability_family": _CAPABILITY_FAMILY,
             "build_pipeline": _BUILD_PIPELINE,
             "vendor_api_map": _VENDOR_API_MAP,

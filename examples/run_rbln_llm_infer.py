@@ -37,6 +37,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM
+from unified_sdk.options import RBLNLLMRuntimeOptions
 from unified_sdk.types import LLMRuntimeConfig
 
 
@@ -70,15 +71,11 @@ if __name__ == "__main__":
         top_p=args.top_p,
         top_k=args.top_k,
         min_tokens=args.min_tokens,
-        extra={
-            key: value
-            for key, value in {
-                "runtime_impl": args.runtime_impl,
-                "block_size": args.block_size,
-                "trust_remote_code": args.trust_remote_code if args.trust_remote_code else None,
-            }.items()
-            if value is not None
-        },
+        backend_options=RBLNLLMRuntimeOptions(
+            runtime_impl=args.runtime_impl,
+            block_size=args.block_size,
+            trust_remote_code=args.trust_remote_code,
+        ),
     )
 
     rh = create_runtime_LLM(cfg)
