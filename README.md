@@ -314,18 +314,17 @@ python3 examples/run_warboy_infer.py \
 # 7) 모델 메타 best-effort 확인
 python3 examples/inspect_warboy_model.py builds/resnet50.enf
 
-# 8) detection 계열 example: YOLOv5l model zoo ENF fetch smoke
-#    이 경로의 목표는 "model zoo ENF 확보 + 런타임 로드 가능성" 검증입니다.
-#    detection 모델은 classification helper와 postprocess 계약이 다를 수 있으므로
-#    우선 fetch/inspect 를 기준 smoke 로 보고, infer 는 raw output shape 확인용으로 사용합니다.
-python3 examples/run_warboy_build.py --model-name yolov5l
-python3 examples/inspect_warboy_model.py builds/yolov5l.enf
-
-# (선택) generic infer helper 로 raw output shape만 확인
+# 8) detection 계열 infer smoke (YOLOv5l)
+#    4-c-1 에서 이미 builds/yolov5l.enf 를 준비했다는 전제입니다.
+#    detection 모델은 classification helper/postprocess 계약과 다를 수 있으므로,
+#    이 단계의 목적은 runtime load + infer path + raw output shape 확인입니다.
 python3 examples/run_warboy_infer.py \
   --engine-path builds/yolov5l.enf \
   --input-shape 1,3,640,640 \
   --iters 20
+
+# infer 뒤에 모델 메타를 best-effort 로 다시 확인
+python3 examples/inspect_warboy_model.py builds/yolov5l.enf
 
 # 필요하면 detection smoke 도 같은 방식으로 dtype override 를 줄 수 있습니다.
 # python3 examples/run_warboy_infer.py \
