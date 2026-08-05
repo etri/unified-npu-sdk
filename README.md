@@ -299,9 +299,17 @@ python3 examples/run_warboy_build.py \
 # 6) .enf 추론
 #    resnet50.enf 이고 furiosa-models 가 있으면 model-zoo preprocess/postprocess 를 우선 사용합니다.
 #    tests/input.jpg가 없으면 synthetic 입력으로 런타임 경로를 검증합니다.
+#    ENF 입력 계약을 자동 해석하지 못하면 명령이 fail-closed 로 멈추며,
+#    이 경우 --input-dtype uint8 또는 --input-dtype float32 로 재시도합니다.
 python3 examples/run_warboy_infer.py \
   --engine-path builds/resnet50.enf \
   --iters 50
+
+# 예: resnet50.enf 가 UINT8 입력을 기대하는 환경에서 자동 해석이 실패할 때
+python3 examples/run_warboy_infer.py \
+  --engine-path builds/resnet50.enf \
+  --iters 50 \
+  --input-dtype uint8
 
 # 7) 모델 메타 best-effort 확인
 python3 examples/inspect_warboy_model.py builds/resnet50.enf
@@ -318,6 +326,13 @@ python3 examples/run_warboy_infer.py \
   --engine-path builds/yolov5l.enf \
   --input-shape 1,3,640,640 \
   --iters 20
+
+# 필요하면 detection smoke 도 같은 방식으로 dtype override 를 줄 수 있습니다.
+# python3 examples/run_warboy_infer.py \
+#   --engine-path builds/yolov5l.enf \
+#   --input-shape 1,3,640,640 \
+#   --iters 20 \
+#   --input-dtype uint8
 ```
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
