@@ -327,9 +327,10 @@ python3 examples/run_warboy_infer.py \
 
 ## 🚀 사용 예시
 
-### API 대응
+### Build / Runtime API 분리
 
-`furiosa-only`는 Warboy vision 브랜치이므로 public API는 vision 기준으로 유지합니다.
+`furiosa-only`는 build / runtime wrapping API를 **Warboy vision capability** 기준으로 구분하며,
+실제로는 아래처럼 `furiosa-compiler`와 `furiosa.runtime` 경로에 매핑됩니다.
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
 | --- | --- | --- | --- |
@@ -337,6 +338,11 @@ python3 examples/run_warboy_infer.py \
 | Vision `.enf` | 생성 | `create_runtime(cfg)` | `furiosa.runtime.sync.create_runner(str(enf_path), device=...)` |
 | Vision `.enf` | 추론 | `infer(rh, input_array)` | `runner.run([input_array])` |
 | Vision `.enf` | 종료 | `destroy_runtime(rh)` | `runner.close()` / `runner.__exit__(...)` best-effort |
+
+기본 원칙:
+- public runtime surface는 `create_runtime` / `infer` / `destroy_runtime` 기준으로 유지합니다.
+- build core는 **provided `.enf` 배치** 또는 **quantized ONNX -> `.enf` 컴파일**만 담당합니다.
+- quantization은 build 내부가 아니라 `prepare_warboy_quantized_onnx.py`와 `frontends` helper가 담당하는 별도 prepare capability로 봅니다.
 
 ### 컴파일 (.enf 생성)
 
