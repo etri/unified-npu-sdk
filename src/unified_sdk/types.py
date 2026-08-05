@@ -1,25 +1,40 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Tuple
+
+from unified_sdk.options import (
+    RBLNLLMBuildOptions,
+    RBLNLLMRuntimeOptions,
+    RBLNVisionBuildOptions,
+    RBLNVisionRuntimeOptions,
+)
+
+if TYPE_CHECKING:
+    from unified_sdk.frontends.types import PreparedRBLNVisionBuildInput
 
 BuildBackendName = Literal["rbln"]
 RuntimeBackendName = Literal["rbln"]
 
-Precision = Literal["fp32", "fp16"]
 
-@dataclass
-class BuildConfig:
-    backend: BuildBackendName
-    model_or_path: Any                      # torch.nn.Module 권장
+@dataclass(kw_only=True)
+class CoreBuildConfig:
+    model_or_path: Any
     out_dir: str | Path = "build"
     model_name: str = "model"
-    precision: Precision = "fp16"
     input_name: str = "input"
     input_shape: Tuple[int, ...] = (1, 3, 224, 224)
-    # RBLN bucketing 옵션: 여러 입력 shape를 동시에 컴파일
-    bucketing_shapes: Optional[List[Tuple[int, ...]]] = None
-    extra: Optional[Dict[str, Any]] = None
+
+
+@dataclass(kw_only=True)
+class BuildConfig(CoreBuildConfig):
+    backend: BuildBackendName = "rbln"
+    backend_options: RBLNVisionBuildOptions | None = None
+    prepared_input: "PreparedRBLNVisionBuildInput | None" = None
+    bucketing_shapes: Optional[list[Tuple[int, ...]]] = None
+    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
+
 
 @dataclass
 class BuildResult:
@@ -27,16 +42,23 @@ class BuildResult:
     compiled_model_path: str
     meta_data: Dict[str, Any]
 
-@dataclass
-class RuntimeConfig:
-    backend: RuntimeBackendName
+
+@dataclass(kw_only=True)
+class CoreRuntimeConfig:
     engine_path: str | Path
     input_name: str
-    output_name: str
+    output_name: str = "output"
     input_shape: Tuple[int, ...]
-    extra: Optional[Dict[str, Any]] = None  # device, tensor_type, activate_profiler, timeout, allow_dynamic_shape
 
-@dataclass
+
+@dataclass(kw_only=True)
+class RuntimeConfig(CoreRuntimeConfig):
+    backend: RuntimeBackendName = "rbln"
+    backend_options: RBLNVisionRuntimeOptions | None = None
+    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
+
+
+@dataclass(kw_only=True)
 class RuntimeHandle:
     backend: str
     engine_path: str
@@ -46,28 +68,30 @@ class RuntimeHandle:
     ctx: Dict[str, Any] = field(default_factory=dict)
 
 
-# RBLN LLM track
-
 LLMBuildBackendName = Literal["rbln"]
 LLMRuntimeBackendName = Literal["rbln"]
 
 
-@dataclass
-class LLMBuildConfig:
-    backend: LLMBuildBackendName
+@dataclass(kw_only=True)
+class CoreLLMBuildConfig:
     model_or_path: str | Path
     out_dir: str | Path = "artifacts"
     model_name: str = "model"
     batch_size: int = 1
     max_model_len: int = 512
     num_devices: int = 1
-    extra: Optional[Dict[str, Any]] = None  # build_mode(fetch|optimum_compile), trust_remote_code, revision 등
 
 
-@dataclass
-class LLMRuntimeConfig:
-    backend: LLMRuntimeBackendName
-    engine_path: str | Path                    # model id, local HF path, or precompiled RBLN dir
+@dataclass(kw_only=True)
+class LLMBuildConfig(CoreLLMBuildConfig):
+    backend: LLMBuildBackendName = "rbln"
+    backend_options: RBLNLLMBuildOptions | None = None
+    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
+
+
+@dataclass(kw_only=True)
+class CoreLLMRuntimeConfig:
+    engine_path: str | Path
     tokenizer_path: Optional[str | Path] = None
     tensor_parallel_size: int = 1
     max_model_len: int = 512
@@ -76,10 +100,16 @@ class LLMRuntimeConfig:
     top_p: float = 1.0
     top_k: int = -1
     min_tokens: int = 0
-    extra: Optional[Dict[str, Any]] = None     # runtime_impl(vllm|optimum), block_size, trust_remote_code 등
 
 
-@dataclass
+@dataclass(kw_only=True)
+class LLMRuntimeConfig(CoreLLMRuntimeConfig):
+    backend: LLMRuntimeBackendName = "rbln"
+    backend_options: RBLNLLMRuntimeOptions | None = None
+    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
+
+
+@dataclass(kw_only=True)
 class LLMRuntimeHandle:
     backend: str
     engine_path: str

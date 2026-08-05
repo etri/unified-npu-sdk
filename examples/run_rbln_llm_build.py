@@ -36,6 +36,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from unified_sdk.build.api import build_unified_LLM
+from unified_sdk.options import RBLNLLMBuildOptions
 from unified_sdk.types import LLMBuildConfig
 
 
@@ -65,16 +66,12 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         max_model_len=args.max_model_len,
         num_devices=args.num_devices,
-        extra={
-            key: value
-            for key, value in {
-                "build_mode": args.build_mode,
-                "trust_remote_code": args.trust_remote_code if args.trust_remote_code else None,
-                "revision": args.revision,
-                "rbln_create_runtimes": args.create_runtimes if args.create_runtimes else None,
-            }.items()
-            if value is not None
-        },
+        backend_options=RBLNLLMBuildOptions(
+            build_mode=args.build_mode,
+            trust_remote_code=args.trust_remote_code,
+            revision=args.revision,
+            rbln_create_runtimes=args.create_runtimes,
+        ),
     )
 
     result = build_unified_LLM(cfg)

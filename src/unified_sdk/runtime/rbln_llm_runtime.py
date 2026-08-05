@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
+from unified_sdk.options import resolve_rbln_llm_runtime_options
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle
 
 
@@ -64,12 +65,13 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
     if cfg.backend != "rbln":
         raise ValueError(f"RBLN LLM runtime adapter received backend={cfg.backend!r}")
 
-    extra = dict(cfg.extra or {})
-    runtime_impl = str(extra.get("runtime_impl", "vllm")).strip().lower()
+    options = resolve_rbln_llm_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+    options_meta = options.to_metadata()
+    runtime_impl = options.runtime_impl
     if runtime_impl != "vllm":
         raise ValueError(
             "Currently supported RBLN LLM runtime_impl is only 'vllm'. "
-            "Use extra={'runtime_impl': 'vllm'} or omit the option."
+            "Use RBLNLLMRuntimeOptions(runtime_impl='vllm') or omit the option."
         )
 
     try:
@@ -86,17 +88,15 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
         "tensor_parallel_size": cfg.tensor_parallel_size,
         "max_model_len": cfg.max_model_len,
     }
-    llm_kwargs["block_size"] = int(extra["block_size"]) if ("block_size" in extra and extra["block_size"] is not None) else int(cfg.max_model_len)
-    if "trust_remote_code" in extra:
-        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
-    if "enforce_eager" in extra:
-        llm_kwargs["enforce_eager"] = bool(extra["enforce_eager"])
-    if "dtype" in extra and extra["dtype"]:
-        llm_kwargs["dtype"] = str(extra["dtype"])
-    if "gpu_memory_utilization" in extra and extra["gpu_memory_utilization"] is not None:
-        llm_kwargs["gpu_memory_utilization"] = float(extra["gpu_memory_utilization"])
-    if "additional_config" in extra and isinstance(extra["additional_config"], dict):
-        llm_kwargs["additional_config"] = dict(extra["additional_config"])
+    llm_kwargs["block_size"] = int(options.block_size) if options.block_size is not None else int(cfg.max_model_len)
+    llm_kwargs["trust_remote_code"] = options.trust_remote_code
+    llm_kwargs["enforce_eager"] = options.enforce_eager
+    if options.dtype:
+        llm_kwargs["dtype"] = options.dtype
+    if options.gpu_memory_utilization is not None:
+        llm_kwargs["gpu_memory_utilization"] = float(options.gpu_memory_utilization)
+    if options.additional_config is not None:
+        llm_kwargs["additional_config"] = dict(options.additional_config)
 
     try:
         llm = LLM(**llm_kwargs)
@@ -125,7 +125,7 @@ def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
             "llm": llm,
             "runtime_impl": runtime_impl,
             "sampling_defaults": sampling_defaults,
-            "extra": extra,
+            "backend_options": options_meta,
             "capability_family": _CAPABILITY_FAMILY,
             "runtime_pipeline": _RUNTIME_PIPELINE,
             "vendor_api_map": _VENDOR_API_MAP,

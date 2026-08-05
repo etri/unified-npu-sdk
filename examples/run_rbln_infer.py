@@ -102,6 +102,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     from unified_sdk.types import RuntimeConfig
+    from unified_sdk.options import RBLNVisionRuntimeOptions
     from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
     engine_path = args.engine_path.expanduser().resolve()
@@ -136,11 +137,11 @@ if __name__ == "__main__":
         input_name=args.input_name,
         output_name=args.output_name,
         input_shape=args.input_shape,
-        extra={
-            "tensor_type": args.tensor_type,
-            "device": args.device,
-            "allow_dynamic_shape": args.allow_dynamic_shape,
-        },
+        backend_options=RBLNVisionRuntimeOptions(
+            tensor_type=args.tensor_type,
+            device=args.device,
+            allow_dynamic_shape=args.allow_dynamic_shape,
+        ),
     )
 
     rh = create_runtime(cfg)
