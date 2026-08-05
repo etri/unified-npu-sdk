@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from contextlib import redirect_stdout
 from io import StringIO
 import runpy
@@ -27,20 +28,67 @@ from unified_sdk.frontends import (  # noqa: E402
 
 
 class WarboyExamplesTest(unittest.TestCase):
-    def test_synthetic_model_zoo_preprocess_produces_vendor_dtype(self) -> None:
-        script_path = REPO_ROOT / "examples" / "run_warboy_infer.py"
-        module_globals = runpy.run_path(str(script_path), run_name="warboy_infer_test")
-        load_synthetic = module_globals["_load_synthetic_with_model_zoo_preprocess"]
+    def test_prepare_runtime_input_prefers_model_zoo_preprocess_dtype(self) -> None:
+        module = importlib.import_module("unified_sdk.frontends.prepare_warboy_runtime_input")
+        prepare_runtime_input = module.prepare_warboy_runtime_input
 
         class _FakeModelHelper:
             def preprocess(self, candidate, **kwargs):
                 arr = np.zeros((1, 3, 224, 224), dtype=np.uint8)
                 return [arr], {"candidate": candidate, "kwargs": kwargs}
 
-        batch, contexts, preprocess_kwargs = load_synthetic(_FakeModelHelper(), (1, 3, 224, 224))
-        self.assertEqual(batch[0].dtype, np.uint8)
-        self.assertIsNotNone(contexts)
-        self.assertIsInstance(preprocess_kwargs, dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            engine_path = tmp_path / "resnet50.enf"
+            engine_path.write_text("enf")
+            image_path = tmp_path / "missing.jpg"
+
+            with mock.patch.object(
+                module,
+                "inspect_warboy_input_contract",
+                return_value={"expected_dtype": "uint8", "inspection_warning": None},
+            ):
+                with mock.patch.object(module, "_maybe_create_model_zoo_helper", return_value=(_FakeModelHelper(), None)):
+                    result = prepare_runtime_input(
+                        engine_path=engine_path,
+                        image_path=image_path,
+                        input_shape=(1, 3, 224, 224),
+                    )
+
+        self.assertEqual(result.actual_dtype, "uint8")
+        self.assertEqual(result.batch.dtype, np.uint8)
+        self.assertIsNotNone(result.contexts)
+
+    def test_prepare_runtime_input_generic_uint8_fallback(self) -> None:
+        module = importlib.import_module("unified_sdk.frontends.prepare_warboy_runtime_input")
+        prepare_runtime_input = module.prepare_warboy_runtime_input
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            engine_path = tmp_path / "resnet50.enf"
+            engine_path.write_text("enf")
+            image_path = tmp_path / "input.jpg"
+            image_path.write_text("placeholder")
+
+            with mock.patch.object(
+                module,
+                "inspect_warboy_input_contract",
+                return_value={"expected_dtype": "uint8", "inspection_warning": None},
+            ):
+                with mock.patch.object(module, "_maybe_create_model_zoo_helper", return_value=(None, "helper missing")):
+                    with mock.patch.object(
+                        module,
+                        "_load_image_batch_uint8",
+                        return_value=np.zeros((1, 3, 224, 224), dtype=np.uint8),
+                    ):
+                        result = prepare_runtime_input(
+                            engine_path=engine_path,
+                            image_path=image_path,
+                            input_shape=(1, 3, 224, 224),
+                        )
+
+        self.assertEqual(result.actual_dtype, "uint8")
+        self.assertEqual(result.batch.dtype, np.uint8)
 
     def test_runtime_loop_always_destroys_runtime_on_error(self) -> None:
         script_path = REPO_ROOT / "examples" / "run_warboy_infer.py"
