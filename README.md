@@ -299,17 +299,22 @@ python3 examples/run_warboy_build.py \
 # 6) .enf 추론
 #    resnet50.enf 이고 furiosa-models 가 있으면 model-zoo preprocess/postprocess 를 우선 사용합니다.
 #    tests/input.jpg가 없으면 synthetic 입력으로 런타임 경로를 검증합니다.
-#    ENF 입력 계약을 자동 해석하지 못하면 명령이 fail-closed 로 멈추며,
-#    이 경우 --input-dtype uint8 또는 --input-dtype float32 로 재시도합니다.
+#    build step 이 남긴 sidecar metadata 가 있으면 입력 계약(input dtype / shape)을 우선 사용합니다.
+#    sidecar 와 runtime inspect 둘 다 입력 계약을 확정하지 못하면 명령이 fail-closed 로 멈추며,
+#    그 경우에만 --input-dtype uint8 또는 --input-dtype float32 override 를 사용합니다.
 python3 examples/run_warboy_infer.py \
   --engine-path builds/resnet50.enf \
   --iters 50
 
-# 예: resnet50.enf 가 UINT8 입력을 기대하는 환경에서 자동 해석이 실패할 때
-python3 examples/run_warboy_infer.py \
-  --engine-path builds/resnet50.enf \
-  --iters 50 \
-  --input-dtype uint8
+# (필요 시) sidecar / runtime inspect 로도 입력 계약을 확정하지 못할 때만 dtype override 사용
+# python3 examples/run_warboy_infer.py \
+#   --engine-path builds/resnet50.enf \
+#   --iters 50 \
+#   --input-dtype uint8
+# python3 examples/run_warboy_infer.py \
+#   --engine-path builds/resnet50.enf \
+#   --iters 50 \
+#   --input-dtype float32
 
 # 7) 모델 메타 best-effort 확인
 python3 examples/inspect_warboy_model.py builds/resnet50.enf
