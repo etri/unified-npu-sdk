@@ -12,7 +12,7 @@ from unified_sdk.options import (
 )
 
 if TYPE_CHECKING:
-    from unified_sdk.frontends.types import PreparedRBLNVisionBuildInput
+    from unified_sdk.frontends.types import PreparedRBLNLLMBuildInput, PreparedRBLNVisionBuildInput
 
 BuildBackendName = Literal["rbln"]
 RuntimeBackendName = Literal["rbln"]
@@ -86,6 +86,7 @@ class CoreLLMBuildConfig:
 class LLMBuildConfig(CoreLLMBuildConfig):
     backend: LLMBuildBackendName = "rbln"
     backend_options: RBLNLLMBuildOptions | None = None
+    prepared_input: "PreparedRBLNLLMBuildInput | None" = None
     extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
 
 

@@ -18,7 +18,12 @@ if str(SRC_DIR) not in sys.path:
 
 from unified_sdk.build.rbln_build import _RBLNBuildAdapter  # noqa: E402
 from unified_sdk.build.rbln_llm_build import build_llm  # noqa: E402
-from unified_sdk.frontends.types import PreparedRBLNCompileSource, PreparedRBLNVisionBuildInput, ProvidedRBLNArtifact  # noqa: E402
+from unified_sdk.frontends.types import (  # noqa: E402
+    PreparedRBLNLLMBuildInput,
+    PreparedRBLNCompileSource,
+    PreparedRBLNVisionBuildInput,
+    ProvidedRBLNArtifact,
+)
 from unified_sdk.options import (  # noqa: E402
     RBLNLLMBuildOptions,
     RBLNLLMRuntimeOptions,
@@ -76,6 +81,18 @@ class RBLNAdaptersTest(unittest.TestCase):
             result = adapter.build(cfg)
             self.assertEqual(result.meta_data["origin"], str(src))
 
+    def test_build_adapter_requires_prepared_input_for_compile_source(self) -> None:
+        adapter = _RBLNBuildAdapter()
+        cfg = BuildConfig(
+            backend="rbln",
+            model_or_path="microsoft/resnet-50",
+            out_dir="builds",
+            model_name="resnet50",
+            backend_options=RBLNVisionBuildOptions(compile_frontend="optimum_image_classification"),
+        )
+        with self.assertRaises(RuntimeError):
+            adapter.build(cfg)
+
     def test_runtime_adapter_uses_backend_options(self) -> None:
         adapter = _RBLNRuntime()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -105,10 +122,15 @@ class RBLNAdaptersTest(unittest.TestCase):
                 backend="rbln",
                 model_or_path="Qwen/Qwen3-0.6B",
                 backend_options=RBLNLLMBuildOptions(build_mode="fetch"),
+                prepared_input=PreparedRBLNLLMBuildInput(
+                    kind="runtime_model_ref",
+                    model_ref="Qwen/Qwen3-0.6B",
+                ),
             )
         )
         self.assertEqual(result.compiled_model_path, "Qwen/Qwen3-0.6B")
         self.assertEqual(result.meta_data["build_mode"], "fetch")
+        self.assertFalse(result.meta_data["artifact_emitted"])
 
     def test_llm_runtime_uses_backend_options(self) -> None:
         fake_outputs = [types.SimpleNamespace(outputs=[types.SimpleNamespace(text="hello")])]

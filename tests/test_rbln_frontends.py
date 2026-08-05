@@ -14,8 +14,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from unified_sdk.frontends import (  # noqa: E402
+    RBLNLLMFrontendBuildRequest,
     RBLNVisionFrontendBuildRequest,
     list_model_zoo_targets,
+    resolve_rbln_llm_build_request,
     prepare_rbln_vision_build_input,
     resolve_rbln_vision_build_request,
 )
@@ -84,6 +86,33 @@ class RBLNFrontendsTest(unittest.TestCase):
 
         self.assertEqual(resolved.kind, "torch_model")
         self.assertEqual(resolved.prepared_input.compile_source.source_label, "torch_model")
+
+    def test_resolve_llm_fetch_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resolved = resolve_rbln_llm_build_request(
+                RBLNLLMFrontendBuildRequest(
+                    model_ref="Qwen/Qwen3-0.6B",
+                    out_dir=Path(tmpdir),
+                    model_name="qwen3",
+                    build_mode="fetch",
+                )
+            )
+        self.assertEqual(resolved.kind, "runtime_model_ref")
+        self.assertEqual(resolved.prepared_input.kind, "runtime_model_ref")
+
+    def test_resolve_llm_artifact_build_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resolved = resolve_rbln_llm_build_request(
+                RBLNLLMFrontendBuildRequest(
+                    model_ref="Qwen/Qwen3-0.6B",
+                    out_dir=Path(tmpdir),
+                    model_name="qwen3",
+                    build_mode="optimum_compile",
+                )
+            )
+        self.assertEqual(resolved.kind, "artifact_build")
+        self.assertEqual(resolved.prepared_input.kind, "artifact_build")
+        self.assertTrue(str(resolved.prepared_input.artifact_dir).endswith("qwen3"))
 
 
 if __name__ == "__main__":

@@ -4,10 +4,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .types import (
+    PreparedRBLNLLMBuildInput,
     PreparedRBLNCompileSource,
     PreparedRBLNVisionBuildInput,
     ProvidedRBLNArtifact,
+    RBLNLLMFrontendBuildRequest,
     RBLNVisionFrontendBuildRequest,
+    ResolvedRBLNLLMBuildRequest,
     ResolvedRBLNVisionBuildRequest,
 )
 
@@ -102,6 +105,35 @@ def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -
             source_label=source_label,
             compile_frontend=compile_frontend,  # type: ignore[arg-type]
             source_cache_dir=source_cache_dir,
+        ),
+    )
+
+
+def resolve_rbln_llm_build_request(request: RBLNLLMFrontendBuildRequest) -> ResolvedRBLNLLMBuildRequest:
+    model_ref = str(request.model_ref).strip()
+    if not model_ref:
+        raise ValueError("RBLNLLMFrontendBuildRequest.model_ref must be a non-empty string or path")
+
+    build_mode = request.build_mode
+    if build_mode == "fetch":
+        return ResolvedRBLNLLMBuildRequest(
+            source_description=f"runtime model-ref passthrough: {model_ref}",
+            kind="runtime_model_ref",
+            prepared_input=PreparedRBLNLLMBuildInput(
+                kind="runtime_model_ref",
+                model_ref=model_ref,
+                artifact_dir=None,
+            ),
+        )
+
+    artifact_dir = request.out_dir.expanduser().resolve() / request.model_name.strip()
+    return ResolvedRBLNLLMBuildRequest(
+        source_description=f"artifact build from model ref via optimum-rbln: {model_ref}",
+        kind="artifact_build",
+        prepared_input=PreparedRBLNLLMBuildInput(
+            kind="artifact_build",
+            model_ref=model_ref,
+            artifact_dir=artifact_dir,
         ),
     )
 
@@ -238,12 +270,16 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
 
 
 __all__ = [
+    "PreparedRBLNLLMBuildInput",
     "PreparedRBLNCompileSource",
     "PreparedRBLNVisionBuildInput",
     "ProvidedRBLNArtifact",
+    "RBLNLLMFrontendBuildRequest",
     "RBLNVisionFrontendBuildRequest",
+    "ResolvedRBLNLLMBuildRequest",
     "ResolvedRBLNVisionBuildRequest",
     "list_model_zoo_targets",
+    "resolve_rbln_llm_build_request",
     "prepare_rbln_vision_build_input",
     "resolve_rbln_vision_build_request",
 ]
