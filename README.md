@@ -362,19 +362,21 @@ print(result.compiled_model_path)   # artifacts/qwen3_8b_fp8.fxb
 
 ### Build / Runtime API 분리
 
-`furiosa-llm-only`는 LLM 전용 브랜치이므로 build 와 runtime wrapping API 모두 LLM 기준으로 구분해 사용합니다.
-README와 smoke 예제는 아래 LLM API를 기준으로 설명합니다.
+`furiosa-llm-only`는 build / runtime wrapping API를 **LLM capability surface** 기준으로 구분하며,
+실제로는 아래처럼 `furiosa_llm`과 `fxb build` 경로에 매핑됩니다.
 
 | 용도 | 단계 | Unified SDK | 내부 vendor |
 | --- | --- | --- | --- |
 | LLM / FXB | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 `fxb build ...` |
 | LLM / FXB | 생성 | `create_runtime_LLM(cfg)` | `furiosa_llm.LLM(model_id_or_path, fxb=..., devices=...)` |
-| LLM / FXB | 생성 | `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
+| LLM / FXB | 추론 | `generate_LLM(rh, prompt, **overrides)` | `llm.generate(prompts, SamplingParams(...))` |
 | LLM / FXB | 호환 alias | `infer_LLM(rh, prompt, **overrides)` | `generate_LLM(...)`와 동일 의미의 호환 경로 |
 | LLM / FXB | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
 
-위 표 기준으로 이 브랜치의 **권장 public surface** 는 `build_unified_LLM` / `create_runtime_LLM` /
-`generate_LLM` / `destroy_runtime_LLM` 입니다. `infer_LLM`은 호환 alias로 유지됩니다.
+기본 원칙:
+- 권장 public surface는 `build_unified_LLM` / `create_runtime_LLM` / `generate_LLM` / `destroy_runtime_LLM` 입니다.
+- `infer_LLM`은 별도 numpy-style 추론 API가 아니라, `generate_LLM(...)`와 동일 의미의 호환 alias로 유지합니다.
+- build core는 fetch/pass-through 또는 `fxb build` orchestration만 담당하고, LLM vendor workflow 옵션은 `RNGDBuildOptions` / `RNGDRuntimeOptions`로 격리합니다.
 
 ### 텍스트 생성
 
