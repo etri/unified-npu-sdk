@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
-from unified_sdk.frontends import prepare_warboy_build_input
 from unified_sdk.options import WarboyBuildOptions, resolve_warboy_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
@@ -21,13 +20,13 @@ _BUILD_PIPELINE = (
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
-    "provided_artifact": "frontends.prepare_warboy_build_input(model_or_path, enf_path) -> shutil.copyfile(src_enf, enf_path)",
+    "provided_artifact": "frontend prepare/fetch resolves a normalized .enf path -> shutil.copyfile(src_enf, enf_path)",
     "compile": "furiosa-compiler <quantized_onnx> -o <enf_path> --target-npu <target_npu> --target-ir enf",
     "prepare": "prepare_warboy_quantized_onnx.py or equivalent frontend helper before build_unified(cfg)",
     "artifact": ".enf",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
-    "frontends.prepare_warboy_build_input(... )": "build_unified(cfg) prepare/fetch step",
+    "frontend resolve step": "run_warboy_build.py / frontend helper before build_unified(cfg)",
     "shutil.copyfile(src_enf, enf_path)": "build_unified(cfg) for provided .enf",
     "furiosa-compiler <quantized_onnx> -o <enf_path> ...": "build_unified(cfg) for quantized ONNX compile",
     "prepare_warboy_quantized_onnx.py": "prepare quantized ONNX before build_unified(cfg)",
@@ -55,6 +54,19 @@ def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     if path.suffix != ".enf":
         path = path.with_suffix(".enf")
     return path
+
+
+def _resolve_model_source(model_or_path: str | Path) -> tuple[str, Path]:
+    source_path = Path(model_or_path).expanduser().resolve()
+    suffix = source_path.suffix.lower()
+    if suffix == ".enf":
+        return "provided", source_path
+    if suffix == ".onnx":
+        return "quantized_onnx", source_path
+    raise ValueError(
+        "Warboy build expects either a provided .enf artifact or a quantized .onnx compile source. "
+        f"Got: {source_path}"
+    )
 
 
 def _capability_metadata(options: WarboyBuildOptions, source: str) -> Dict[str, Any]:
@@ -98,20 +110,17 @@ class _WarboyBuildAdapter:
         options = resolve_warboy_build_options(cfg.backend_options)
         enf_path = _build_output_path(cfg.out_dir, cfg.model_name)
         enf_path.parent.mkdir(parents=True, exist_ok=True)
-        prepared_input = prepare_warboy_build_input(cfg.model_or_path, enf_path)
+        source_kind, source_path = _resolve_model_source(cfg.model_or_path)
 
-        if prepared_input.kind == "provided_artifact":
-            artifact = prepared_input.provided_artifact
-            if artifact is None:
-                raise RuntimeError("Warboy prepare step returned an empty provided_artifact payload")
-            src = artifact.source_path
+        if source_kind == "provided":
+            src = source_path
             if not src.is_file():
                 raise FileNotFoundError(f"Provided .enf not found: {src}")
-            if src != artifact.destination_path:
-                shutil.copyfile(src, artifact.destination_path)
+            if src != enf_path:
+                shutil.copyfile(src, enf_path)
             meta: Dict[str, Any] = {
                 "backend": self.name,
-                "enf_path": str(artifact.destination_path),
+                "enf_path": str(enf_path),
                 "source": "provided",
                 "origin": str(src),
                 "precision": "int8",
@@ -120,15 +129,11 @@ class _WarboyBuildAdapter:
             }
             return BuildResult(
                 backend=self.name,
-                compiled_model_path=str(artifact.destination_path),
+                compiled_model_path=str(enf_path),
                 meta_data=meta,
             )
 
-        compile_source = prepared_input.compile_source
-        if compile_source is None:
-            raise RuntimeError("Warboy prepare step returned an empty compile_source payload")
-
-        onnx_path = Path(compile_source.source).expanduser().resolve()
+        onnx_path = source_path
         if not onnx_path.is_file():
             raise FileNotFoundError(f"quantized ONNX not found: {onnx_path}")
 
