@@ -262,8 +262,13 @@ RBLN adapter가 vendor SDK(`rebel`, `optimum-rbln`, `vllm-rbln`)를 감쌉니다
 # 3) 컨테이너 내부에서 장치/패키지 확인
 command -v rbln-smi && rbln-smi || true
 python3 -c "import unified_sdk, rebel; print('OK')"
-python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
+
+# NOTE:
+# CDI/container 안에서는 `rebel.npu_is_available()`가 보수적으로 False를 줄 수 있어,
+# 본 README의 기본 smoke 판단 기준에서는 사용하지 않습니다.
+# 이 브랜치에서는 `rbln-smi`가 보이고, Python import가 되고, 실제 fetch/runtime smoke가 통과하는지를
+# 더 신뢰할 수 있는 readiness 신호로 봅니다.
 
 # NOTE:
 # 이전에 root 사용자로 실행한 컨테이너가 bind mount 경로에 root 소유 산출물을 남겼다면,
