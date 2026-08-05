@@ -39,6 +39,17 @@ class PreparedWarboyBuildInput:
 
 
 @dataclass(frozen=True)
+class PreparedWarboyRuntimeInput:
+    batch: Any
+    source_description: str
+    expected_dtype: str | None
+    actual_dtype: str | None
+    contexts: Any = None
+    model_helper: Any = None
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ResolvedWarboyBuildRequest:
     model_or_path: str
     source_description: str

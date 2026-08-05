@@ -239,6 +239,7 @@ if __name__ == "__main__":
         print("Error: 'numpy', 'torch', and 'pillow' are required for the Warboy inference example.")
         sys.exit(1)
 
+    from unified_sdk.frontends import prepare_warboy_runtime_input
     from unified_sdk.options import WarboyRuntimeOptions
     from unified_sdk.runtime import create_runtime, infer, destroy_runtime
     from unified_sdk.types import RuntimeConfig
@@ -252,40 +253,20 @@ if __name__ == "__main__":
 
     _check_files(engine_path)
     labels = _load_labels(labels_path)
-    model_helper = _maybe_create_model_zoo_helper(engine_path)
-    contexts = None
-
-    if image_path.is_file():
-        if model_helper is not None:
-            batch, contexts, preprocess_kwargs = _load_with_model_zoo_preprocess(
-                model_helper,
-                image_path,
-                prefer_uint8=_prefers_uint8_fallback(engine_path.stem),
-            )
-            input_source = f"{image_path} (model-zoo preprocess {preprocess_kwargs})"
-        else:
-            batch = _load_image_batch(image_path, args.input_shape, np)
-            input_source = str(image_path)
-    else:
-        if model_helper is not None:
-            try:
-                batch, contexts, preprocess_kwargs = _load_synthetic_with_model_zoo_preprocess(
-                    model_helper,
-                    args.input_shape,
-                )
-                input_source = f"synthetic RGB image via model-zoo preprocess {preprocess_kwargs}"
-            except Exception as exc:
-                print(f"[WARN] model-zoo synthetic preprocess failed; falling back to heuristic zeros: {exc!r}")
-                if _prefers_uint8_fallback(engine_path.stem):
-                    batch = np.zeros(args.input_shape, dtype=np.uint8)
-                    input_source = f"synthetic zeros uint8 {args.input_shape} (model-zoo heuristic fallback)"
-                else:
-                    batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
-                    input_source = f"synthetic zeros float32 {args.input_shape} (model-zoo heuristic fallback)"
-        else:
-            batch = torch.zeros(args.input_shape, dtype=torch.float32).numpy()
-            input_source = f"synthetic zeros float32 {args.input_shape}"
-        print(f"[WARN] image not found; using {input_source}")
+    prepared_input = prepare_warboy_runtime_input(
+        engine_path=engine_path,
+        image_path=image_path,
+        input_shape=args.input_shape,
+        device=args.device,
+    )
+    for warning in prepared_input.warnings:
+        print(f"[WARN] {warning}")
+    if not image_path.is_file():
+        print(f"[WARN] image not found; using {prepared_input.source_description}")
+    batch = prepared_input.batch
+    contexts = prepared_input.contexts
+    model_helper = prepared_input.model_helper
+    input_source = prepared_input.source_description
 
     # NOTE: quantized ENF 의 입력 dtype/layout 은 컴파일 시 고정된다(int8/uint8 인 경우가 많음).
     # 정확한 정합이 필요하면 Furiosa Model Zoo 의 preprocess 를 쓰거나 ONNX 입력 스펙에 맞춰야 한다.
