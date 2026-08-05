@@ -86,42 +86,6 @@
 > 대상이라 저장소에는 포함되지 않습니다. `rbln-only`와 동일한 흐름(env → smoke → resnet50
 > compile → infer)을 compiler Python API(qubee/qbcompiler) / qbruntime / mobilint-cli 기준으로 구성했습니다.
 
-### Runtime API 분리
-
-`qb-only`는 runtime wrapping API를 **vision**과 **sequence low-level extension runtime**으로 구분하며,
-실제로는 아래처럼 `qbruntime` 함수에 매핑됩니다.
-
-| 용도 | 단계 | Unified SDK | 내부 vendor |
-| --- | --- | --- | --- |
-| Vision `.mxq` | 생성 | `create_runtime(cfg)` | `qbruntime.model.load(...)` |
-| Vision `.mxq` | 추론 | `infer(rh, input_array)` | `model.infer([input_array])` |
-| Vision `.mxq` | 종료 | `destroy_runtime(rh)` | `model.dispose/release/unload/close` |
-| Sequence / Transformer `.mxq` | 생성 | `create_sequence_runtime(cfg)` | `qbruntime.model.load(...)` |
-| Sequence / Transformer `.mxq` | 추론 | `infer_sequence(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
-| Sequence / Transformer `.mxq` | 종료 | `destroy_sequence_runtime(rh)` | `model.dispose/release/unload/close` |
-
-기본 원칙:
-- 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
-- low-level sequence preview는 별도 `sequence_runtime` extension capability를 통해 cache-aware runtime path를 검증합니다.
-- 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
-
-### Build lifecycle 분리
-
-`qb-only`의 build 경로는 이제 아래 세 단계로 나뉩니다.
-
-1. `prepare`
-   - `model_or_path`가 사전 컴파일된 `.mxq`인지, compiler에 넘길 ONNX / torch source인지 정규화
-   - 표준 model zoo fetch/materialize, supported checkpoint -> ONNX export 같은 준비 단계도 `frontends` helper에서 담당
-2. `fetch/materialize`
-   - provided `.mxq`라면 목적지 `builds/` 아래로 배치
-3. `compile`
-   - compile source라면 `qubee` 또는 `qbcompiler` Python API로 `.mxq` 생성
-
-즉 `build_unified(cfg)`는 더 이상 fetch와 compile을 한 덩어리로 직접 설명하기보다,
-**prepare된 입력을 받아 fetch/materialize 또는 compile orchestration을 수행하는 build capability**로 보는 편이 맞습니다.
-
----
-
 ## 💾 설치 방법
 
 ### 1. 저장소 체크아웃 & 컴파일러 wheel 배치
@@ -495,6 +459,42 @@ python3 examples/inspect_qb_llm_model.py models/Llama-3.2-1B-Instruct.mxq --core
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
 `/workspace/unified-npu-sdk`, 또는 현재 repository root에서 모두 실행할 수 있습니다.
+
+---
+
+### Runtime API 분리
+
+`qb-only`는 runtime wrapping API를 **vision**과 **sequence low-level extension runtime**으로 구분하며,
+실제로는 아래처럼 `qbruntime` 함수에 매핑됩니다.
+
+| 용도 | 단계 | Unified SDK | 내부 vendor |
+| --- | --- | --- | --- |
+| Vision `.mxq` | 생성 | `create_runtime(cfg)` | `qbruntime.model.load(...)` |
+| Vision `.mxq` | 추론 | `infer(rh, input_array)` | `model.infer([input_array])` |
+| Vision `.mxq` | 종료 | `destroy_runtime(rh)` | `model.dispose/release/unload/close` |
+| Sequence / Transformer `.mxq` | 생성 | `create_sequence_runtime(cfg)` | `qbruntime.model.load(...)` |
+| Sequence / Transformer `.mxq` | 추론 | `infer_sequence(rh, input_array, cache_size=..., batch_params=...)` | `model.infer([input_array], cache_size=..., params=...)` |
+| Sequence / Transformer `.mxq` | 종료 | `destroy_sequence_runtime(rh)` | `model.dispose/release/unload/close` |
+
+기본 원칙:
+- 기존 `create_runtime / infer / destroy_runtime`는 vision smoke 기준 API로 유지합니다.
+- low-level sequence preview는 별도 `sequence_runtime` extension capability를 통해 cache-aware runtime path를 검증합니다.
+- 내부 vendor runtime은 모두 `qbruntime`이지만, Unified SDK 표면은 용도별로 분리합니다.
+
+### Build lifecycle 분리
+
+`qb-only`의 build 경로는 이제 아래 세 단계로 나뉩니다.
+
+1. `prepare`
+   - `model_or_path`가 사전 컴파일된 `.mxq`인지, compiler에 넘길 ONNX / torch source인지 정규화
+   - 표준 model zoo fetch/materialize, supported checkpoint -> ONNX export 같은 준비 단계도 `frontends` helper에서 담당
+2. `fetch/materialize`
+   - provided `.mxq`라면 목적지 `builds/` 아래로 배치
+3. `compile`
+   - compile source라면 `qubee` 또는 `qbcompiler` Python API로 `.mxq` 생성
+
+즉 `build_unified(cfg)`는 더 이상 fetch와 compile을 한 덩어리로 직접 설명하기보다,
+**prepare된 입력을 받아 fetch/materialize 또는 compile orchestration을 수행하는 build capability**로 보는 편이 맞습니다.
 
 ---
 
