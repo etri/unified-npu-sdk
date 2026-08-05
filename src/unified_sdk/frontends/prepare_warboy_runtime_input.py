@@ -38,7 +38,7 @@ def _normalize_dtype_name(value: Any) -> str | None:
         return None
     if "uint8" in text or text == "u8":
         return "uint8"
-    if "float32" in text or "fp32" in text or text == "f32":
+    if text == "float" or "float32" in text or "fp32" in text or text == "f32":
         return "float32"
     return text
 
