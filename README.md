@@ -325,10 +325,10 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
 #      RBLN native compiler/backend crash(segmentation fault 포함)가 재현되었습니다.
 #      따라서 branch 기본 smoke 완료 기준에는 포함하지 않습니다.
 RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
-  --from-onnx models/yolov7.onnx \
-  --model-name yolov7_onnx \
+  --from-onnx models/resnet50.onnx \
+  --model-name resnet50_onnx \
   --precision fp32 \
-  --input-shape 1,3,640,640 \
+  --input-shape 1,3,224,224 \
   --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
 
 # 7) .rbln 추론
