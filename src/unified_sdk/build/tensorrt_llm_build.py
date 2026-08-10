@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from typing import Any, Dict
 
 from unified_sdk.build.registry import register_llm
@@ -8,25 +9,28 @@ from unified_sdk.options import resolve_tensorrt_llm_build_options
 from unified_sdk.types import BuildResult, LLMBuildConfig
 
 
-_CAPABILITY_FAMILY = "llm.high-level-generate-builder"
+_CAPABILITY_FAMILY = "llm.multi-phase-fetch-compile-builder"
 _BUILD_PIPELINE = (
     "resolve_prepared_input",
     "validate_llm_build_options",
-    "optional_hf_or_local_model_fetch",
+    "classify_fetch_or_compile_variant",
+    "optional_model_ref_passthrough",
     "optional_tensorrt_llm_compile",
-    "optional_artifact_save",
+    "optional_trtllm_build_checkpoint_compile",
     "emit_metadata",
 )
 _VENDOR_API_MAP = {
     "fetch": "model ref / local model path passthrough",
-    "compile": "tensorrt_llm.LLM(model=..., ...)",
-    "save_artifact": "llm.save(engine_dir) [if supported by installed TensorRT-LLM]",
+    "compile_model_ref": "tensorrt_llm.LLM(model=..., ...)",
+    "compile_checkpoint_dir": "trtllm-build --checkpoint_dir ... --output_dir ...",
+    "save_artifact": "llm.save(engine_dir) [when Python API compile surface is available]",
     "artifact": "TensorRT-LLM engine dir",
 }
 _VENDOR_TO_UNIFIED_API_MAP = {
     "model ref / local model path passthrough": "build_unified_LLM(cfg) with fetch contract",
-    "tensorrt_llm.LLM(model=..., ...)": "build_unified_LLM(cfg)",
-    "llm.save(engine_dir)": "build_unified_LLM(cfg) with artifact_build contract",
+    "tensorrt_llm.LLM(model=..., ...)": "build_unified_LLM(cfg) for custom_compile(model ref/local path)",
+    "trtllm-build --checkpoint_dir ... --output_dir ...": "build_unified_LLM(cfg) for custom_compile(checkpoint dir)",
+    "llm.save(engine_dir)": "BuildResult.compiled_model_path for Python API compile",
     "TensorRT-LLM engine dir": "BuildResult.compiled_model_path",
 }
 
@@ -73,6 +77,34 @@ def _normalize_llm_kwargs(cfg: LLMBuildConfig, options, prepared_input: Prepared
         llm_kwargs["trust_remote_code"] = bool(options.trust_remote_code)
     return llm_kwargs
 
+
+def _run_trtllm_build(prepared_input: PreparedTensorRTLLMBuildInput, compiled_dir, options) -> None:
+    checkpoint_dir = prepared_input.checkpoint_dir
+    if checkpoint_dir is None:
+        raise ValueError("checkpoint_dir_cli compile requires PreparedTensorRTLLMBuildInput.checkpoint_dir")
+
+    cmd = [
+        "trtllm-build",
+        "--checkpoint_dir",
+        str(checkpoint_dir),
+        "--output_dir",
+        str(compiled_dir),
+        "--max_seq_len",
+        str(options.max_model_len),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "TensorRT-LLM checkpoint compile requires the `trtllm-build` CLI in PATH. "
+            "Use the official TensorRT-LLM release container or install the CLI first."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        stdout = (exc.stdout or "").strip()
+        detail = stderr or stdout or str(exc)
+        raise RuntimeError(f"TensorRT-LLM checkpoint compile failed for {checkpoint_dir}: {detail}") from exc
+
 class _TensorRTLLMBuildAdapter:
     name = "tensorrt"
 
@@ -87,6 +119,8 @@ class _TensorRTLLMBuildAdapter:
                 prepared_input = PreparedTensorRTLLMBuildInput(
                     kind="runtime_model_ref",
                     model_ref=str(cfg.model_or_path),
+                    source_kind="local_model_path" if str(cfg.model_or_path).startswith(("/", "./", "../", "artifacts/", "build_output/", "models/")) else "model_id",
+                    source_path=None,
                     artifact_dir=None,
                 )
             else:
@@ -103,6 +137,8 @@ class _TensorRTLLMBuildAdapter:
                     "backend": self.name,
                     "track": "llm",
                     "prepared_kind": prepared_input.kind,
+                    "source_kind": prepared_input.source_kind,
+                    "source_path": str(prepared_input.source_path) if prepared_input.source_path is not None else None,
                     "build_mode": options.build_mode,
                     "model_ref": prepared_input.model_ref,
                     "backend_options": options.to_metadata(),
@@ -115,32 +151,35 @@ class _TensorRTLLMBuildAdapter:
         if prepared_input.kind != "artifact_build" or prepared_input.artifact_dir is None:
             raise ValueError("PreparedTensorRTLLMBuildInput.kind='artifact_build' requires artifact_dir")
 
-        try:
-            from tensorrt_llm import LLM
-        except Exception as exc:
-            raise RuntimeError(
-                "tensorrt_llm is required for TensorRT-LLM compile/build. Install it in the container or host env first."
-            ) from exc
-
-        if not hasattr(LLM, "save"):
-            raise RuntimeError(
-                "TensorRT-LLM artifact_build is unsupported in this environment because the installed LLM class "
-                "does not expose save(engine_dir). Use fetch mode or provide an already prepared local artifact dir."
-            )
-
         compiled_dir = prepared_input.artifact_dir.expanduser().resolve()
         compiled_dir.parent.mkdir(parents=True, exist_ok=True)
+        compile_variant = prepared_input.compile_variant or "model_ref_api"
         llm_kwargs = _normalize_llm_kwargs(cfg, options, prepared_input)
 
-        llm = None
-        try:
-            llm = LLM(**llm_kwargs)
-            llm.save(str(compiled_dir))
-        except Exception as exc:
-            raise RuntimeError(f"TensorRT-LLM compile/save failed for {prepared_input.model_ref}: {exc}") from exc
-        finally:
-            if llm is not None:
-                _best_effort_close(llm)
+        if compile_variant == "checkpoint_dir_cli":
+            _run_trtllm_build(prepared_input, compiled_dir, options)
+        else:
+            try:
+                from tensorrt_llm import LLM
+            except Exception as exc:
+                raise RuntimeError(
+                    "tensorrt_llm is required for TensorRT-LLM custom compile/build. "
+                    "Install it in the container or host env first."
+                ) from exc
+            llm = None
+            try:
+                llm = LLM(**llm_kwargs)
+                if not hasattr(llm, "save"):
+                    raise RuntimeError(
+                        "the installed LLM class does not expose save(engine_dir). "
+                        "For custom compile, prefer a local TensorRT-LLM checkpoint dir so the SDK can use `trtllm-build`."
+                    )
+                llm.save(str(compiled_dir))
+            except Exception as exc:
+                raise RuntimeError(f"TensorRT-LLM custom compile failed for {prepared_input.model_ref}: {exc}") from exc
+            finally:
+                if llm is not None:
+                    _best_effort_close(llm)
 
         return BuildResult(
             backend=self.name,
@@ -149,9 +188,13 @@ class _TensorRTLLMBuildAdapter:
                 "backend": self.name,
                 "track": "llm",
                 "prepared_kind": prepared_input.kind,
+                "source_kind": prepared_input.source_kind,
+                "source_path": str(prepared_input.source_path) if prepared_input.source_path is not None else None,
                 "build_mode": options.build_mode,
                 "model_ref": prepared_input.model_ref,
                 "compiled_dir": str(compiled_dir),
+                "compile_variant": compile_variant,
+                "checkpoint_dir": str(prepared_input.checkpoint_dir) if prepared_input.checkpoint_dir is not None else None,
                 "tensor_parallel_size": options.tensor_parallel_size,
                 "max_model_len": options.max_model_len,
                 "llm_kwargs": llm_kwargs,

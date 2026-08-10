@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +82,7 @@ class TensorRTAdapterTests(unittest.TestCase):
                 prepared_input=PreparedTensorRTLLMBuildInput(
                     kind="runtime_model_ref",
                     model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                    source_kind="model_id",
                     artifact_dir=None,
                 ),
             )
@@ -97,11 +99,95 @@ class TensorRTAdapterTests(unittest.TestCase):
                     model_or_path="repo/model",
                     out_dir="artifacts",
                     model_name="demo",
-                    backend_options=TensorRTLLMBuildOptions(build_mode="llm_api_compile"),
+                    backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile"),
                 )
             )
 
-    def test_runtime_dynamic_shape_option_is_explicitly_not_implemented_for_rebind(self) -> None:
+    def test_llm_checkpoint_compile_invokes_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            checkpoint_dir = root / "checkpoint"
+            checkpoint_dir.mkdir()
+            artifact_dir = root / "artifacts" / "llama"
+            with patch("unified_sdk.build.tensorrt_llm_build.subprocess.run") as patched:
+                result = build_unified_LLM(
+                    LLMBuildConfig(
+                        backend="tensorrt",
+                        model_or_path=str(checkpoint_dir),
+                        out_dir=root / "artifacts",
+                        model_name="llama",
+                        backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile", max_model_len=2048),
+                        prepared_input=PreparedTensorRTLLMBuildInput(
+                            kind="artifact_build",
+                            model_ref=str(checkpoint_dir),
+                            source_kind="local_checkpoint_dir",
+                            source_path=checkpoint_dir,
+                            artifact_dir=artifact_dir,
+                            compile_variant="checkpoint_dir_cli",
+                            checkpoint_dir=checkpoint_dir,
+                        ),
+                    )
+                )
+            patched.assert_called_once()
+            self.assertEqual(result.compiled_model_path, str(artifact_dir.resolve()))
+            self.assertEqual(result.meta_data["compile_variant"], "checkpoint_dir_cli")
+
+    def test_runtime_dynamic_shape_option_rebinds_buffers(self) -> None:
+        class FakeDeviceBuffer:
+            def __init__(self, size: int):
+                self.size = size
+                self.freed = False
+
+            def __int__(self):
+                return self.size
+
+            def free(self):
+                self.freed = True
+
+        class FakeStream:
+            handle = 123
+
+            def synchronize(self):
+                return None
+
+        class FakeCuda:
+            def pagelocked_empty(self, size, dtype):
+                return __import__("numpy").zeros(size, dtype=dtype)
+
+            def mem_alloc(self, nbytes):
+                return FakeDeviceBuffer(nbytes)
+
+            def memcpy_htod_async(self, dst, src, stream):
+                return None
+
+            def memcpy_dtoh_async(self, dst, src, stream):
+                dst[...] = 0
+
+        class FakeContext:
+            def __init__(self):
+                self.current_shape = (1, 3, 224, 224)
+                self.bound = {}
+
+            def set_input_shape(self, name, shape):
+                self.current_shape = tuple(shape)
+
+            def get_tensor_shape(self, name):
+                if name == "output":
+                    return (self.current_shape[0], 1000)
+                return self.current_shape
+
+            def set_tensor_address(self, name, addr):
+                self.bound[name] = addr
+
+            def execute_async_v3(self, stream_handle):
+                return True
+
+        class FakeEngine:
+            num_bindings = 2
+
+            def get_binding_index(self, name):
+                return 0 if name == "input" else 1
+
         rh = RuntimeHandle(
             backend="tensorrt",
             engine_path="demo.engine",
@@ -109,15 +195,25 @@ class TensorRTAdapterTests(unittest.TestCase):
             output_name="output",
             input_shape=(1, 3, 224, 224),
             ctx={
-                "context": object(),
-                "cuda": object(),
+                "context": FakeContext(),
+                "engine": FakeEngine(),
+                "cuda": FakeCuda(),
                 "allow_dynamic_shape": True,
-                "h_input": None,
-                "h_output": None,
+                "h_input": __import__("numpy").zeros((1, 3, 224, 224), dtype="float32"),
+                "h_output": __import__("numpy").zeros((1, 1000), dtype="float32"),
+                "d_input": FakeDeviceBuffer(1),
+                "d_output": FakeDeviceBuffer(2),
+                "stream": FakeStream(),
+                "in_dtype": __import__("numpy").float32,
+                "out_dtype": __import__("numpy").float32,
+                "use_v3": True,
             },
         )
-        with self.assertRaises(NotImplementedError):
-            _TensorRTRuntime().infer(rh, __import__("numpy").zeros((1, 3, 256, 256), dtype="float32"))
+        out = _TensorRTRuntime().infer(rh, __import__("numpy").zeros((1, 3, 256, 256), dtype="float32"))
+        self.assertEqual(rh.input_shape, (1, 3, 256, 256))
+        self.assertEqual(tuple(rh.ctx["h_input"].shape), (1, 3, 256, 256))
+        self.assertEqual(tuple(rh.ctx["h_output"].shape), (1, 1000))
+        self.assertEqual(tuple(out.shape), (1, 1000))
 
 
 if __name__ == "__main__":

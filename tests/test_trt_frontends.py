@@ -79,6 +79,24 @@ class TensorRTFrontendTests(unittest.TestCase):
         )
         self.assertEqual(resolved.kind, "runtime_model_ref")
         self.assertEqual(resolved.prepared_input.kind, "runtime_model_ref")
+        self.assertEqual(resolved.prepared_input.source_kind, "model_id")
+
+    def test_resolve_llm_local_artifact_fetch_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_dir = Path(tmpdir) / "tinyllama_trtllm"
+            artifact_dir.mkdir()
+            (artifact_dir / "rank0.engine").write_bytes(b"engine")
+            (artifact_dir / "config.json").write_text("{}")
+            resolved = resolve_tensorrt_llm_build_request(
+                TensorRTLLMFrontendBuildRequest(
+                    model_ref=artifact_dir,
+                    out_dir=Path(tmpdir) / "artifacts",
+                    model_name="tinyllama",
+                    build_mode="fetch",
+                )
+            )
+            self.assertEqual(resolved.kind, "runtime_model_ref")
+            self.assertEqual(resolved.prepared_input.source_kind, "local_artifact_dir")
 
     def test_resolve_llm_artifact_build_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,11 +106,62 @@ class TensorRTFrontendTests(unittest.TestCase):
                     model_ref="meta-llama/Llama-3.2-1B-Instruct",
                     out_dir=out_dir,
                     model_name="llama",
-                    build_mode="llm_api_compile",
+                    build_mode="custom_compile",
                 )
             )
             self.assertEqual(resolved.kind, "artifact_build")
             self.assertEqual(resolved.prepared_input.artifact_dir, (out_dir / "llama").resolve())
+            self.assertEqual(resolved.prepared_input.compile_variant, "model_ref_api")
+
+    def test_resolve_llm_checkpoint_compile_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_dir = Path(tmpdir) / "checkpoint"
+            checkpoint_dir.mkdir()
+            (checkpoint_dir / "config.json").write_text("{}")
+            (checkpoint_dir / "rank0.safetensors").write_bytes(b"weights")
+            resolved = resolve_tensorrt_llm_build_request(
+                TensorRTLLMFrontendBuildRequest(
+                    model_ref=checkpoint_dir,
+                    out_dir=Path(tmpdir) / "artifacts",
+                    model_name="llama",
+                    build_mode="custom_compile",
+                )
+            )
+            self.assertEqual(resolved.kind, "artifact_build")
+            self.assertEqual(resolved.prepared_input.source_kind, "local_checkpoint_dir")
+            self.assertEqual(resolved.prepared_input.compile_variant, "checkpoint_dir_cli")
+
+    def test_resolve_llm_checkpoint_fetch_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_dir = Path(tmpdir) / "checkpoint"
+            checkpoint_dir.mkdir()
+            (checkpoint_dir / "config.json").write_text("{}")
+            (checkpoint_dir / "rank0.safetensors").write_bytes(b"weights")
+            with self.assertRaises(ValueError):
+                resolve_tensorrt_llm_build_request(
+                    TensorRTLLMFrontendBuildRequest(
+                        model_ref=checkpoint_dir,
+                        out_dir=Path(tmpdir) / "artifacts",
+                        model_name="llama",
+                        build_mode="fetch",
+                    )
+                )
+
+    def test_resolve_llm_artifact_compile_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_dir = Path(tmpdir) / "tinyllama_trtllm"
+            artifact_dir.mkdir()
+            (artifact_dir / "rank0.engine").write_bytes(b"engine")
+            (artifact_dir / "config.json").write_text("{}")
+            with self.assertRaises(ValueError):
+                resolve_tensorrt_llm_build_request(
+                    TensorRTLLMFrontendBuildRequest(
+                        model_ref=artifact_dir,
+                        out_dir=Path(tmpdir) / "artifacts",
+                        model_name="tinyllama",
+                        build_mode="custom_compile",
+                    )
+                )
 
 
 if __name__ == "__main__":

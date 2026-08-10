@@ -54,6 +54,10 @@ class TensorRTOptionTests(unittest.TestCase):
         self.assertEqual(options.tensor_parallel_size, 2)
         self.assertEqual(options.max_model_len, 4096)
 
+    def test_llm_build_options_accept_legacy_compile_alias(self) -> None:
+        options = TensorRTLLMBuildOptions(build_mode="llm_api_compile").normalized()
+        self.assertEqual(options.build_mode, "custom_compile")
+
     def test_runtime_resolvers_return_defaults_without_extra_surface(self) -> None:
         self.assertTrue(resolve_tensorrt_vision_runtime_options(None).use_execute_v3)
         self.assertEqual(resolve_tensorrt_llm_runtime_options(None).tensor_parallel_size, 1)

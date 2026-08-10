@@ -25,13 +25,14 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
 | LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
 | Vision smoke | 표준 fetch / provided `.engine` fetch / ONNX compile / PTH->ONNX->`.engine` / infer / inspect 구현 |
-| LLM smoke | `7-a` 구현, `7-b`는 prebuilt artifact 가 있을 때 사용 가능, `7-c`는 current release container 기준 unsupported |
+| LLM smoke | `7-a` model id fetch, `7-b` local path/artifact fetch, `7-c` custom compile, `8` infer/inspect 흐름 구현 |
 
 ### 주요 이슈
 
 - Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
-- `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준이며, `LLM.save(engine_dir)`가 없어 `7-c`는 현재 unsupported 입니다.
-- `7-b`는 concept 상 독립 경로지만, 실제로는 외부 또는 기존 prebuilt artifact 가 있어야 검증 가능합니다.
+- `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
+- LLM custom compile 은 두 갈래입니다: `model id/local HF path -> Python LLM API compile`, `local TensorRT-LLM checkpoint dir -> trtllm-build CLI compile`.
+- 로컬 prebuilt artifact fetch(`7-b`)는 compile과 독립 경로입니다.
 
 ---
 
@@ -335,12 +336,11 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 진행 원칙:
 
-- `7-a`는 현재 컨테이너에서 바로 검증 가능한 기본 경로입니다.
-- `7-b`는 **이미 준비된 로컬 TensorRT-LLM artifact dir**가 있을 때 보는 경로입니다.
-  이 artifact는 과거 결과물이나 외부 제공 산출물일 수 있으며, 현재 세션에서 반드시 `7-c`로부터 만들어질 필요는 없습니다.
-- `7-c`는 Unified SDK public API 상의 compile smoke 항목으로는 유지하지만,
-  `2026년 7월 25일` 기준 official TensorRT-LLM release container의 PyTorch backend에서는
-  `LLM.save(engine_dir)`가 노출되지 않아 **currently unsupported** 입니다.
+- `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
+- `7-b`는 `local HF path` 또는 **이미 준비된 로컬 TensorRT-LLM artifact dir**를 fetch/runtime 입력으로 쓰는 경로입니다.
+- `7-c`는 `custom_compile` 경로입니다.
+  local TensorRT-LLM checkpoint dir 가 있으면 공식 `trtllm-build --checkpoint_dir ... --output_dir ...` CLI를 우선 사용하고,
+  그 외 model id/local HF path 는 Python `LLM(...).save(...)` 경로를 사용합니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -361,20 +361,26 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
-# 7-b) (LLM) local model path + compatible prebuilt TensorRT-LLM artifact -> generate
-#      이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
-#      현재 세션에선 7-c가 unsupported 이므로, 기존 산출물 또는 외부 제공 artifact를 사용하는 경로로 해석합니다.
+# 7-b-1) (LLM) local HF path -> fetch -> generate
+python3 examples/run_tensorrt_llm_build.py \
+  --model-ref ./models/TinyLlama-1.1B-Chat-v1.0 \
+  --build-mode fetch
+
+python3 examples/run_tensorrt_llm_infer.py \
+  --engine-path ./models/TinyLlama-1.1B-Chat-v1.0 \
+  --prompt "What is the capital of South Korea?"
+
+# 7-b-2) (LLM) local prebuilt TensorRT-LLM artifact dir -> generate
+#        이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
-# 7-c) (LLM) local model path -> TensorRT-LLM compile -> generate
-#      2026-07-25 기준 trt-only llm flavor의 official release container(PyTorch backend)에서는
-#      `LLM.save(engine_dir)`가 노출되지 않아 이 경로는 currently unsupported 입니다.
+# 7-c-1) (LLM) model id/local HF path -> custom compile -> generate
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --build-mode llm_api_compile \
+  --build-mode custom_compile \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
@@ -382,6 +388,13 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
+
+# 7-c-2) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build -> generate
+python3 examples/run_tensorrt_llm_build.py \
+  --model-ref ./models/tinyllama_trtllm_ckpt \
+  --build-mode custom_compile \
+  --model-name tinyllama_trtllm \
+  --max-model-len 512
 
 # 8) (LLM) artifact / model ref inspect
 python3 examples/inspect_tensorrt_llm_model.py artifacts/tinyllama_trtllm --load
@@ -469,6 +482,11 @@ result = build_unified_LLM(cfg)
 print(result.compiled_model_path)
 ```
 
+LLM build phase는 이렇게 읽으면 됩니다.
+
+- `fetch`: model id, local HF path, local prebuilt TensorRT-LLM artifact dir
+- `custom_compile`: model id/local HF path via Python `LLM(...).save(...)`, or local TensorRT-LLM checkpoint dir via `trtllm-build`
+
 `run_tensorrt_build.py`는 현재 세 경로를 지원합니다.
 
 - 표준 fetch: `torchvision` pretrained model fetch -> ONNX export -> TensorRT compile
@@ -541,7 +559,7 @@ print(result)
 | Vision `.engine` | 생성 | `create_runtime(cfg)` | `trt.Runtime(...).deserialize_cuda_engine(...)`, `engine.create_execution_context()` |
 | Vision `.engine` | 추론 | `infer(rh, input_array)` | `execute_async_v3(...)` 또는 `execute_v2(...)` |
 | Vision `.engine` | 종료 | `destroy_runtime(rh)` | device buffer `free()` 후 ctx clear |
-| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | `tensorrt_llm.LLM(model=..., ...).save(engine_dir)` 또는 model ref pass-through |
+| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 `tensorrt_llm.LLM(...).save(...)` 또는 `trtllm-build --checkpoint_dir ... --output_dir ...` |
 | LLM / TensorRT-LLM | 생성 | `create_runtime_LLM(cfg)` | `tensorrt_llm.LLM(model=..., tokenizer=..., ...)` |
 | LLM / TensorRT-LLM | 생성/추론 | `generate_LLM(rh, prompt, **overrides)` | `SamplingParams(...)`, `llm.generate(...)` |
 | LLM / TensorRT-LLM | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
@@ -569,12 +587,11 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
 - `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
-- `llm` flavor에서 `7-b`는 개념적으로는 `7-c`에 종속되지 않지만, 현재 세션에서 artifact를 새로 만들 수 없으면 과거 산출물이나 외부 제공 artifact를 사용해야 합니다.
-- `llm` flavor에서 `7-c`는 현재 official TensorRT-LLM release container의 PyTorch backend `LLM` 객체가 `save(engine_dir)`를 제공하지 않아 currently unsupported 입니다.
+- `llm` flavor에서 local checkpoint dir는 `trtllm-build` CLI compile 후보로, local HF path/model id는 Python `LLM(...).save(...)` compile 후보로 분리됩니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
-  현재 `allow_dynamic_shape=True`는 shape check 우회 옵션이 아니라 향후 runtime rebind/reallocation 확장용 예약 표면에 가깝고,
-  입력 shape를 실제로 바꾸는 smoke는 아직 지원/게이트 대상이 아닙니다.
+  현재 `allow_dynamic_shape=True`는 입력 shape 변경 시 runtime rebind/reallocation까지 수행합니다.
+  다만 smoke 기준은 여전히 먼저 fixed-shape baseline을 통과한 뒤, dynamic profile 엔진에서 추가 검증하는 순서를 권장합니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
   `TensorRTVisionBuildOptions(int8_calibrator=...)` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
 - **실행 경로**: TRT 8.5+/10 은 `execute_async_v3` + `set_tensor_address`, 구버전은 `execute_v2` + bindings.

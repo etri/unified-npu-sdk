@@ -17,6 +17,7 @@ from .types import (
 
 
 _LOCAL_ENGINE_PREFIXES = {"artifacts", "build_output", "models", ".", ".."}
+_TRTLLM_ARTIFACT_MARKERS = ("config.json", "executor_config.json", "engine_config.json")
 
 
 def _normalize_model_name(name: str) -> str:
@@ -199,6 +200,31 @@ def _looks_like_local_engine_ref(value: str) -> bool:
     path = Path(value)
     first_part = path.parts[0] if path.parts else ""
     return path.is_absolute() or first_part in _LOCAL_ENGINE_PREFIXES
+
+
+def _looks_like_local_llm_ref(value: str) -> bool:
+    if not value:
+        return False
+    path = Path(value)
+    first_part = path.parts[0] if path.parts else ""
+    return path.is_absolute() or first_part in _LOCAL_ENGINE_PREFIXES
+
+
+def _detect_trtllm_artifact_dir(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    if any(path.glob("*.engine")):
+        return True
+    return any((path / marker).exists() for marker in _TRTLLM_ARTIFACT_MARKERS)
+
+
+def _detect_trtllm_checkpoint_dir(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    if not (path / "config.json").exists():
+        return False
+    patterns = ("rank*.safetensors", "rank*.bin", "rank*.pt", "rank*.ckpt")
+    return any(any(path.glob(pattern)) for pattern in patterns)
 
 
 def _build_output_engine_path(out_dir: Path, model_name: str, precision: str) -> Path:
@@ -430,25 +456,71 @@ def resolve_tensorrt_llm_build_request(request: TensorRTLLMFrontendBuildRequest)
     if not model_ref:
         raise ValueError("TensorRTLLMFrontendBuildRequest.model_ref must be a non-empty string or path")
 
+    local_path = Path(model_ref).expanduser()
+    source_kind = "model_id"
+    source_path = None
+    if local_path.exists():
+        source_path = local_path.resolve()
+        if _detect_trtllm_checkpoint_dir(source_path):
+            source_kind = "local_checkpoint_dir"
+        elif _detect_trtllm_artifact_dir(source_path):
+            source_kind = "local_artifact_dir"
+        else:
+            source_kind = "local_model_path"
+    elif _looks_like_local_llm_ref(model_ref):
+        raise FileNotFoundError(
+            f"TensorRT-LLM local path was requested but does not exist: {local_path}. "
+            "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
+        )
+
     if request.build_mode == "fetch":
+        if source_kind == "local_checkpoint_dir":
+            raise ValueError(
+                "TensorRT-LLM checkpoint dir is a custom compile input, not a runtime fetch input. "
+                "Use build_mode='custom_compile' for checkpoint dirs."
+            )
+        if source_kind == "model_id":
+            description = f"runtime model-id fetch passthrough: {model_ref}"
+        elif source_kind == "local_artifact_dir":
+            description = f"runtime local prebuilt TensorRT-LLM artifact dir passthrough: {source_path}"
+        else:
+            description = f"runtime local model path passthrough: {source_path}"
         return ResolvedTensorRTLLMBuildRequest(
-            source_description=f"runtime model-ref passthrough: {model_ref}",
+            source_description=description,
             kind="runtime_model_ref",
             prepared_input=PreparedTensorRTLLMBuildInput(
                 kind="runtime_model_ref",
                 model_ref=model_ref,
+                source_kind=source_kind,
+                source_path=source_path,
                 artifact_dir=None,
             ),
         )
 
     artifact_dir = request.out_dir.expanduser().resolve() / request.model_name.strip()
+    if source_kind == "local_artifact_dir":
+        raise ValueError(
+            "A prebuilt TensorRT-LLM artifact directory should be used with build_mode='fetch'. "
+            "custom_compile expects a model id/local HF path or a local TensorRT-LLM checkpoint dir."
+        )
+    compile_variant = "checkpoint_dir_cli" if source_kind == "local_checkpoint_dir" else "model_ref_api"
+    if compile_variant == "checkpoint_dir_cli":
+        description = f"TensorRT-LLM custom compile from local checkpoint dir via trtllm-build: {source_path}"
+    elif source_kind == "model_id":
+        description = f"TensorRT-LLM custom compile from model id via Python API: {model_ref}"
+    else:
+        description = f"TensorRT-LLM custom compile from local model path via Python API: {source_path}"
     return ResolvedTensorRTLLMBuildRequest(
-        source_description=f"TensorRT-LLM artifact build from model ref: {model_ref}",
+        source_description=description,
         kind="artifact_build",
         prepared_input=PreparedTensorRTLLMBuildInput(
             kind="artifact_build",
             model_ref=model_ref,
+            source_kind=source_kind,
+            source_path=source_path,
             artifact_dir=artifact_dir,
+            compile_variant=compile_variant,
+            checkpoint_dir=source_path if compile_variant == "checkpoint_dir_cli" else None,
         ),
     )
 

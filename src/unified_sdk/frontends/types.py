@@ -9,6 +9,8 @@ PreparedTensorRTVisionSourceKind = Literal["provided_artifact", "compile_source"
 ResolvedTensorRTVisionBuildKind = Literal["provided_artifact", "onnx_path", "torchvision_export", "pth_export"]
 PreparedTensorRTLLMBuildKind = Literal["runtime_model_ref", "artifact_build"]
 ResolvedTensorRTLLMBuildKind = Literal["runtime_model_ref", "artifact_build"]
+PreparedTensorRTLLMSourceKind = Literal["model_id", "local_model_path", "local_artifact_dir", "local_checkpoint_dir"]
+PreparedTensorRTLLMCompileVariant = Literal["model_ref_api", "checkpoint_dir_cli"]
 
 
 @dataclass(frozen=True)
@@ -67,14 +69,18 @@ class TensorRTLLMFrontendBuildRequest:
     model_ref: str | Path
     out_dir: Path
     model_name: str
-    build_mode: Literal["fetch", "llm_api_compile"] = "fetch"
+    build_mode: Literal["fetch", "custom_compile"] = "fetch"
 
 
 @dataclass(frozen=True)
 class PreparedTensorRTLLMBuildInput:
     kind: PreparedTensorRTLLMBuildKind
     model_ref: str
+    source_kind: PreparedTensorRTLLMSourceKind = "model_id"
+    source_path: Path | None = None
     artifact_dir: Path | None = None
+    compile_variant: PreparedTensorRTLLMCompileVariant | None = None
+    checkpoint_dir: Path | None = None
 
 
 @dataclass(frozen=True)

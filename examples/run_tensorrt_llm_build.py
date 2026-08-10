@@ -47,10 +47,13 @@ ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build/fetch a TensorRT-LLM artifact directory. 기본은 runtime model-ref fetch 입니다."
+        description=(
+            "Build/fetch a TensorRT-LLM artifact directory. "
+            "기본은 model id/local path fetch 이고, custom compile 은 local checkpoint dir 또는 model ref/local model path를 사용합니다."
+        )
     )
     parser.add_argument("--model-ref", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-    parser.add_argument("--build-mode", choices=("fetch", "llm_api_compile"), default="fetch")
+    parser.add_argument("--build-mode", choices=("fetch", "custom_compile"), default="fetch")
     parser.add_argument("--out-dir", type=Path, default=ARTIFACTS_DIR)
     parser.add_argument("--model-name", default="tinyllama_trtllm")
     parser.add_argument("--tokenizer-path", default=None)

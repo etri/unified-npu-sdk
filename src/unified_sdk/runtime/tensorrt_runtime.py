@@ -110,6 +110,60 @@ def _nbytes(shape: Tuple[int, ...], dtype) -> int:
     return int(np.prod(shape)) * np.dtype(dtype).itemsize
 
 
+def _set_input_shape(engine, context, input_name: str, input_shape: Tuple[int, ...]) -> None:
+    if hasattr(context, "set_input_shape"):
+        context.set_input_shape(input_name, input_shape)
+    else:
+        context.set_binding_shape(engine.get_binding_index(input_name), input_shape)
+
+
+def _best_effort_free(buf: Any) -> None:
+    free = getattr(buf, "free", None)
+    if callable(free):
+        try:
+            free()
+        except Exception:
+            pass
+
+
+def _rebind_dynamic_buffers(rh: RuntimeHandle, input_shape: Tuple[int, ...]) -> None:
+    ctx = rh.ctx
+    engine = ctx["engine"]
+    context = ctx["context"]
+    cuda = ctx["cuda"]
+
+    _set_input_shape(engine, context, rh.input_name, input_shape)
+    out_shape = _tensor_shape(engine, context, rh.output_name)
+    if any(d <= 0 for d in out_shape):
+        raise RuntimeError(f"Output shape not resolved for {rh.output_name!r}: {out_shape}")
+
+    _best_effort_free(ctx.get("d_input"))
+    _best_effort_free(ctx.get("d_output"))
+
+    in_dtype = ctx["in_dtype"]
+    out_dtype = ctx["out_dtype"]
+    h_input = cuda.pagelocked_empty(int(np.prod(input_shape)), dtype=in_dtype).reshape(input_shape)
+    h_output = cuda.pagelocked_empty(int(np.prod(out_shape)), dtype=out_dtype).reshape(out_shape)
+    d_input = cuda.mem_alloc(_nbytes(input_shape, in_dtype))
+    d_output = cuda.mem_alloc(_nbytes(out_shape, out_dtype))
+
+    ctx["h_input"] = h_input
+    ctx["h_output"] = h_output
+    ctx["d_input"] = d_input
+    ctx["d_output"] = d_output
+
+    if ctx["use_v3"]:
+        context.set_tensor_address(rh.input_name, int(d_input))
+        context.set_tensor_address(rh.output_name, int(d_output))
+    else:
+        bindings = [0] * engine.num_bindings
+        bindings[engine.get_binding_index(rh.input_name)] = int(d_input)
+        bindings[engine.get_binding_index(rh.output_name)] = int(d_output)
+        ctx["bindings"] = bindings
+
+    rh.input_shape = input_shape
+
+
 class _TensorRTRuntime:
     name = "tensorrt"
 
@@ -143,10 +197,7 @@ class _TensorRTRuntime:
         if context is None:
             raise RuntimeError("Failed to create TensorRT execution context")
 
-        if hasattr(context, "set_input_shape"):
-            context.set_input_shape(input_name, input_shape)
-        else:
-            context.set_binding_shape(engine.get_binding_index(input_name), input_shape)
+        _set_input_shape(engine, context, input_name, input_shape)
 
         in_dtype = _tensor_dtype(trt, engine, input_name)
         out_dtype = _tensor_dtype(trt, engine, output_name)
@@ -182,6 +233,8 @@ class _TensorRTRuntime:
                 "engine": engine,
                 "context": context,
                 "stream": stream,
+                "in_dtype": in_dtype,
+                "out_dtype": out_dtype,
                 "d_input": d_input,
                 "d_output": d_output,
                 "h_input": h_input,
@@ -203,13 +256,11 @@ class _TensorRTRuntime:
         ctx = rh.ctx
         cuda = ctx["cuda"]
         allow_dynamic = bool(ctx.get("allow_dynamic_shape", False))
-        if (not allow_dynamic) and tuple(input_array.shape) != tuple(rh.input_shape):
+        actual_shape = tuple(input_array.shape)
+        if (not allow_dynamic) and actual_shape != tuple(rh.input_shape):
             raise ValueError(f"Bad input shape: {input_array.shape}, expected {rh.input_shape}")
-        if allow_dynamic and tuple(input_array.shape) != tuple(rh.input_shape):
-            raise NotImplementedError(
-                "allow_dynamic_shape=True currently bypasses only the static shape gate. "
-                "End-to-end runtime rebind/reallocation for changed input shapes is not implemented in trt-only yet."
-            )
+        if allow_dynamic and actual_shape != tuple(rh.input_shape):
+            _rebind_dynamic_buffers(rh, actual_shape)
 
         ctx["h_input"][...] = input_array.astype(ctx["h_input"].dtype, copy=False)
         try:
@@ -227,13 +278,7 @@ class _TensorRTRuntime:
     def destroy(self, rh: RuntimeHandle) -> None:
         ctx = rh.ctx or {}
         for key in ("d_input", "d_output"):
-            buf = ctx.get(key)
-            free = getattr(buf, "free", None)
-            if callable(free):
-                try:
-                    free()
-                except Exception:
-                    pass
+            _best_effort_free(ctx.get(key))
         ctx.clear()
 
 

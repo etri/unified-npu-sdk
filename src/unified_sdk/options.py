@@ -132,7 +132,7 @@ class TensorRTVisionRuntimeOptions:
 
 @dataclass(frozen=True)
 class TensorRTLLMBuildOptions:
-    build_mode: Literal["fetch", "llm_api_compile"] = "fetch"
+    build_mode: Literal["fetch", "custom_compile"] = "fetch"
     tokenizer_path: str | Path | None = None
     tensor_parallel_size: int = 1
     max_model_len: int = 512
@@ -141,8 +141,10 @@ class TensorRTLLMBuildOptions:
 
     def normalized(self) -> "TensorRTLLMBuildOptions":
         build_mode = str(self.build_mode).strip().lower()
-        if build_mode not in {"fetch", "llm_api_compile"}:
-            raise ValueError("TensorRTLLMBuildOptions.build_mode must be 'fetch' or 'llm_api_compile'")
+        if build_mode == "llm_api_compile":
+            build_mode = "custom_compile"
+        if build_mode not in {"fetch", "custom_compile"}:
+            raise ValueError("TensorRTLLMBuildOptions.build_mode must be 'fetch' or 'custom_compile'")
         tensor_parallel_size = int(self.tensor_parallel_size)
         if tensor_parallel_size <= 0:
             raise ValueError("TensorRTLLMBuildOptions.tensor_parallel_size must be > 0")
