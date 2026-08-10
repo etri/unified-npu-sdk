@@ -198,7 +198,7 @@ docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
 
 - `./build.sh`는 CDI를 기준으로 `--device rebellions.ai/npu=all` 실행 예시를 출력합니다.
   가능하면 현재 사용자의 보조 그룹을 그대로 넘기는 `--group-add keep-groups`와,
-  필요 시 `/dev/rbln*` 또는 `/dev/rebellions*`의 그룹 GID를 함께 넣어
+  필요 시 `/dev/rbln*`, `/dev/rebellions*`, `/dev/atom*`의 그룹 GID를 함께 넣어
   컨테이너 안의 `rebel.npu_is_available()` probe가 실제 장치 권한까지 확인할 수 있게 맞춥니다.
 - `/var/run/cdi/rbln.yaml` 또는 `/etc/cdi/rbln.yaml`이 없고, `rbln-ctk cdi list`로도 CDI 구성이 확인되지 않으면 build 완료 후 경고를 출력하며, 이 경우 먼저
   `rbln-ctk cdi generate`, `rbln-ctk runtime configure --runtime docker`,
@@ -226,7 +226,7 @@ docker run -it --security-opt seccomp=unconfined \
   --name rbln-only \
   --device rebellions.ai/npu=all \
   --group-add keep-groups \
-  --group-add <rbln_device_gid> \
+  --group-add <rbln_or_atom_device_gid> \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
   unified-sdk:rbln
@@ -239,7 +239,7 @@ docker run -it --security-opt seccomp=unconfined \
 다만 Python 레벨의 `rebel.npu_is_available()`까지 정상적으로 `True`를 받으려면, 단순 CDI device
 노출만으로는 부족하고 장치 노드 그룹 권한도 같이 전달돼야 하는 경우가 있습니다. 그래서 실제 사용 시에는
 README의 손작성 예시보다 **`./build.sh`가 출력한 `docker run` 명령을 그대로 쓰는 것**을 권장합니다.
-호스트에서 `id -nG` 결과에 `rbln`이 보이는지도 함께 확인해두면 좋습니다.
+호스트에서 `id -nG` 결과에 `rbln`이 보이는지, 또는 `/dev/atom*`가 별도 그룹으로 잡혀 있는지도 함께 확인해두면 좋습니다.
 
 컨테이너 내부 점검:
 
@@ -279,7 +279,7 @@ python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__)
 # NOTE:
 # `rebel.npu_is_available()`가 False라면, 손작성 docker run 대신
 # `./build.sh`가 출력한 명령을 다시 사용해 `--group-add keep-groups` 또는
-# `--group-add <rbln_device_gid>`가 빠지지 않았는지 먼저 확인합니다.
+# `--group-add <rbln_or_atom_device_gid>`가 빠지지 않았는지 먼저 확인합니다.
 # 이 브랜치에서는 `npu_is_available()`, `rbln-smi`, 실제 fetch/runtime smoke를 함께 readiness 신호로 봅니다.
 
 # NOTE:

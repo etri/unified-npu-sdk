@@ -79,7 +79,7 @@ detect_device_group() {
   local dev=""
   local group_id=""
 
-  for dev in /dev/rbln0 /dev/rbln1 /dev/rebellions0 /dev/rebellions1; do
+  for dev in /dev/rbln0 /dev/rbln1 /dev/rebellions0 /dev/rebellions1 /dev/atom0 /dev/atom1; do
     if [ -e "${dev}" ]; then
       group_id="$(stat -c '%g' "${dev}" 2>/dev/null || true)"
       if [ -n "${group_id}" ] && [ "${group_id}" != "0" ]; then
@@ -217,6 +217,10 @@ if [ "${CDI_SPEC_DETECTED}" -eq 1 ] && [ -n "${CDI_SPEC_HINT}" ]; then
 fi
 if [ "${#DOCKER_GROUP_ARGS[@]}" -gt 0 ]; then
   echo "[INFO] Propagating container group options: ${DOCKER_GROUP_ARGS[*]}"
+else
+  echo "[WARN] No supplemental device group could be inferred from /dev/rbln*, /dev/rebellions*, or /dev/atom*."
+  echo "       If rebel.npu_is_available() stays False, inspect host-side device ownership with:"
+  echo "         ls -l /dev/rbln* /dev/rebellions* /dev/atom* 2>/dev/null || true"
 fi
 echo ""
 
