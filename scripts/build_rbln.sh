@@ -13,6 +13,7 @@ BASE_IMAGE="${RBLN_BASE_IMAGE:-ubuntu:22.04}"
 COMPILER_VERSION="${REBEL_COMPILER_VERSION:-0.11.0}"
 OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION:-0.11.0.post1}"
 VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION:-0.11.0}"
+IMAGE_PROFILE="${RBLN_IMAGE_PROFILE:-full}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
@@ -44,6 +45,10 @@ print_usage() {
   echo "                (default: ${OPTIMUM_RBLN_VERSION})"
   echo "  --vllm-rbln-version  vllm-rbln version to install during docker build"
   echo "                (default: ${VLLM_RBLN_VERSION})"
+  echo "  --image-profile  Image composition profile: full | minimal"
+  echo "                full    = rebel-compiler + optimum-rbln + vllm-rbln"
+  echo "                minimal = rebel-compiler only (pre-LLM-stack style probe image)"
+  echo "                (default: ${IMAGE_PROFILE})"
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --cdi-device  RBLN CDI device handle, e.g. rebellions.ai/npu=all"
@@ -136,6 +141,9 @@ while [[ $# -gt 0 ]]; do
     --vllm-rbln-version)
       [ -z "$2" ] && { echo "[ERROR] --vllm-rbln-version requires a value"; exit 1; }
       VLLM_RBLN_VERSION="$2"; shift 2 ;;
+    --image-profile)
+      [ -z "$2" ] && { echo "[ERROR] --image-profile requires a value"; exit 1; }
+      IMAGE_PROFILE="$2"; shift 2 ;;
     --pytorch-index-url)
       [ -z "$2" ] && { echo "[ERROR] --pytorch-index-url requires a value"; exit 1; }
       PYTORCH_INDEX_URL="$2"; shift 2 ;;
@@ -160,8 +168,20 @@ case "${USER_MODE}" in
     ;;
 esac
 
+case "${IMAGE_PROFILE}" in
+  full|minimal) ;;
+  *)
+    echo "[ERROR] --image-profile must be 'full' or 'minimal'"
+    exit 1
+    ;;
+esac
+
 [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="rbln-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
+
+if [ "${IMAGE_PROFILE}" = "minimal" ]; then
+  TAG="rbln-minimal"
+fi
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
   echo "[ERROR] Workspace directory not found: ${WORKSPACE_DIR}"
@@ -192,6 +212,7 @@ echo "  Base image     : ${BASE_IMAGE}"
 echo "  Compiler ver.  : ${COMPILER_VERSION}"
 echo "  Optimum ver.   : ${OPTIMUM_RBLN_VERSION}"
 echo "  vLLM ver.      : ${VLLM_RBLN_VERSION}"
+echo "  Image profile  : ${IMAGE_PROFILE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  CDI device     : ${CDI_DEVICE:-auto}"
 echo "  User mode      : ${USER_MODE}"
@@ -209,6 +230,7 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg REBEL_COMPILER_VERSION="${COMPILER_VERSION}" \
   --build-arg OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION}" \
   --build-arg VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION}" \
+  --build-arg INSTALL_RBLN_LLM_STACK="$([ "${IMAGE_PROFILE}" = "full" ] && echo 1 || echo 0)" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   .
 
@@ -250,5 +272,9 @@ echo "  command -v rbln-smi && rbln-smi || true"
 echo "  python3 -c \"import unified_sdk, rebel; print('OK')\""
 echo "  RBLN_DEVICES=0 python3 -c \"import rebel; print('npu_is_available=', rebel.npu_is_available())\""
 echo "  python3 -c \"import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))\""
-echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
+if [ "${IMAGE_PROFILE}" = "full" ]; then
+  echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
+else
+  echo "  # minimal profile: optimum-rbln/vllm-rbln intentionally omitted for probe A/B"
+fi
 echo "  RBLN_DEVICES=0 python3 examples/run_rbln_build.py"
