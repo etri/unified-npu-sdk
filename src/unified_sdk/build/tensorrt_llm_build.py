@@ -105,6 +105,35 @@ def _run_trtllm_build(prepared_input: PreparedTensorRTLLMBuildInput, compiled_di
         detail = stderr or stdout or str(exc)
         raise RuntimeError(f"TensorRT-LLM checkpoint compile failed for {checkpoint_dir}: {detail}") from exc
 
+
+def _validate_prepared_build_mode(prepared_input: PreparedTensorRTLLMBuildInput, build_mode: str) -> None:
+    expected = "fetch" if prepared_input.kind == "runtime_model_ref" else "custom_compile"
+    if build_mode != expected:
+        raise ValueError(
+            f"Prepared TensorRT-LLM contract kind={prepared_input.kind!r} requires build_mode={expected!r}, "
+            f"but backend_options.build_mode was {build_mode!r}."
+        )
+
+
+def _validate_checkpoint_cli_option_semantics(prepared_input: PreparedTensorRTLLMBuildInput, options) -> None:
+    if (prepared_input.compile_variant or "model_ref_api") != "checkpoint_dir_cli":
+        return
+    unsupported = []
+    if options.tokenizer_path is not None:
+        unsupported.append("tokenizer_path")
+    if options.tensor_parallel_size != 1:
+        unsupported.append("tensor_parallel_size")
+    if options.dtype is not None:
+        unsupported.append("dtype")
+    if bool(options.trust_remote_code):
+        unsupported.append("trust_remote_code")
+    if unsupported:
+        joined = ", ".join(unsupported)
+        raise ValueError(
+            "TensorRT-LLM checkpoint-dir CLI compile only applies max_model_len from TensorRTLLMBuildOptions. "
+            f"The following options are not authoritative for checkpoint_dir_cli and must be omitted/defaulted: {joined}."
+        )
+
 class _TensorRTLLMBuildAdapter:
     name = "tensorrt"
 
@@ -128,6 +157,9 @@ class _TensorRTLLMBuildAdapter:
                     "TensorRT-LLM artifact build requires a prepared frontend contract. "
                     "Use resolve_tensorrt_llm_build_request(...) and pass LLMBuildConfig.prepared_input."
                 )
+
+        _validate_prepared_build_mode(prepared_input, options.build_mode)
+        _validate_checkpoint_cli_option_semantics(prepared_input, options)
 
         if prepared_input.kind == "runtime_model_ref":
             return BuildResult(

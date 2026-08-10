@@ -82,20 +82,71 @@ class LLMBuildConfig(CoreLLMBuildConfig):
     prepared_input: "PreparedTensorRTLLMBuildInput | None" = None
 
 
-@dataclass(kw_only=True)
+@dataclass(init=False, kw_only=True)
 class CoreLLMRuntimeConfig:
-    engine_path: str | Path
+    model_ref_or_path: str | Path
     max_tokens: int = 64
     temperature: float = 0.7
     top_p: float = 1.0
     top_k: int = 50
     min_tokens: int = 0
 
+    def __init__(
+        self,
+        *,
+        model_ref_or_path: str | Path | None = None,
+        engine_path: str | Path | None = None,
+        max_tokens: int = 64,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        top_k: int = 50,
+        min_tokens: int = 0,
+    ) -> None:
+        if model_ref_or_path is None and engine_path is None:
+            raise ValueError("LLMRuntimeConfig requires model_ref_or_path (preferred) or legacy engine_path")
+        if model_ref_or_path is not None and engine_path is not None and str(model_ref_or_path) != str(engine_path):
+            raise ValueError("model_ref_or_path and legacy engine_path must match when both are provided")
+        self.model_ref_or_path = model_ref_or_path if model_ref_or_path is not None else engine_path  # type: ignore[assignment]
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.top_p = top_p
+        self.top_k = top_k
+        self.min_tokens = min_tokens
 
-@dataclass(kw_only=True)
+    @property
+    def engine_path(self) -> str | Path:
+        return self.model_ref_or_path
+
+
+@dataclass(init=False, kw_only=True)
 class LLMRuntimeConfig(CoreLLMRuntimeConfig):
     backend: LLMRuntimeBackendName = "tensorrt"
     backend_options: TensorRTLLMRuntimeOptions | None = None
+
+    def __init__(
+        self,
+        *,
+        backend: LLMRuntimeBackendName = "tensorrt",
+        backend_options: TensorRTLLMRuntimeOptions | None = None,
+        model_ref_or_path: str | Path | None = None,
+        engine_path: str | Path | None = None,
+        max_tokens: int = 64,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        top_k: int = 50,
+        min_tokens: int = 0,
+    ) -> None:
+        super().__init__(
+            model_ref_or_path=model_ref_or_path,
+            engine_path=engine_path,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            min_tokens=min_tokens,
+        )
+        self.backend = backend
+        self.backend_options = backend_options
 
 
 @dataclass(kw_only=True)

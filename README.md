@@ -534,7 +534,7 @@ from unified_sdk.types import LLMRuntimeConfig
 
 cfg = LLMRuntimeConfig(
     backend="tensorrt",
-    engine_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    model_ref_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
     max_tokens=32,
     temperature=0.0,
     top_p=1.0,

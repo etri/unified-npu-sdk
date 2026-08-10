@@ -32,7 +32,7 @@ class TensorRTPublicApiTests(unittest.TestCase):
     def test_runtime_llm_uses_registry_dispatch(self) -> None:
         class FakeAdapter:
             def create(self, cfg):
-                return LLMRuntimeHandle(backend="tensorrt", engine_path=str(cfg.engine_path), ctx={"ok": True})
+                return LLMRuntimeHandle(backend="tensorrt", engine_path=str(cfg.model_ref_or_path), ctx={"ok": True})
 
             def infer(self, rh, prompt, **overrides):
                 return f"{prompt}:{overrides.get('max_tokens', 'none')}"
@@ -41,12 +41,17 @@ class TensorRTPublicApiTests(unittest.TestCase):
                 rh.ctx["destroyed"] = True
 
         with patch("unified_sdk.runtime.api.get_llm_runtime", return_value=FakeAdapter()) as patched:
-            rh = runtime_api.create_runtime_LLM(LLMRuntimeConfig(backend="tensorrt", engine_path="repo/model"))
+            rh = runtime_api.create_runtime_LLM(LLMRuntimeConfig(backend="tensorrt", model_ref_or_path="repo/model"))
             text = runtime_api.generate_LLM(rh, "hello", max_tokens=3)
             runtime_api.destroy_runtime_LLM(rh)
         self.assertEqual(patched.call_count, 3)
         self.assertEqual(text, "hello:3")
         self.assertTrue(rh.ctx["destroyed"])
+
+    def test_llm_runtime_config_accepts_legacy_engine_path_alias(self) -> None:
+        cfg = LLMRuntimeConfig(backend="tensorrt", engine_path="repo/model")
+        self.assertEqual(str(cfg.model_ref_or_path), "repo/model")
+        self.assertEqual(str(cfg.engine_path), "repo/model")
 
 
 if __name__ == "__main__":

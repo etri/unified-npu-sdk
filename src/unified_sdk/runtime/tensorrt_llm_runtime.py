@@ -100,7 +100,7 @@ class _TensorRTLLMRuntimeAdapter:
                 "tensorrt_llm is required for TensorRT-LLM runtime/generation. Install it in the container or host env first."
             ) from exc
 
-        model_ref = str(cfg.engine_path)
+        model_ref = str(cfg.model_ref_or_path)
         if _looks_like_local_path(model_ref):
             local_ref = Path(model_ref).expanduser()
             if not local_ref.exists():

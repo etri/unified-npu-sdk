@@ -132,6 +132,53 @@ class TensorRTAdapterTests(unittest.TestCase):
             self.assertEqual(result.compiled_model_path, str(artifact_dir.resolve()))
             self.assertEqual(result.meta_data["compile_variant"], "checkpoint_dir_cli")
 
+    def test_llm_prepared_fetch_rejects_custom_compile_mode(self) -> None:
+        with self.assertRaises(ValueError):
+            build_unified_LLM(
+                LLMBuildConfig(
+                    backend="tensorrt",
+                    model_or_path="repo/model",
+                    out_dir="artifacts",
+                    model_name="demo",
+                    backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile"),
+                    prepared_input=PreparedTensorRTLLMBuildInput(
+                        kind="runtime_model_ref",
+                        model_ref="repo/model",
+                        source_kind="model_id",
+                    ),
+                )
+            )
+
+    def test_llm_checkpoint_cli_rejects_nonauthoritative_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            checkpoint_dir = root / "checkpoint"
+            checkpoint_dir.mkdir()
+            artifact_dir = root / "artifacts" / "llama"
+            with self.assertRaises(ValueError):
+                build_unified_LLM(
+                    LLMBuildConfig(
+                        backend="tensorrt",
+                        model_or_path=str(checkpoint_dir),
+                        out_dir=root / "artifacts",
+                        model_name="llama",
+                        backend_options=TensorRTLLMBuildOptions(
+                            build_mode="custom_compile",
+                            tensor_parallel_size=2,
+                            dtype="float16",
+                        ),
+                        prepared_input=PreparedTensorRTLLMBuildInput(
+                            kind="artifact_build",
+                            model_ref=str(checkpoint_dir),
+                            source_kind="local_checkpoint_dir",
+                            source_path=checkpoint_dir,
+                            artifact_dir=artifact_dir,
+                            compile_variant="checkpoint_dir_cli",
+                            checkpoint_dir=checkpoint_dir,
+                        ),
+                    )
+                )
+
     def test_runtime_dynamic_shape_option_rebinds_buffers(self) -> None:
         class FakeDeviceBuffer:
             def __init__(self, size: int):
