@@ -73,7 +73,7 @@ if __name__ == "__main__":
     if args.load:
         cfg = LLMRuntimeConfig(
             backend="tensorrt",
-            engine_path=args.engine_path,
+            model_ref_or_path=args.engine_path,
             backend_options=TensorRTLLMRuntimeOptions(
                 tokenizer_path=args.tokenizer_path,
                 max_model_len=args.max_model_len,

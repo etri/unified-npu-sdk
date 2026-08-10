@@ -152,8 +152,7 @@ if __name__ == "__main__":
 
     cfg = LLMRuntimeConfig(
         backend="tensorrt",
-        engine_path=args.engine_path,
-        max_model_len=args.max_model_len,
+        model_ref_or_path=args.engine_path,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
