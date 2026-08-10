@@ -80,6 +80,7 @@ if __name__ == "__main__":
         print("Error: 'numpy' is required for the TensorRT inference example.")
         sys.exit(1)
 
+    from unified_sdk.options import TensorRTVisionRuntimeOptions
     from unified_sdk.types import RuntimeConfig
     from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
@@ -96,8 +97,10 @@ if __name__ == "__main__":
         input_name=args.input_name,
         output_name=args.output_name,
         input_shape=args.input_shape,
-        use_execute_v3=not args.no_execute_v3,
-        extra={"allow_dynamic_shape": args.allow_dynamic_shape},
+        backend_options=TensorRTVisionRuntimeOptions(
+            use_execute_v3=not args.no_execute_v3,
+            allow_dynamic_shape=args.allow_dynamic_shape,
+        ),
     )
 
     rh = create_runtime(cfg)
@@ -126,6 +129,6 @@ if __name__ == "__main__":
     print(f"latency_ms_avg = {np.mean(times):.3f}")
     print(f"latency_ms_min = {np.min(times):.3f}")
     print(f"latency_ms_max = {np.max(times):.3f}")
-    print(f"(execute_v3={cfg.use_execute_v3}, iters={args.iters})")
+    print(f"(execute_v3={cfg.backend_options.use_execute_v3 if cfg.backend_options else True}, iters={args.iters})")
 
     destroy_runtime(rh)

@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from unified_sdk.runtime.registry import get_runtime
+from unified_sdk.runtime.registry import get_llm_runtime, get_runtime
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle, RuntimeConfig, RuntimeHandle
 
 # Adapter auto-registration
@@ -32,11 +32,13 @@ def describe_runtime_api_mapping() -> Dict[str, Any]:
 
 
 def create_runtime_LLM(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
-    return _tensorrt_llm.create_llm(cfg)
+    adapter = get_llm_runtime(cfg.backend)
+    return adapter.create(cfg)
 
 
 def generate_LLM(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    return _tensorrt_llm.generate_llm(rh, prompt, **overrides)
+    adapter = get_llm_runtime(rh.backend)
+    return adapter.infer(rh, prompt, **overrides)
 
 
 def infer_LLM(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
@@ -44,7 +46,8 @@ def infer_LLM(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
 
 
 def destroy_runtime_LLM(rh: LLMRuntimeHandle) -> None:
-    return _tensorrt_llm.destroy_llm(rh)
+    adapter = get_llm_runtime(rh.backend)
+    return adapter.destroy(rh)
 
 
 create_runtime_llm = create_runtime_LLM

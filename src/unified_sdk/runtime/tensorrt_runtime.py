@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
+from unified_sdk.options import resolve_tensorrt_vision_runtime_options
 from unified_sdk.runtime.registry import register
 from unified_sdk.types import RuntimeConfig, RuntimeHandle
 
@@ -67,20 +69,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     return shape
 
 
-def _parse_bool(value: Any, field_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    if value in (0, 1):
-        return bool(value)
-    raise ValueError(f"RuntimeConfig.extra['{field_name}'] must be a boolean-like value, got {value!r}")
-
-
 def _dtype_from_trt(trt, dtype) -> Any:
     mapping = {
         trt.DataType.FLOAT: np.float32,
@@ -112,11 +100,9 @@ def _tensor_shape(engine, context, name: str) -> Tuple[int, ...]:
 def _load_engine(trt, engine_path: Path):
     logger = trt.Logger(trt.Logger.WARNING)
     runtime = trt.Runtime(logger)
-    serialized = engine_path.read_bytes()
-    engine = runtime.deserialize_cuda_engine(serialized)
+    engine = runtime.deserialize_cuda_engine(engine_path.read_bytes())
     if engine is None:
         raise RuntimeError(f"Failed to deserialize engine: {engine_path}")
-    # runtime 객체가 GC 되면 engine 이 무효화될 수 있으므로 함께 반환해 붙잡아 둔다.
     return engine, runtime
 
 
@@ -125,40 +111,31 @@ def _nbytes(shape: Tuple[int, ...], dtype) -> int:
 
 
 class _TensorRTRuntime:
-    """TensorRT runtime adapter (TensorRT + PyCUDA).
-
-    - `tensorrt` / `pycuda` 는 create() 내부에서 lazy import 한다.
-      특히 `pycuda.autoinit` 은 import 시점에 CUDA 컨텍스트를 만들기 때문에,
-      모듈 최상단이 아니라 런타임 생성 시점에만 초기화되도록 미뤘다.
-    - TRT 8.5+/10 은 execute_async_v3 + set_tensor_address, 구버전은 execute_v2 + bindings.
-    - destroy() 에서 device 버퍼를 명시적으로 free 한다 (GC 의존 X).
-    """
-
     name = "tensorrt"
 
     def create(self, cfg: RuntimeConfig) -> RuntimeHandle:
         if cfg.backend != self.name:
             raise ValueError(f"TensorRT runtime adapter received backend={cfg.backend!r}")
 
-        engine_path = Path(cfg.engine_path).expanduser()
-        if not engine_path.exists():
+        engine_path = Path(cfg.engine_path).expanduser().resolve()
+        if not engine_path.is_file():
             raise FileNotFoundError(f"Engine not found: {engine_path}")
-        if engine_path.suffix != ".engine":
+        if engine_path.suffix.lower() != ".engine":
             raise ValueError(f"Expected a .engine file, got: {engine_path}")
 
         input_name = _require_non_empty_string(cfg.input_name, "input_name")
         output_name = _require_non_empty_string(cfg.output_name, "output_name")
         input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
-        extra = dict(cfg.extra or {})
+        options = resolve_tensorrt_vision_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
 
         try:
             import tensorrt as trt
+            import pycuda.autoinit  # noqa: F401
             import pycuda.driver as cuda
-            import pycuda.autoinit  # noqa: F401  (CUDA 컨텍스트 초기화 — lazy)
-        except Exception as exc:  # pragma: no cover - GPU/벤더 SDK 필요
+        except Exception as exc:
             raise RuntimeError(
                 "tensorrt and pycuda are required for TensorRT inference. "
-                "Use the NVIDIA TensorRT container (nvcr.io/nvidia/tensorrt) or install them."
+                "Use the NVIDIA TensorRT container or install them."
             ) from exc
 
         engine, trt_runtime = _load_engine(trt, engine_path)
@@ -166,10 +143,9 @@ class _TensorRTRuntime:
         if context is None:
             raise RuntimeError("Failed to create TensorRT execution context")
 
-        # dynamic shape: 실행 shape 확정
         if hasattr(context, "set_input_shape"):
             context.set_input_shape(input_name, input_shape)
-        else:  # 구버전
+        else:
             context.set_binding_shape(engine.get_binding_index(input_name), input_shape)
 
         in_dtype = _tensor_dtype(trt, engine, input_name)
@@ -184,7 +160,7 @@ class _TensorRTRuntime:
         d_output = cuda.mem_alloc(_nbytes(out_shape, out_dtype))
         stream = cuda.Stream()
 
-        use_v3 = bool(cfg.use_execute_v3) and hasattr(context, "execute_async_v3")
+        use_v3 = bool(options.use_execute_v3) and hasattr(context, "execute_async_v3")
         bindings: Optional[List[int]] = None
         if use_v3:
             context.set_tensor_address(input_name, int(d_input))
@@ -194,32 +170,30 @@ class _TensorRTRuntime:
             bindings[engine.get_binding_index(input_name)] = int(d_input)
             bindings[engine.get_binding_index(output_name)] = int(d_output)
 
-        ctx: Dict[str, Any] = {
-            "cuda": cuda,
-            "trt_runtime": trt_runtime,
-            "engine": engine,
-            "context": context,
-            "stream": stream,
-            "d_input": d_input,
-            "d_output": d_output,
-            "h_input": h_input,
-            "h_output": h_output,
-            "bindings": bindings,
-            "use_v3": use_v3,
-            "out_shape": out_shape,
-            "extra": extra,
-            "capability_family": _CAPABILITY_FAMILY,
-            "runtime_pipeline": _RUNTIME_PIPELINE,
-            "vendor_api_map": _VENDOR_API_MAP,
-        }
-
         return RuntimeHandle(
             backend=self.name,
             engine_path=str(engine_path),
             input_name=input_name,
             output_name=output_name,
             input_shape=input_shape,
-            ctx=ctx,
+            ctx={
+                "cuda": cuda,
+                "trt_runtime": trt_runtime,
+                "engine": engine,
+                "context": context,
+                "stream": stream,
+                "d_input": d_input,
+                "d_output": d_output,
+                "h_input": h_input,
+                "h_output": h_output,
+                "bindings": bindings,
+                "use_v3": use_v3,
+                "allow_dynamic_shape": bool(options.allow_dynamic_shape),
+                "runtime_options": options.to_metadata(),
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
+            },
         )
 
     def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> np.ndarray:
@@ -228,14 +202,11 @@ class _TensorRTRuntime:
 
         ctx = rh.ctx
         cuda = ctx["cuda"]
-        extra = ctx.get("extra", {})
-        allow_dynamic = _parse_bool(extra.get("allow_dynamic_shape", False), "allow_dynamic_shape")
-
+        allow_dynamic = bool(ctx.get("allow_dynamic_shape", False))
         if (not allow_dynamic) and tuple(input_array.shape) != tuple(rh.input_shape):
             raise ValueError(f"Bad input shape: {input_array.shape}, expected {rh.input_shape}")
 
         ctx["h_input"][...] = input_array.astype(ctx["h_input"].dtype, copy=False)
-
         try:
             cuda.memcpy_htod_async(ctx["d_input"], ctx["h_input"], ctx["stream"])
             if ctx["use_v3"]:
@@ -246,12 +217,10 @@ class _TensorRTRuntime:
             ctx["stream"].synchronize()
         except Exception as exc:
             raise RuntimeError(f"TensorRT inference failed: {exc}") from exc
-
         return np.array(ctx["h_output"], copy=True)
 
     def destroy(self, rh: RuntimeHandle) -> None:
         ctx = rh.ctx or {}
-        # 1) device 메모리 명시적 해제 (PyCUDA mem_alloc 은 GC 의존이 아니라 free() 로 반환)
         for key in ("d_input", "d_output"):
             buf = ctx.get(key)
             free = getattr(buf, "free", None)
@@ -260,7 +229,6 @@ class _TensorRTRuntime:
                     free()
                 except Exception:
                     pass
-        # 2) 나머지 참조 해제 (context -> engine -> runtime 순)
         ctx.clear()
 
 

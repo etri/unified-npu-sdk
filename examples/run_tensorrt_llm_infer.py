@@ -143,6 +143,7 @@ if __name__ == "__main__":
     args = _build_parser().parse_args()
 
     try:
+        from unified_sdk.options import TensorRTLLMRuntimeOptions
         from unified_sdk.types import LLMRuntimeConfig
         from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM
     except ImportError:
@@ -152,18 +153,19 @@ if __name__ == "__main__":
     cfg = LLMRuntimeConfig(
         backend="tensorrt",
         engine_path=args.engine_path,
-        tokenizer_path=args.tokenizer_path,
         max_model_len=args.max_model_len,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
         min_tokens=args.min_tokens,
-        tensor_parallel_size=args.tensor_parallel_size,
-        extra={
-            "dtype": args.dtype,
-            "trust_remote_code": args.trust_remote_code,
-        },
+        backend_options=TensorRTLLMRuntimeOptions(
+            tokenizer_path=args.tokenizer_path,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=args.max_model_len,
+            dtype=args.dtype,
+            trust_remote_code=args.trust_remote_code,
+        ),
     )
     rh = create_runtime_LLM(cfg)
     tokenizer_ref = _resolve_tokenizer_ref(args.engine_path, args.tokenizer_path)

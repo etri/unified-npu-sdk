@@ -4,13 +4,16 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.frontends.types import PreparedTensorRTCompileSource, PreparedTensorRTVisionBuildInput
+from unified_sdk.options import resolve_tensorrt_vision_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
 
 _CAPABILITY_FAMILY = "vision.low-level-engine-builder"
 _BUILD_PIPELINE = (
-    "validate_config",
-    "parse_onnx_network",
+    "resolve_prepared_input",
+    "validate_build_options",
+    "copy_provided_artifact_or_parse_onnx_network",
     "configure_builder",
     "configure_optimization_profile",
     "run_serialized_engine_build",
@@ -30,84 +33,11 @@ _VENDOR_TO_UNIFIED_API_MAP = {
     "Path(src_engine).read_bytes() -> engine_path.write_bytes(...)": "build_unified(cfg) for provided .engine",
     "trt.OnnxParser(...).parse_from_file(...)": "build_unified(cfg)",
     "builder.create_builder_config()": "build_unified(cfg)",
-    "builder.create_optimization_profile(); profile.set_shape(...)": "BuildConfig.min/opt/max_input_shape",
-    "config.set_flag(trt.BuilderFlag.FP16/INT8)": "BuildConfig.precision",
+    "builder.create_optimization_profile(); profile.set_shape(...)": "PreparedTensorRTCompileSource profile",
+    "config.set_flag(trt.BuilderFlag.FP16/INT8)": "TensorRTVisionBuildOptions.precision",
     "builder.build_serialized_network(network, config)": "build_unified(cfg)",
     ".engine artifact": "BuildResult.compiled_model_path",
 }
-
-
-_PRECISIONS = ("fp32", "fp16", "int8")
-
-
-def _require_non_empty_string(value: str, field_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"BuildConfig.{field_name} must be a non-empty string")
-    return value.strip()
-
-
-def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
-    if not isinstance(shape, tuple) or not shape:
-        raise ValueError(f"BuildConfig.{field_name} must be a non-empty tuple of positive integers")
-    if not all(isinstance(dim, int) and dim > 0 for dim in shape):
-        raise ValueError(f"BuildConfig.{field_name} must contain only positive integers: {shape!r}")
-    return shape
-
-
-def _validate_profile(cfg: BuildConfig) -> Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
-    lo = _validate_shape(tuple(cfg.min_input_shape), "min_input_shape")
-    opt = _validate_shape(tuple(cfg.opt_input_shape), "opt_input_shape")
-    hi = _validate_shape(tuple(cfg.max_input_shape), "max_input_shape")
-    if not (len(lo) == len(opt) == len(hi)):
-        raise ValueError(f"min/opt/max_input_shape rank mismatch: {lo} / {opt} / {hi}")
-    for i, (a, b, c) in enumerate(zip(lo, opt, hi)):
-        if not (a <= b <= c):
-            raise ValueError(f"optimization profile must satisfy min<=opt<=max at dim {i}: {a}/{b}/{c}")
-    return lo, opt, hi
-
-
-def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
-    workspace_mib = extra.get("workspace_mib")
-    if workspace_mib is not None:
-        if not isinstance(workspace_mib, int) or workspace_mib <= 0:
-            raise ValueError("BuildConfig.extra['workspace_mib'] must be a positive integer (MiB)")
-    return extra
-
-
-def _ensure_onnx_path(model_or_path: str | Path) -> Path:
-    p = Path(model_or_path).expanduser()
-    if not p.exists():
-        raise FileNotFoundError(f"ONNX file not found: {p}")
-    if p.suffix.lower() != ".onnx":
-        raise ValueError(f"Expected an ONNX file, got: {p.suffix}")
-    return p.resolve()
-
-
-def _ensure_engine_path(model_or_path: str | Path) -> Path:
-    p = Path(model_or_path).expanduser()
-    if not p.exists():
-        raise FileNotFoundError(f"Engine file not found: {p}")
-    if p.suffix.lower() != ".engine":
-        raise ValueError(f"Expected a .engine file, got: {p.suffix}")
-    return p.resolve()
-
-
-def _build_output_path(out_dir: str | Path, model_name: str, precision: str) -> Path:
-    name = _require_non_empty_string(model_name, "model_name")
-    return Path(out_dir) / f"{name}_{precision.upper()}.engine"
-
-
-def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "capability_family": _CAPABILITY_FAMILY,
-        "build_pipeline": _BUILD_PIPELINE,
-        "vendor_api_map": _VENDOR_API_MAP,
-        "compile_options": {
-            "workspace_mib": extra.get("workspace_mib"),
-            "strict_types": extra.get("strict_types"),
-            "int8_calibrator": "<provided>" if extra.get("int8_calibrator") is not None else None,
-        },
-    }
 
 
 def describe_api_mapping() -> Dict[str, Any]:
@@ -122,8 +52,38 @@ def describe_api_mapping() -> Dict[str, Any]:
     }
 
 
+def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
+    if not isinstance(shape, tuple) or not shape:
+        raise ValueError(f"{field_name} must be a non-empty tuple of positive integers")
+    if not all(isinstance(dim, int) and dim > 0 for dim in shape):
+        raise ValueError(f"{field_name} must contain only positive integers: {shape!r}")
+    return shape
+
+
+def _validate_profile(source: PreparedTensorRTCompileSource) -> Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
+    lo = _validate_shape(tuple(source.min_input_shape), "PreparedTensorRTCompileSource.min_input_shape")
+    opt = _validate_shape(tuple(source.opt_input_shape), "PreparedTensorRTCompileSource.opt_input_shape")
+    hi = _validate_shape(tuple(source.max_input_shape), "PreparedTensorRTCompileSource.max_input_shape")
+    if not (len(lo) == len(opt) == len(hi)):
+        raise ValueError(f"min/opt/max_input_shape rank mismatch: {lo} / {opt} / {hi}")
+    for i, (a, b, c) in enumerate(zip(lo, opt, hi)):
+        if not (a <= b <= c):
+            raise ValueError(f"optimization profile must satisfy min<=opt<=max at dim {i}: {a}/{b}/{c}")
+    return lo, opt, hi
+
+
+def _set_workspace(config, trt, workspace_mib: int | None) -> None:
+    if not workspace_mib:
+        return
+    nbytes = workspace_mib * (1 << 20)
+    pool_type = getattr(trt, "MemoryPoolType", None)
+    if pool_type is not None and hasattr(config, "set_memory_pool_limit"):
+        config.set_memory_pool_limit(pool_type.WORKSPACE, nbytes)
+    elif hasattr(config, "max_workspace_size"):
+        config.max_workspace_size = nbytes
+
+
 def _create_network(builder, trt):
-    """EXPLICIT_BATCH 플래그는 TRT 10 에서 제거/기본화되었다. 양쪽을 모두 지원한다."""
     flag_enum = getattr(trt, "NetworkDefinitionCreationFlag", None)
     explicit = getattr(flag_enum, "EXPLICIT_BATCH", None) if flag_enum else None
     if explicit is not None:
@@ -134,27 +94,11 @@ def _create_network(builder, trt):
     return builder.create_network(0)
 
 
-def _set_workspace(config, trt, workspace_mib: int | None) -> None:
-    if not workspace_mib:
-        return
-    nbytes = workspace_mib * (1 << 20)
-    # TRT 8.4+ : set_memory_pool_limit / 구버전 : max_workspace_size
-    pool_type = getattr(trt, "MemoryPoolType", None)
-    if pool_type is not None and hasattr(config, "set_memory_pool_limit"):
-        config.set_memory_pool_limit(pool_type.WORKSPACE, nbytes)
-    elif hasattr(config, "max_workspace_size"):
-        config.max_workspace_size = nbytes
-
-
 def _compile_tensorrt_engine(
     trt,
-    onnx_path: Path,
-    engine_path: Path,
     *,
-    input_name: str,
-    min_input_shape: Tuple[int, ...],
-    opt_input_shape: Tuple[int, ...],
-    max_input_shape: Tuple[int, ...],
+    source: PreparedTensorRTCompileSource,
+    engine_path: Path,
     precision: str,
     workspace_mib: int | None,
     int8_calibrator: Any,
@@ -162,18 +106,18 @@ def _compile_tensorrt_engine(
     logger = trt.Logger(trt.Logger.WARNING)
     builder = trt.Builder(logger)
     network = _create_network(builder, trt)
-
     parser = trt.OnnxParser(network, logger)
-    ok = parser.parse_from_file(str(onnx_path))
+    ok = parser.parse_from_file(str(source.source_path))
     if not ok:
         errors = "\n".join(str(parser.get_error(i)) for i in range(parser.num_errors))
-        raise RuntimeError(f"Failed to parse ONNX: {onnx_path}\n{errors}")
+        raise RuntimeError(f"Failed to parse ONNX: {source.source_path}\n{errors}")
 
     config = builder.create_builder_config()
     _set_workspace(config, trt, workspace_mib)
 
+    lo, opt, hi = _validate_profile(source)
     profile = builder.create_optimization_profile()
-    profile.set_shape(input_name, min_input_shape, opt_input_shape, max_input_shape)
+    profile.set_shape(source.input_name, lo, opt, hi)
     config.add_optimization_profile(profile)
 
     if precision == "fp16":
@@ -184,9 +128,8 @@ def _compile_tensorrt_engine(
         if not builder.platform_has_fast_int8:
             raise RuntimeError("precision='int8' requested but this platform has no fast INT8 support")
         config.set_flag(trt.BuilderFlag.INT8)
-        # INT8 은 calibration 없이는 정확도를 보장할 수 없다.
         config.int8_calibrator = int8_calibrator
-        if hasattr(config, "add_optimization_profile"):
+        if hasattr(config, "set_calibration_profile"):
             try:
                 config.set_calibration_profile(profile)
             except Exception:
@@ -201,109 +144,115 @@ def _compile_tensorrt_engine(
     return engine_path
 
 
+def _compat_prepared_input(cfg: BuildConfig, precision: str) -> PreparedTensorRTVisionBuildInput:
+    model_path = Path(str(cfg.model_or_path)).expanduser().resolve()
+    destination = Path(cfg.out_dir).expanduser().resolve() / f"{cfg.model_name}_{precision.upper()}.engine"
+    if model_path.suffix.lower() == ".engine":
+        from unified_sdk.frontends import prepare_tensorrt_vision_build_input
+
+        return prepare_tensorrt_vision_build_input(
+            model_path,
+            destination,
+            source_label="legacy_provided_engine",
+            provenance_kind="provided_artifact",
+            provenance_detail=f"legacy provided .engine fetch: {model_path}",
+            input_name="input",
+            min_input_shape=(1, 3, 224, 224),
+            opt_input_shape=(1, 3, 224, 224),
+            max_input_shape=(1, 3, 224, 224),
+        )
+    raise ValueError(
+        "TensorRT compile requires a prepared frontend contract. "
+        "Use resolve_tensorrt_vision_build_request(...) and pass BuildConfig.prepared_input."
+    )
+
+
 class _TensorRTBuildAdapter:
-    """TensorRT build adapter: ONNX -> serialized `.engine`.
-
-    - `tensorrt` 는 build() 내부에서 lazy import 한다 (GPU 없는 환경에서도 패키지 import 가능).
-    - dynamic shape 는 min/opt/max optimization profile 로 지정한다.
-    - int8 은 `extra["int8_calibrator"]` 가 있어야 하며, 없으면 조용히 fp32 로 떨어지지 않고 거부한다.
-    """
-
     name = "tensorrt"
 
     def build(self, cfg: BuildConfig) -> BuildResult:
         if cfg.backend != self.name:
             raise ValueError(f"TensorRT build adapter received backend={cfg.backend!r}")
 
-        precision = str(cfg.precision).lower()
-        if precision not in _PRECISIONS:
-            raise ValueError(f"Unsupported TensorRT precision: {cfg.precision!r} (expected {_PRECISIONS})")
-
-        input_name = _require_non_empty_string(cfg.input_name, "input_name")
-        lo, opt, hi = _validate_profile(cfg)
-        extra = _validate_extra(dict(cfg.extra or {}))
-        workspace_mib = extra.get("workspace_mib")
-        int8_calibrator = extra.get("int8_calibrator")
-
-        if precision == "int8" and int8_calibrator is None:
+        options = resolve_tensorrt_vision_build_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        precision = options.precision
+        if precision == "int8" and options.int8_calibrator is None:
             raise ValueError(
                 "precision='int8' requires a calibrator. "
-                "Pass BuildConfig.extra['int8_calibrator'] (trt.IInt8EntropyCalibrator2 등)."
+                "Pass TensorRTVisionBuildOptions(int8_calibrator=...)."
             )
 
-        engine_path = _build_output_path(cfg.out_dir, cfg.model_name, precision)
+        prepared_input = cfg.prepared_input or _compat_prepared_input(cfg, precision)
+        output_path = Path(cfg.out_dir).expanduser().resolve() / f"{cfg.model_name}_{precision.upper()}.engine"
 
-        if isinstance(cfg.model_or_path, (str, Path)) and str(cfg.model_or_path).endswith(".engine"):
-            src_engine = _ensure_engine_path(cfg.model_or_path)
+        if prepared_input.kind == "provided_artifact":
+            provided = prepared_input.provided_artifact
+            if provided is None:
+                raise ValueError("PreparedTensorRTVisionBuildInput.kind='provided_artifact' requires provided_artifact")
+            src_engine = provided.source_path.expanduser().resolve()
+            if not src_engine.is_file():
+                raise FileNotFoundError(f"Engine file not found: {src_engine}")
+            engine_path = provided.destination_path.expanduser().resolve()
             engine_path.parent.mkdir(parents=True, exist_ok=True)
-            if src_engine != engine_path.resolve():
+            if src_engine != engine_path:
                 engine_path.write_bytes(src_engine.read_bytes())
-            meta: Dict[str, Any] = {
+            meta = {
                 "backend": self.name,
                 "model_name": cfg.model_name,
                 "precision": precision,
                 "source": "provided",
                 "origin_engine_path": str(src_engine),
                 "engine_path": str(engine_path),
-                "extra": extra,
-                **_capability_metadata(extra),
+                "prepared_kind": prepared_input.kind,
+                "backend_options": options.to_metadata(),
+                "capability_family": _CAPABILITY_FAMILY,
+                "build_pipeline": _BUILD_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
             }
-            return BuildResult(
-                backend=self.name,
-                compiled_model_path=str(engine_path),
-                meta_data=meta,
-            )
+            return BuildResult(backend=self.name, compiled_model_path=str(engine_path), meta_data=meta)
 
-        onnx_path = _ensure_onnx_path(cfg.model_or_path)
+        compile_source = prepared_input.compile_source
+        if compile_source is None:
+            raise ValueError("PreparedTensorRTVisionBuildInput.kind='compile_source' requires compile_source")
 
         try:
             import tensorrt as trt
-        except Exception as exc:  # pragma: no cover - 벤더 SDK 필요
+        except Exception as exc:
             raise RuntimeError(
-                "tensorrt is required to build an engine. "
-                "Use the NVIDIA TensorRT container or install the tensorrt python package."
+                "tensorrt is required to build an engine. Use the NVIDIA TensorRT container or install the tensorrt package."
             ) from exc
 
-        try:
-            compiled = _compile_tensorrt_engine(
-                trt,
-                onnx_path=onnx_path,
-                engine_path=engine_path,
-                input_name=input_name,
-                min_input_shape=lo,
-                opt_input_shape=opt,
-                max_input_shape=hi,
-                precision=precision,
-                workspace_mib=workspace_mib,
-                int8_calibrator=int8_calibrator,
-            )
-        except RuntimeError:
-            raise
-        except Exception as exc:
-            raise RuntimeError(f"TensorRT engine build failed for {onnx_path}: {exc}") from exc
-
-        meta: Dict[str, Any] = {
+        compiled = _compile_tensorrt_engine(
+            trt,
+            source=compile_source,
+            engine_path=output_path,
+            precision=precision,
+            workspace_mib=options.workspace_mib,
+            int8_calibrator=options.int8_calibrator,
+        )
+        meta = {
             "backend": self.name,
             "model_name": cfg.model_name,
             "precision": precision,
-            "onnx_path": str(onnx_path),
             "engine_path": str(compiled),
-            "trt_version": getattr(trt, "__version__", "unknown"),
-            "workspace_mib": workspace_mib,
+            "prepared_kind": prepared_input.kind,
+            "source_label": compile_source.source_label,
+            "provenance_kind": compile_source.provenance_kind,
+            "provenance_detail": compile_source.provenance_detail,
+            "source_path": str(compile_source.source_path),
             "profile": {
-                "input_name": input_name,
-                "min": lo,
-                "opt": opt,
-                "max": hi,
+                "input_name": compile_source.input_name,
+                "min": compile_source.min_input_shape,
+                "opt": compile_source.opt_input_shape,
+                "max": compile_source.max_input_shape,
             },
-            "extra": {k: v for k, v in extra.items() if k != "int8_calibrator"},
-            **_capability_metadata(extra),
+            "trt_version": getattr(trt, "__version__", "unknown"),
+            "backend_options": options.to_metadata(),
+            "capability_family": _CAPABILITY_FAMILY,
+            "build_pipeline": _BUILD_PIPELINE,
+            "vendor_api_map": _VENDOR_API_MAP,
         }
-        return BuildResult(
-            backend=self.name,
-            compiled_model_path=str(compiled),
-            meta_data=meta,
-        )
+        return BuildResult(backend=self.name, compiled_model_path=str(compiled), meta_data=meta)
 
 
 register(_TensorRTBuildAdapter())

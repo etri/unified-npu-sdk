@@ -62,7 +62,11 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 │   └── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
 └── src/unified_sdk/
     ├── __init__.py
-    ├── types.py                    # 공통 데이터 구조 (TensorRT 슬림화)
+    ├── types.py                    # 공통 데이터 구조 (typed backend_options / prepared_input)
+    ├── options.py                  # TensorRT typed backend options
+    ├── frontends/
+    │   ├── __init__.py             # vision/llm build request resolve/prepare
+    │   └── types.py
     ├── build/
     │   ├── __init__.py
     │   ├── api.py                  # build_unified / build_unified_LLM
@@ -394,20 +398,35 @@ python3 examples/inspect_tensorrt_llm_model.py artifacts/tinyllama_trtllm --load
 ### 컴파일 (.engine 생성)
 
 ```python
-from unified_sdk.types import BuildConfig
 from unified_sdk.build.api import build_unified
+from unified_sdk.frontends import resolve_tensorrt_vision_build_request
+from unified_sdk.frontends.types import TensorRTVisionFrontendBuildRequest
+from unified_sdk.options import TensorRTVisionBuildOptions
+from unified_sdk.types import BuildConfig
+
+resolved = resolve_tensorrt_vision_build_request(
+    TensorRTVisionFrontendBuildRequest(
+        model_name="yolov7",
+        models_dir=Path("models"),
+        out_dir=Path("build_output"),
+        onnx_path=Path("models/yolov7.onnx"),
+        input_name="images",
+        min_input_shape=(1, 3, 640, 640),
+        opt_input_shape=(1, 3, 640, 640),
+        max_input_shape=(1, 3, 640, 640),
+    )
+)
 
 cfg = BuildConfig(
     backend="tensorrt",
-    model_or_path="models/yolov7.onnx",
+    model_or_path=resolved.model_or_path,
     out_dir="build_output",
     model_name="yolov7",
-    precision="fp32",                     # fp32 | fp16 | int8(calibrator 필요)
-    input_name="images",
-    min_input_shape=(1, 3, 640, 640),     # dynamic shape optimization profile
-    opt_input_shape=(1, 3, 640, 640),
-    max_input_shape=(1, 3, 640, 640),
-    extra={"workspace_mib": 1024},
+    backend_options=TensorRTVisionBuildOptions(
+        precision="fp32",                 # fp32 | fp16 | int8(calibrator 필요)
+        workspace_mib=1024,
+    ),
+    prepared_input=resolved.prepared_input,
 )
 result = build_unified(cfg)
 print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
@@ -416,8 +435,20 @@ print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
 ### LLM build / fetch
 
 ```python
-from unified_sdk.types import LLMBuildConfig
 from unified_sdk.build.api import build_unified_LLM
+from unified_sdk.frontends import resolve_tensorrt_llm_build_request
+from unified_sdk.frontends.types import TensorRTLLMFrontendBuildRequest
+from unified_sdk.options import TensorRTLLMBuildOptions
+from unified_sdk.types import LLMBuildConfig
+
+resolved = resolve_tensorrt_llm_build_request(
+    TensorRTLLMFrontendBuildRequest(
+        model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        out_dir=Path("artifacts"),
+        model_name="tinyllama_trtllm",
+        build_mode="fetch",
+    )
+)
 
 cfg = LLMBuildConfig(
     backend="tensorrt",
@@ -426,7 +457,8 @@ cfg = LLMBuildConfig(
     model_name="tinyllama_trtllm",
     max_model_len=512,
     tensor_parallel_size=1,
-    extra={"build_mode": "fetch"},        # fetch | llm_api_compile
+    backend_options=TensorRTLLMBuildOptions(build_mode="fetch"),
+    prepared_input=resolved.prepared_input,
 )
 result = build_unified_LLM(cfg)
 print(result.compiled_model_path)
@@ -451,8 +483,9 @@ print(result.compiled_model_path)
 
 ```python
 import numpy as np
-from unified_sdk.types import RuntimeConfig
 from unified_sdk.runtime import create_runtime, infer, destroy_runtime
+from unified_sdk.options import TensorRTVisionRuntimeOptions
+from unified_sdk.types import RuntimeConfig
 
 cfg = RuntimeConfig(
     backend="tensorrt",
@@ -460,7 +493,9 @@ cfg = RuntimeConfig(
     input_name="images",
     output_name="output",
     input_shape=(1, 3, 640, 640),
-    use_execute_v3=True,                  # TRT 8.5+/10 권장 경로
+    backend_options=TensorRTVisionRuntimeOptions(
+        use_execute_v3=True,              # TRT 8.5+/10 권장 경로
+    ),
 )
 rh = create_runtime(cfg)
 y = infer(rh, np.zeros((1, 3, 640, 640), dtype=np.float32))
@@ -470,18 +505,21 @@ destroy_runtime(rh)
 ### LLM generate
 
 ```python
-from unified_sdk.types import LLMRuntimeConfig
 from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM
+from unified_sdk.options import TensorRTLLMRuntimeOptions
+from unified_sdk.types import LLMRuntimeConfig
 
 cfg = LLMRuntimeConfig(
     backend="tensorrt",
     engine_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    max_model_len=512,
     max_tokens=32,
     temperature=0.0,
     top_p=1.0,
     top_k=1,
-    tensor_parallel_size=1,
+    backend_options=TensorRTLLMRuntimeOptions(
+        max_model_len=512,
+        tensor_parallel_size=1,
+    ),
 )
 rh = create_runtime_LLM(cfg)
 result = generate_LLM(rh, "What is the capital of South Korea?")
@@ -531,9 +569,9 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
-  `BuildConfig.extra["int8_calibrator"]` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
+  `TensorRTVisionBuildOptions(int8_calibrator=...)` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
 - **실행 경로**: TRT 8.5+/10 은 `execute_async_v3` + `set_tensor_address`, 구버전은 `execute_v2` + bindings.
-  `RuntimeConfig.use_execute_v3` 로 강제할 수 있고, 런타임이 지원 여부를 자동 감지합니다.
+  `TensorRTVisionRuntimeOptions(use_execute_v3=...)` 로 제어할 수 있고, 런타임이 지원 여부를 자동 감지합니다.
 - **메모리**: device 버퍼(`cuda.mem_alloc`)는 `destroy_runtime()` 에서 명시적으로 `free()` 합니다.
 - **lazy import**: `tensorrt`/`pycuda` 는 어댑터 내부에서만 import 하므로, GPU 없는 개발 환경에서도
   패키지 import 와 `--help` 가 동작합니다. `tensorrt_llm`도 LLM 어댑터 메서드 내부에서 lazy import 합니다.

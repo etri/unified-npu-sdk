@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict
 
-from unified_sdk.build.registry import get_builder
+from unified_sdk.build.registry import get_builder, get_llm_builder
 from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig
 
 # Adapter auto-registration
@@ -15,7 +15,8 @@ def build_unified(cfg: BuildConfig) -> BuildResult:
 
 
 def build_unified_LLM(cfg: LLMBuildConfig) -> BuildResult:
-    return _tensorrt_llm.build_llm(cfg)
+    builder = get_llm_builder(cfg.backend)
+    return builder.build(cfg)
 
 
 def describe_build_api_mapping() -> Dict[str, Any]:
