@@ -12,6 +12,7 @@ ResolvedRBLNVisionBuildKind = Literal[
     "compiled_dir",
     "optimum_source_model",
     "torch_model",
+    "pth_restore",
     "onnx_restore",
 ]
 ResolvedRBLNLLMBuildKind = Literal["runtime_model_ref", "artifact_build"]
@@ -40,6 +41,9 @@ class ProvidedRBLNArtifact:
 class PreparedRBLNCompileSource:
     source: Any
     source_label: str
+    provenance_kind: ResolvedRBLNVisionBuildKind
+    provenance_detail: str
+    source_path: Path | None = None
     compile_frontend: Literal["rebel", "optimum_image_classification"] = "rebel"
     source_cache_dir: Path | None = None
 

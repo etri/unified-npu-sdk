@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from .types import (
     PreparedRBLNLLMBuildInput,
@@ -92,35 +92,68 @@ def _restore_torch_model_from_onnx(path: Path):
     return model
 
 
-def prepare_rbln_vision_build_input(model_or_path: Any, rbln_path: str | Path) -> PreparedRBLNVisionBuildInput:
-    destination = Path(rbln_path).expanduser().resolve()
-    source_path = Path(model_or_path).expanduser().resolve() if isinstance(model_or_path, (str, Path)) else None
+def _resolve_compiled_artifact_file(path: Path) -> Path:
+    candidates = sorted(path.rglob("*.rbln"))
+    if not candidates:
+        raise FileNotFoundError(f"No .rbln file found under compiled model directory: {path}")
+    if len(candidates) > 1:
+        listing = "\n".join(f"- {candidate}" for candidate in candidates)
+        raise RuntimeError(
+            "Multiple .rbln files were found under the compiled model directory. "
+            "Please pass a single .rbln path instead.\n"
+            f"{listing}"
+        )
+    return candidates[0]
 
-    if source_path is not None and (source_path.suffix == ".rbln" or source_path.is_dir()):
+
+def prepare_rbln_vision_build_input(
+    model_or_path: Any,
+    rbln_path: str | Path,
+    *,
+    source_label: str | None = None,
+    provenance_kind: ResolvedRBLNVisionBuildKind | None = None,
+    provenance_detail: str | None = None,
+    compile_frontend: Literal["rebel", "optimum_image_classification"] | None = None,
+    source_cache_dir: Path | None = None,
+    source_path: Path | None = None,
+) -> PreparedRBLNVisionBuildInput:
+    destination = Path(rbln_path).expanduser().resolve()
+    resolved_source_path = Path(model_or_path).expanduser().resolve() if isinstance(model_or_path, (str, Path)) else None
+
+    if resolved_source_path is not None and (resolved_source_path.suffix == ".rbln" or resolved_source_path.is_dir()):
+        artifact_path = resolved_source_path
+        if artifact_path.is_dir():
+            artifact_path = _resolve_compiled_artifact_file(artifact_path)
         return PreparedRBLNVisionBuildInput(
             kind="provided_artifact",
             provided_artifact=ProvidedRBLNArtifact(
-                source_path=source_path,
+                source_path=artifact_path,
                 destination_path=destination,
             ),
         )
 
-    compile_frontend = "rebel"
-    source_label = "torch_model"
-    source_cache_dir = None
+    normalized_compile_frontend = compile_frontend or "rebel"
+    normalized_source_label = source_label or "torch_model"
+    normalized_provenance_kind = provenance_kind or "torch_model"
+    normalized_provenance_detail = provenance_detail or normalized_source_label
     source = model_or_path
-    if source_path is not None and source_path.suffix == ".onnx":
-        source = _restore_torch_model_from_onnx(source_path)
+    if resolved_source_path is not None and resolved_source_path.suffix == ".onnx":
+        source = _restore_torch_model_from_onnx(resolved_source_path)
     elif isinstance(model_or_path, str):
-        source_label = "optimum_source_model"
-        compile_frontend = "optimum_image_classification"
+        normalized_source_label = source_label or "optimum_source_model"
+        normalized_compile_frontend = compile_frontend or "optimum_image_classification"
+        normalized_provenance_kind = provenance_kind or "optimum_source_model"
+        normalized_provenance_detail = provenance_detail or str(model_or_path)
 
     return PreparedRBLNVisionBuildInput(
         kind="compile_source",
         compile_source=PreparedRBLNCompileSource(
             source=source,
-            source_label=source_label,
-            compile_frontend=compile_frontend,  # type: ignore[arg-type]
+            source_label=normalized_source_label,
+            provenance_kind=normalized_provenance_kind,
+            provenance_detail=normalized_provenance_detail,
+            source_path=source_path,
+            compile_frontend=normalized_compile_frontend,
             source_cache_dir=source_cache_dir,
         ),
     )
@@ -171,7 +204,10 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
                 model_or_path=str(resolved),
                 source_description=f"standard fetch from local compiled RBLN directory: {resolved}",
                 kind="compiled_dir",
-                prepared_input=prepare_rbln_vision_build_input(str(resolved), models_dir / f"{model_name}.rbln"),
+                prepared_input=prepare_rbln_vision_build_input(
+                    str(resolved),
+                    models_dir / f"{model_name}.rbln",
+                ),
             )
         if _looks_like_local_compiled_ref(compiled_model_ref):
             raise FileNotFoundError(
@@ -198,7 +234,10 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
             model_or_path=str(snapshot_path),
             source_description=f"standard fetch from compiled RBLN artifact repo: {compiled_model_ref} -> {snapshot_path}",
             kind="compiled_dir",
-            prepared_input=prepare_rbln_vision_build_input(str(snapshot_path), models_dir / f"{model_name}.rbln"),
+            prepared_input=prepare_rbln_vision_build_input(
+                str(snapshot_path),
+                models_dir / f"{model_name}.rbln",
+            ),
         )
 
     if request.provided_rbln is not None:
@@ -207,7 +246,10 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
             model_or_path=str(provided),
             source_description=f"provided .rbln fetch: {provided}",
             kind="provided_artifact",
-            prepared_input=prepare_rbln_vision_build_input(str(provided), models_dir / f"{model_name}.rbln"),
+            prepared_input=prepare_rbln_vision_build_input(
+                str(provided),
+                models_dir / f"{model_name}.rbln",
+            ),
         )
 
     if request.from_onnx is not None:
@@ -217,7 +259,15 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
             model_or_path=model,
             source_description=f"experimental/unverified ONNX restore -> .rbln: {onnx_path}",
             kind="onnx_restore",
-            prepared_input=prepare_rbln_vision_build_input(model, models_dir / f"{model_name}.rbln"),
+            prepared_input=prepare_rbln_vision_build_input(
+                model,
+                models_dir / f"{model_name}.rbln",
+                source_label="onnx_restored_torch_model",
+                provenance_kind="onnx_restore",
+                provenance_detail=f"experimental/unverified ONNX restore: {onnx_path}",
+                compile_frontend="rebel",
+                source_path=onnx_path,
+            ),
         )
 
     model_zoo_target = _normalize_model_name(request.model_zoo_model or "")
@@ -229,18 +279,15 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
             )
         if request.pretrained:
             model_ref = _MODEL_ZOO_TARGETS[model_zoo_target]["hf_model_id"]
-            prepared = prepare_rbln_vision_build_input(model_ref, models_dir / f"{model_name}.rbln")
-            compile_source = prepared.compile_source
-            if compile_source is not None:
-                prepared = PreparedRBLNVisionBuildInput(
-                    kind="compile_source",
-                    compile_source=PreparedRBLNCompileSource(
-                        source=compile_source.source,
-                        source_label=compile_source.source_label,
-                        compile_frontend="optimum_image_classification",
-                        source_cache_dir=(models_dir / "hf-cache").resolve(),
-                    ),
-                )
+            prepared = prepare_rbln_vision_build_input(
+                model_ref,
+                models_dir / f"{model_name}.rbln",
+                source_label="optimum_source_model",
+                provenance_kind="optimum_source_model",
+                provenance_detail=f"standard model-zoo/source hub fetch: {model_ref}",
+                compile_frontend="optimum_image_classification",
+                source_cache_dir=(models_dir / "hf-cache").resolve(),
+            )
             return ResolvedRBLNVisionBuildRequest(
                 model_or_path=model_ref,
                 source_description=(
@@ -259,7 +306,14 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
                 "torchvision ResNet50 local/random-init"
             ),
             kind="torch_model",
-            prepared_input=prepare_rbln_vision_build_input(model, models_dir / f"{model_name}.rbln"),
+            prepared_input=prepare_rbln_vision_build_input(
+                model,
+                models_dir / f"{model_name}.rbln",
+                source_label="torchvision_resnet50_random_init",
+                provenance_kind="torch_model",
+                provenance_detail="reference compile from torchvision ResNet50 random-init",
+                compile_frontend="rebel",
+            ),
         )
 
     weights_path = request.weights_path.expanduser().resolve() if request.weights_path is not None else _find_weights(models_dir)
@@ -276,14 +330,24 @@ def resolve_rbln_vision_build_request(request: RBLNVisionFrontendBuildRequest) -
         state_dict = _load_state_dict(weights_path, torch)
         model.load_state_dict(state_dict, strict=False)
         source_description = f"user PTH/PT -> torch restore -> .rbln: {weights_path}"
+        resolved_kind: ResolvedRBLNVisionBuildKind = "pth_restore"
     else:
         source_description = "local torchvision ResNet50 random-init -> .rbln"
+        resolved_kind = "torch_model"
 
     return ResolvedRBLNVisionBuildRequest(
         model_or_path=model,
         source_description=source_description,
-        kind="torch_model",
-        prepared_input=prepare_rbln_vision_build_input(model, models_dir / f"{model_name}.rbln"),
+        kind=resolved_kind,
+        prepared_input=prepare_rbln_vision_build_input(
+            model,
+            models_dir / f"{model_name}.rbln",
+            source_label="pth_restored_torch_model" if weights_path is not None else "torch_model",
+            provenance_kind=resolved_kind,
+            provenance_detail=source_description,
+            compile_frontend="rebel",
+            source_path=weights_path,
+        ),
     )
 
 

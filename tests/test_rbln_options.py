@@ -31,12 +31,21 @@ class RBLNOptionsTest(unittest.TestCase):
                 "npu": "RBLN-CA22",
                 "precision": "fp32",
                 "model_trace_method": "jittrace",
-                "compile_frontend": "rebel",
             },
         )
         self.assertEqual(options.npu, "RBLN-CA22")
         self.assertEqual(options.precision, "fp32")
         self.assertEqual(options.model_trace_method, "jittrace")
+
+    def test_resolve_vision_build_options_rejects_unknown_legacy_keys(self) -> None:
+        with self.assertRaises(ValueError):
+            resolve_rbln_vision_build_options(
+                None,
+                extra={
+                    "npu": "RBLN-CA22",
+                    "compile_frontend": "rebel",
+                },
+            )
 
     def test_resolve_vision_runtime_options_from_instance(self) -> None:
         options = resolve_rbln_vision_runtime_options(

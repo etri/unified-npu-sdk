@@ -8,6 +8,22 @@ from typing import Any, Dict, Literal
 _VISION_FRONTENDS = ("rebel", "optimum_image_classification")
 _TRACE_METHODS = ("export", "export_strict", "jittrace")
 _TENSOR_TYPES = ("np", "pt")
+_VISION_BUILD_LEGACY_KEYS = frozenset({"npu", "precision", "model_trace_method"})
+_VISION_RUNTIME_LEGACY_KEYS = frozenset({"device", "tensor_type", "timeout", "activate_profiler", "allow_dynamic_shape"})
+_LLM_BUILD_LEGACY_KEYS = frozenset({"build_mode", "trust_remote_code", "revision", "rbln_create_runtimes"})
+_LLM_RUNTIME_LEGACY_KEYS = frozenset(
+    {
+        "runtime_impl",
+        "tensor_parallel_size",
+        "max_model_len",
+        "block_size",
+        "trust_remote_code",
+        "enforce_eager",
+        "dtype",
+        "gpu_memory_utilization",
+        "additional_config",
+    }
+)
 
 
 def _normalize_optional_str(value: Any) -> str | None:
@@ -29,6 +45,17 @@ def _parse_bool(value: Any, field_name: str) -> bool:
     if value in (0, 1):
         return bool(value)
     raise ValueError(f"{field_name} must be a boolean-like value, got {value!r}")
+
+
+def _validate_legacy_extra(extra: Dict[str, Any], *, allowed_keys: frozenset[str], option_label: str) -> Dict[str, Any]:
+    unknown_keys = sorted(key for key in extra if key not in allowed_keys)
+    if unknown_keys:
+        joined = ", ".join(repr(key) for key in unknown_keys)
+        raise ValueError(
+            f"{option_label} legacy extra contains unsupported keys: {joined}. "
+            "Pass typed backend_options instead of relying on extra passthrough."
+        )
+    return dict(extra)
 
 
 @dataclass(frozen=True)
@@ -64,6 +91,11 @@ class RBLNVisionBuildOptions:
 
     @classmethod
     def from_legacy_extra(cls, extra: Dict[str, Any]) -> "RBLNVisionBuildOptions":
+        extra = _validate_legacy_extra(
+            extra,
+            allowed_keys=_VISION_BUILD_LEGACY_KEYS,
+            option_label="RBLNVisionBuildOptions",
+        )
         return cls(
             npu=extra.get("npu"),
             precision=extra.get("precision", "fp16"),
@@ -117,6 +149,11 @@ class RBLNVisionRuntimeOptions:
 
     @classmethod
     def from_legacy_extra(cls, extra: Dict[str, Any]) -> "RBLNVisionRuntimeOptions":
+        extra = _validate_legacy_extra(
+            extra,
+            allowed_keys=_VISION_RUNTIME_LEGACY_KEYS,
+            option_label="RBLNVisionRuntimeOptions",
+        )
         return cls(
             device=extra.get("device", 0),
             tensor_type=extra.get("tensor_type", "np"),
@@ -158,6 +195,11 @@ class RBLNLLMBuildOptions:
 
     @classmethod
     def from_legacy_extra(cls, extra: Dict[str, Any]) -> "RBLNLLMBuildOptions":
+        extra = _validate_legacy_extra(
+            extra,
+            allowed_keys=_LLM_BUILD_LEGACY_KEYS,
+            option_label="RBLNLLMBuildOptions",
+        )
         return cls(
             build_mode=extra.get("build_mode", "fetch"),
             trust_remote_code=extra.get("trust_remote_code", False),
@@ -227,6 +269,11 @@ class RBLNLLMRuntimeOptions:
 
     @classmethod
     def from_legacy_extra(cls, extra: Dict[str, Any]) -> "RBLNLLMRuntimeOptions":
+        extra = _validate_legacy_extra(
+            extra,
+            allowed_keys=_LLM_RUNTIME_LEGACY_KEYS,
+            option_label="RBLNLLMRuntimeOptions",
+        )
         return cls(
             runtime_impl=extra.get("runtime_impl", "vllm"),
             tensor_parallel_size=extra.get("tensor_parallel_size", 1),

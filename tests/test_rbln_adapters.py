@@ -57,6 +57,7 @@ class RBLNAdaptersTest(unittest.TestCase):
             result = adapter.build(cfg)
             self.assertTrue(Path(result.compiled_model_path).is_file())
             self.assertEqual(result.meta_data["source"], "provided")
+            self.assertEqual(result.meta_data["frontend_provenance_kind"], "provided_artifact")
 
     def test_build_adapter_prefers_prepared_input_contract(self) -> None:
         adapter = _RBLNBuildAdapter()
@@ -80,6 +81,7 @@ class RBLNAdaptersTest(unittest.TestCase):
             )
             result = adapter.build(cfg)
             self.assertEqual(result.meta_data["origin"], str(src))
+            self.assertEqual(result.meta_data["frontend_provenance_kind"], "provided_artifact")
 
     def test_build_adapter_requires_prepared_input_for_compile_source(self) -> None:
         adapter = _RBLNBuildAdapter()

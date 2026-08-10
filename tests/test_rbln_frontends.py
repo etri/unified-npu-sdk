@@ -78,7 +78,7 @@ class RBLNFrontendsTest(unittest.TestCase):
 
         self.assertEqual(resolved.kind, "compiled_dir")
         self.assertEqual(resolved.prepared_input.kind, "provided_artifact")
-        self.assertEqual(resolved.prepared_input.provided_artifact.source_path.name, "compiled_resnet50")
+        self.assertEqual(resolved.prepared_input.provided_artifact.source_path.name, "resnet50.rbln")
 
     def test_resolve_request_for_weights_path(self) -> None:
         class _FakeModel:
@@ -105,8 +105,10 @@ class RBLNFrontendsTest(unittest.TestCase):
                             )
                         )
 
-        self.assertEqual(resolved.kind, "torch_model")
-        self.assertEqual(resolved.prepared_input.compile_source.source_label, "torch_model")
+        self.assertEqual(resolved.kind, "pth_restore")
+        self.assertEqual(resolved.prepared_input.compile_source.source_label, "pth_restored_torch_model")
+        self.assertEqual(resolved.prepared_input.compile_source.provenance_kind, "pth_restore")
+        self.assertEqual(resolved.prepared_input.compile_source.source_path, weights)
 
     def test_resolve_request_for_from_onnx_restores_model_in_frontend(self) -> None:
         class _FakeModel:
@@ -128,7 +130,9 @@ class RBLNFrontendsTest(unittest.TestCase):
                 )
 
         self.assertEqual(resolved.kind, "onnx_restore")
-        self.assertEqual(resolved.prepared_input.compile_source.source_label, "torch_model")
+        self.assertEqual(resolved.prepared_input.compile_source.source_label, "onnx_restored_torch_model")
+        self.assertEqual(resolved.prepared_input.compile_source.provenance_kind, "onnx_restore")
+        self.assertEqual(resolved.prepared_input.compile_source.source_path, onnx_path)
 
     def test_resolve_llm_fetch_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
