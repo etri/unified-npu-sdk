@@ -197,13 +197,7 @@ docker run --device rebellions.ai/npu=all -it ubuntu:22.04 rbln-smi
   이 경우 위 예시처럼 `--runtime docker`를 명시하면 됩니다.
 
 - `./build.sh`는 CDI를 기준으로 `--device rebellions.ai/npu=all` 실행 예시를 출력합니다.
-  가능하면 현재 사용자의 보조 그룹을 그대로 넘기는 `--group-add keep-groups`와,
-  필요 시 `/dev/rbln*`, `/dev/rebellions*`, `/dev/atom*`의 그룹 GID를 함께 넣어
-  컨테이너 안의 `rebel.npu_is_available()` probe가 실제 장치 권한까지 확인할 수 있게 맞춥니다.
-- 현재 `rbln-only`의 기본 `docker run` 예시는 **root 컨테이너 경로**입니다.
-  2026-07-24 이후 한동안 host UID:GID 실행을 기본으로 썼지만, 현재 환경에서는
-  `rbln-smi`/compile은 통과해도 `rebel.npu_is_available()`가 계속 `False`로 남는 차이가 확인됐습니다.
-  bind mount 소유권이 더 중요하면 `./build.sh --user-mode host`로 예전 경로를 다시 사용할 수 있습니다.
+- 현재 `rbln-only`의 표준 smoke 경로는 **root 컨테이너 + CDI** 기준입니다.
 - `/var/run/cdi/rbln.yaml` 또는 `/etc/cdi/rbln.yaml`이 없고, `rbln-ctk cdi list`로도 CDI 구성이 확인되지 않으면 build 완료 후 경고를 출력하며, 이 경우 먼저
   `rbln-ctk cdi generate`, `rbln-ctk runtime configure --runtime docker`,
   `sudo systemctl restart docker`를 완료한 뒤 다시 컨테이너를 띄우는 것이 맞습니다.
@@ -229,8 +223,6 @@ CUDA wheel이 필요 없고, CUDA wheel 조합은 compiler frontend 진단을 �
 docker run -it --security-opt seccomp=unconfined \
   --name rbln-only \
   --device rebellions.ai/npu=all \
-  --group-add keep-groups \
-  --group-add <rbln_or_atom_device_gid> \
   -w /workspace/unified-sdk \
   -v $(pwd):/workspace/unified-sdk \
   unified-sdk:rbln
@@ -240,11 +232,9 @@ docker run -it --security-opt seccomp=unconfined \
 주입됩니다. 따라서 `/dev/rbln0` 또는 `/usr/bin/rbln-smi`를 수동으로 볼륨 마운트하는 방식은
 이 브랜치의 권장 경로가 아닙니다.
 
-다만 Python 레벨의 `rebel.npu_is_available()`까지 정상적으로 `True`를 받으려면, 단순 CDI device
-노출만으로는 부족하고 장치 노드 그룹 권한도 같이 전달돼야 하는 경우가 있습니다. 그래서 실제 사용 시에는
-README의 손작성 예시보다 **`./build.sh`가 출력한 `docker run` 명령을 그대로 쓰는 것**을 권장합니다.
-호스트에서 `id -nG` 결과에 `rbln`이 보이는지, 또는 `/dev/atom*`가 별도 그룹으로 잡혀 있는지도 함께 확인해두면 좋습니다.
-현재 기본 smoke 경로는 root 컨테이너 기준이고, host UID:GID 실행은 `./build.sh --user-mode host`일 때만 권장합니다.
+실제 사용 시에는 README의 손작성 예시보다 **`./build.sh`가 출력한 `docker run` 명령을 그대로 쓰는 것**을 권장합니다.
+만약 `rebel.npu_is_available()`가 `False`라면, 먼저 호스트에서 CDI를 다시 생성하고 Docker를 재시작한 뒤
+fresh 컨테이너로 다시 확인하는 것이 표준 점검 순서입니다.
 
 컨테이너 내부 점검:
 
@@ -280,12 +270,13 @@ command -v rbln-smi && rbln-smi || true
 python3 -c "import unified_sdk, rebel; print('OK')"
 RBLN_DEVICES=0 python3 -c "import rebel; print('npu_is_available=', rebel.npu_is_available())"
 python3 -c "import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))"
+python3 -c "import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')"
 
 # NOTE:
-# `rebel.npu_is_available()`가 False라면, 손작성 docker run 대신
-# `./build.sh`가 출력한 명령을 다시 사용해 `--group-add keep-groups` 또는
-# `--group-add <rbln_or_atom_device_gid>`가 빠지지 않았는지 먼저 확인합니다.
-# 이 브랜치에서는 `npu_is_available()`, `rbln-smi`, 실제 fetch/runtime smoke를 함께 readiness 신호로 봅니다.
+# `rebel.npu_is_available()`가 False라면, 먼저 host에서
+#   sudo rbln-ctk cdi generate
+#   sudo systemctl restart docker
+# 를 다시 수행한 뒤 fresh container로 재확인합니다.
 
 # NOTE:
 # 기본 root 컨테이너 경로를 쓰면 bind mount 경로에 root 소유 산출물이 남을 수 있습니다.
@@ -304,34 +295,11 @@ RBLN_DEVICES=0 python3 examples/run_rbln_build.py \
   --rbln builds/resnet50.rbln \
   --model-name resnet50
 
-# NOTE (2026-07-24):
+# NOTE:
 # 일부 RBLN-CA22 + rebel-compiler 0.11.0 + CDI/container 조합에서는
-# host native Python 환경에서는 성공하는 direct rebel.compile_from_torch(...)가
-# container 내부에서는 export / graph optimization 이후 RuntimeError로 실패할 수 있습니다.
-# 또한 `optimum-rbln` 기반 표준 fetching도 내부적으로 같은 RBLN compiler backend를 사용하므로,
-# 동일 환경에서는 같은 종류의 compile 실패가 재현될 수 있습니다.
-# Unified SDK 관리 목적상 본 branch의 기준 workflow는 Docker-first 입니다.
-# 따라서 vendor 답변 전까지는:
-#   1) 4) 표준 fetching과 6) custom compile은 container compile known issue로 메모
-#   2) Docker 안에서 안정적으로 확인 가능한 경로는 5) provided .rbln fetch -> 7) infer -> 8) inspect
-#   3) host native compile은 필요 시 원인 분리용 임시 우회일 뿐, branch의 기본 smoke 기준은 아님
-# 으로 해석합니다. 관련 vendor 문의는 진행 중입니다.
-#
-# 참고: 필요 시 host native 환경에서 원인 분리용 compile만 따로 시도할 수 있습니다.
-# 아래는 branch 기본 smoke 절차가 아니라, container compile 이슈 비교용 예시입니다.
-#
-# Host native debug example (not the primary Docker-first smoke path):
-#   python3 examples/run_rbln_build.py \
-#     --model-zoo-model resnet50 \
-#     --pretrained \
-#     --model-name resnet50
-#
-#   python3 examples/run_rbln_build.py \
-#     --from-pth models/resnet50.pth \
-#     --model-name resnet50_pth \
-#     --precision fp32 \
-#     --input-shape 1,3,224,224 \
-#     --npu "${RBLN_NPU_NAME:-RBLN-CA22}"
+# `rebel.compile_from_torch(...)` 기반 vision compile이 container 내부에서 실패할 수 있습니다.
+# 이 경우 provided `.rbln` fetch -> infer -> inspect 경로를 우선 확인하고,
+# host native compile은 원인 분리용 보조 경로로만 해석합니다.
 
 # 6) vision custom compile smoke
 

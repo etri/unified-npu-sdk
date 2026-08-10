@@ -13,12 +13,10 @@ BASE_IMAGE="${RBLN_BASE_IMAGE:-ubuntu:22.04}"
 COMPILER_VERSION="${REBEL_COMPILER_VERSION:-0.11.0}"
 OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION:-0.11.0.post1}"
 VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION:-0.11.0}"
-IMAGE_PROFILE="${RBLN_IMAGE_PROFILE:-full}"
 PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
-USER_MODE="${RBLN_USER_MODE:-root}"
 CDI_SPEC_DETECTED=0
 CDI_SPEC_HINT=""
 
@@ -28,7 +26,6 @@ DOCKER_DIR="${PROJECT_ROOT}/Dockers"
 DOCKERFILE_PATH="${DOCKER_DIR}/docker.rbln.unified"
 
 DOCKER_DEVICE_ARGS=()
-DOCKER_GROUP_ARGS=()
 
 print_usage() {
   echo "Usage: $0 [-n <container_name>] [--workspace <repo_path>] [--base-image <image>] [--compiler-version <version>] [--pytorch-index-url <url>]"
@@ -45,16 +42,10 @@ print_usage() {
   echo "                (default: ${OPTIMUM_RBLN_VERSION})"
   echo "  --vllm-rbln-version  vllm-rbln version to install during docker build"
   echo "                (default: ${VLLM_RBLN_VERSION})"
-  echo "  --image-profile  Image composition profile: full | minimal"
-  echo "                full    = rebel-compiler + optimum-rbln + vllm-rbln"
-  echo "                minimal = rebel-compiler only (pre-LLM-stack style probe image)"
-  echo "                (default: ${IMAGE_PROFILE})"
   echo "  --pytorch-index-url  PyTorch wheel index used for torch/torchvision"
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --cdi-device  RBLN CDI device handle, e.g. rebellions.ai/npu=all"
   echo "                (default: auto-detect /var/run/cdi/rbln.yaml, else use rebellions.ai/npu=all)"
-  echo "  --user-mode   Container user mode: root | host"
-  echo "                (default: ${USER_MODE})"
   echo "  -h, --help    Show this help message"
 }
 
@@ -83,39 +74,12 @@ detect_runtime_mounts() {
   DOCKER_DEVICE_ARGS+=( "--device" "${CDI_DEVICE}" )
 }
 
-detect_device_group() {
-  local dev=""
-  local group_id=""
-
-  for dev in /dev/rbln0 /dev/rbln1 /dev/rebellions0 /dev/rebellions1 /dev/atom0 /dev/atom1; do
-    if [ -e "${dev}" ]; then
-      group_id="$(stat -c '%g' "${dev}" 2>/dev/null || true)"
-      if [ -n "${group_id}" ] && [ "${group_id}" != "0" ]; then
-        DOCKER_GROUP_ARGS+=( "--group-add" "${group_id}" )
-        return
-      fi
-    fi
-  done
-}
-
-detect_keep_groups_support() {
-  if docker run --help 2>/dev/null | grep -q "keep-groups"; then
-    DOCKER_GROUP_ARGS+=( "--group-add" "keep-groups" )
-  fi
-}
-
 print_run_hint() {
   echo "docker run -it --security-opt seccomp=unconfined \\"
   echo "  --name ${CONTAINER_NAME} \\"
   for ((i=0; i<${#DOCKER_DEVICE_ARGS[@]}; i+=2)); do
     echo "  ${DOCKER_DEVICE_ARGS[i]} ${DOCKER_DEVICE_ARGS[i+1]} \\"
   done
-  for ((i=0; i<${#DOCKER_GROUP_ARGS[@]}; i+=2)); do
-    echo "  ${DOCKER_GROUP_ARGS[i]} ${DOCKER_GROUP_ARGS[i+1]} \\"
-  done
-  if [ "${USER_MODE}" = "host" ]; then
-    echo "  --user ${UID_VALUE}:${GID_VALUE} \\"
-  fi
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
   echo "  ${IMAGE_NAME}:${TAG}"
@@ -141,18 +105,12 @@ while [[ $# -gt 0 ]]; do
     --vllm-rbln-version)
       [ -z "$2" ] && { echo "[ERROR] --vllm-rbln-version requires a value"; exit 1; }
       VLLM_RBLN_VERSION="$2"; shift 2 ;;
-    --image-profile)
-      [ -z "$2" ] && { echo "[ERROR] --image-profile requires a value"; exit 1; }
-      IMAGE_PROFILE="$2"; shift 2 ;;
     --pytorch-index-url)
       [ -z "$2" ] && { echo "[ERROR] --pytorch-index-url requires a value"; exit 1; }
       PYTORCH_INDEX_URL="$2"; shift 2 ;;
     --cdi-device)
       [ -z "$2" ] && { echo "[ERROR] --cdi-device requires a value"; exit 1; }
       CDI_DEVICE="$2"; shift 2 ;;
-    --user-mode)
-      [ -z "$2" ] && { echo "[ERROR] --user-mode requires a value"; exit 1; }
-      USER_MODE="$2"; shift 2 ;;
     -h|--help)
       print_usage; exit 0 ;;
     *)
@@ -160,28 +118,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "${USER_MODE}" in
-  root|host) ;;
-  *)
-    echo "[ERROR] --user-mode must be 'root' or 'host'"
-    exit 1
-    ;;
-esac
-
-case "${IMAGE_PROFILE}" in
-  full|minimal) ;;
-  *)
-    echo "[ERROR] --image-profile must be 'full' or 'minimal'"
-    exit 1
-    ;;
-esac
-
 [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="rbln-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
-
-if [ "${IMAGE_PROFILE}" = "minimal" ]; then
-  TAG="rbln-minimal"
-fi
 
 if [ ! -d "${WORKSPACE_DIR}" ]; then
   echo "[ERROR] Workspace directory not found: ${WORKSPACE_DIR}"
@@ -212,10 +150,8 @@ echo "  Base image     : ${BASE_IMAGE}"
 echo "  Compiler ver.  : ${COMPILER_VERSION}"
 echo "  Optimum ver.   : ${OPTIMUM_RBLN_VERSION}"
 echo "  vLLM ver.      : ${VLLM_RBLN_VERSION}"
-echo "  Image profile  : ${IMAGE_PROFILE}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  CDI device     : ${CDI_DEVICE:-auto}"
-echo "  User mode      : ${USER_MODE}"
 echo "  Host UID:GID   : ${UID_VALUE}:${GID_VALUE}"
 
 cd "${PROJECT_ROOT}"
@@ -230,13 +166,10 @@ DOCKER_BUILDKIT=1 docker build \
   --build-arg REBEL_COMPILER_VERSION="${COMPILER_VERSION}" \
   --build-arg OPTIMUM_RBLN_VERSION="${OPTIMUM_RBLN_VERSION}" \
   --build-arg VLLM_RBLN_VERSION="${VLLM_RBLN_VERSION}" \
-  --build-arg INSTALL_RBLN_LLM_STACK="$([ "${IMAGE_PROFILE}" = "full" ] && echo 1 || echo 0)" \
   --build-arg PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL}" \
   .
 
 detect_runtime_mounts
-detect_keep_groups_support
-detect_device_group
 
 echo "Build complete!"
 echo ""
@@ -254,13 +187,6 @@ echo "[INFO] Using RBLN CDI device handle: ${CDI_DEVICE}"
 if [ "${CDI_SPEC_DETECTED}" -eq 1 ] && [ -n "${CDI_SPEC_HINT}" ]; then
   echo "[INFO] Detected CDI configuration via: ${CDI_SPEC_HINT}"
 fi
-if [ "${#DOCKER_GROUP_ARGS[@]}" -gt 0 ]; then
-  echo "[INFO] Propagating container group options: ${DOCKER_GROUP_ARGS[*]}"
-else
-  echo "[WARN] No supplemental device group could be inferred from /dev/rbln*, /dev/rebellions*, or /dev/atom*."
-  echo "       If rebel.npu_is_available() stays False, inspect host-side device ownership with:"
-  echo "         ls -l /dev/rbln* /dev/rebellions* /dev/atom* 2>/dev/null || true"
-fi
 echo ""
 
 echo "Run container with:"
@@ -272,9 +198,5 @@ echo "  command -v rbln-smi && rbln-smi || true"
 echo "  python3 -c \"import unified_sdk, rebel; print('OK')\""
 echo "  RBLN_DEVICES=0 python3 -c \"import rebel; print('npu_is_available=', rebel.npu_is_available())\""
 echo "  python3 -c \"import torch, torchvision, rebel; print('torch=', torch.__version__); print('torchvision=', torchvision.__version__); print('rebel=', getattr(rebel, '__version__', 'unknown'))\""
-if [ "${IMAGE_PROFILE}" = "full" ]; then
-  echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
-else
-  echo "  # minimal profile: optimum-rbln/vllm-rbln intentionally omitted for probe A/B"
-fi
+echo "  python3 -c \"import optimum.rbln; import vllm; print('optimum-rbln/vllm-rbln OK')\""
 echo "  RBLN_DEVICES=0 python3 examples/run_rbln_build.py"
