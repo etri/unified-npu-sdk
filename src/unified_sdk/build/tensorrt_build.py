@@ -144,29 +144,6 @@ def _compile_tensorrt_engine(
     return engine_path
 
 
-def _compat_prepared_input(cfg: BuildConfig, precision: str) -> PreparedTensorRTVisionBuildInput:
-    model_path = Path(str(cfg.model_or_path)).expanduser().resolve()
-    destination = Path(cfg.out_dir).expanduser().resolve() / f"{cfg.model_name}_{precision.upper()}.engine"
-    if model_path.suffix.lower() == ".engine":
-        from unified_sdk.frontends import prepare_tensorrt_vision_build_input
-
-        return prepare_tensorrt_vision_build_input(
-            model_path,
-            destination,
-            source_label="legacy_provided_engine",
-            provenance_kind="provided_artifact",
-            provenance_detail=f"legacy provided .engine fetch: {model_path}",
-            input_name="input",
-            min_input_shape=(1, 3, 224, 224),
-            opt_input_shape=(1, 3, 224, 224),
-            max_input_shape=(1, 3, 224, 224),
-        )
-    raise ValueError(
-        "TensorRT compile requires a prepared frontend contract. "
-        "Use resolve_tensorrt_vision_build_request(...) and pass BuildConfig.prepared_input."
-    )
-
-
 class _TensorRTBuildAdapter:
     name = "tensorrt"
 
@@ -174,7 +151,7 @@ class _TensorRTBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"TensorRT build adapter received backend={cfg.backend!r}")
 
-        options = resolve_tensorrt_vision_build_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        options = resolve_tensorrt_vision_build_options(cfg.backend_options)
         precision = options.precision
         if precision == "int8" and options.int8_calibrator is None:
             raise ValueError(
@@ -182,8 +159,35 @@ class _TensorRTBuildAdapter:
                 "Pass TensorRTVisionBuildOptions(int8_calibrator=...)."
             )
 
-        prepared_input = cfg.prepared_input or _compat_prepared_input(cfg, precision)
+        prepared_input = cfg.prepared_input
         output_path = Path(cfg.out_dir).expanduser().resolve() / f"{cfg.model_name}_{precision.upper()}.engine"
+
+        if prepared_input is None:
+            model_path = Path(str(cfg.model_or_path)).expanduser().resolve()
+            if model_path.suffix.lower() != ".engine" or not model_path.is_file():
+                raise ValueError(
+                    "TensorRT compile requires a prepared frontend contract. "
+                    "Use resolve_tensorrt_vision_build_request(...) and pass BuildConfig.prepared_input."
+                )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            if model_path != output_path:
+                output_path.write_bytes(model_path.read_bytes())
+            return BuildResult(
+                backend=self.name,
+                compiled_model_path=str(output_path),
+                meta_data={
+                    "backend": self.name,
+                    "model_name": cfg.model_name,
+                    "precision": precision,
+                    "source": "legacy_direct_provided_artifact",
+                    "origin_engine_path": str(model_path),
+                    "engine_path": str(output_path),
+                    "backend_options": options.to_metadata(),
+                    "capability_family": _CAPABILITY_FAMILY,
+                    "build_pipeline": _BUILD_PIPELINE,
+                    "vendor_api_map": _VENDOR_API_MAP,
+                },
+            )
 
         if prepared_input.kind == "provided_artifact":
             provided = prepared_input.provided_artifact

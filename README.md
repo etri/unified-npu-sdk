@@ -455,9 +455,11 @@ cfg = LLMBuildConfig(
     model_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
     out_dir="artifacts",
     model_name="tinyllama_trtllm",
-    max_model_len=512,
-    tensor_parallel_size=1,
-    backend_options=TensorRTLLMBuildOptions(build_mode="fetch"),
+    backend_options=TensorRTLLMBuildOptions(
+        build_mode="fetch",
+        max_model_len=512,
+        tensor_parallel_size=1,
+    ),
     prepared_input=resolved.prepared_input,
 )
 result = build_unified_LLM(cfg)

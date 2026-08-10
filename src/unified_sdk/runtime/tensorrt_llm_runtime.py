@@ -89,7 +89,7 @@ class _TensorRTLLMRuntimeAdapter:
             raise ValueError(f"TensorRT-LLM runtime adapter received backend={cfg.backend!r}")
 
         _ensure_positive_int(cfg.max_tokens, "LLMRuntimeConfig.max_tokens")
-        options = resolve_tensorrt_llm_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        options = resolve_tensorrt_llm_runtime_options(cfg.backend_options)
         _ensure_positive_int(options.max_model_len, "TensorRTLLMRuntimeOptions.max_model_len")
         _ensure_positive_int(options.tensor_parallel_size, "TensorRTLLMRuntimeOptions.tensor_parallel_size")
 

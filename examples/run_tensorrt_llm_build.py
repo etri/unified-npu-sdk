@@ -76,11 +76,11 @@ if __name__ == "__main__":
         model_or_path=args.model_ref,
         out_dir=args.out_dir,
         model_name=args.model_name,
-        max_model_len=args.max_model_len,
-        tensor_parallel_size=args.tensor_parallel_size,
         backend_options=TensorRTLLMBuildOptions(
             build_mode=args.build_mode,
             tokenizer_path=args.tokenizer_path,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=args.max_model_len,
             dtype=args.dtype,
             trust_remote_code=args.trust_remote_code,
         ),

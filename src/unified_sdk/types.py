@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Literal, Tuple
 
 from unified_sdk.options import (
     TensorRTLLMBuildOptions,
@@ -31,7 +31,6 @@ class BuildConfig(CoreBuildConfig):
     backend: BuildBackendName = "tensorrt"
     backend_options: TensorRTVisionBuildOptions | None = None
     prepared_input: "PreparedTensorRTVisionBuildInput | None" = None
-    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
 
 
 @dataclass
@@ -53,7 +52,6 @@ class CoreRuntimeConfig:
 class RuntimeConfig(CoreRuntimeConfig):
     backend: RuntimeBackendName = "tensorrt"
     backend_options: TensorRTVisionRuntimeOptions | None = None
-    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
 
 
 @dataclass(kw_only=True)
@@ -75,8 +73,6 @@ class CoreLLMBuildConfig:
     model_or_path: str | Path
     out_dir: str | Path = "artifacts"
     model_name: str = "model"
-    max_model_len: int = 512
-    tensor_parallel_size: int = 1
 
 
 @dataclass(kw_only=True)
@@ -84,7 +80,6 @@ class LLMBuildConfig(CoreLLMBuildConfig):
     backend: LLMBuildBackendName = "tensorrt"
     backend_options: TensorRTLLMBuildOptions | None = None
     prepared_input: "PreparedTensorRTLLMBuildInput | None" = None
-    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
 
 
 @dataclass(kw_only=True)
@@ -101,7 +96,6 @@ class CoreLLMRuntimeConfig:
 class LLMRuntimeConfig(CoreLLMRuntimeConfig):
     backend: LLMRuntimeBackendName = "tensorrt"
     backend_options: TensorRTLLMRuntimeOptions | None = None
-    extra: Optional[Dict[str, Any]] = None  # legacy compatibility fallback
 
 
 @dataclass(kw_only=True)

@@ -126,7 +126,7 @@ class _TensorRTRuntime:
         input_name = _require_non_empty_string(cfg.input_name, "input_name")
         output_name = _require_non_empty_string(cfg.output_name, "output_name")
         input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
-        options = resolve_tensorrt_vision_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        options = resolve_tensorrt_vision_runtime_options(cfg.backend_options)
 
         try:
             import tensorrt as trt

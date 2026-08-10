@@ -74,7 +74,7 @@ class TensorRTAdapterTests(unittest.TestCase):
                 model_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
                 out_dir="artifacts",
                 model_name="tinyllama",
-                backend_options=TensorRTLLMBuildOptions(build_mode="fetch"),
+                backend_options=TensorRTLLMBuildOptions(build_mode="fetch", tensor_parallel_size=2, max_model_len=1024),
                 prepared_input=PreparedTensorRTLLMBuildInput(
                     kind="runtime_model_ref",
                     model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -84,6 +84,19 @@ class TensorRTAdapterTests(unittest.TestCase):
         )
         self.assertEqual(result.compiled_model_path, "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
         self.assertEqual(result.meta_data["prepared_kind"], "runtime_model_ref")
+        self.assertEqual(result.meta_data["backend_options"]["tensor_parallel_size"], 2)
+
+    def test_llm_artifact_build_requires_prepared_input(self) -> None:
+        with self.assertRaises(ValueError):
+            build_unified_LLM(
+                LLMBuildConfig(
+                    backend="tensorrt",
+                    model_or_path="repo/model",
+                    out_dir="artifacts",
+                    model_name="demo",
+                    backend_options=TensorRTLLMBuildOptions(build_mode="llm_api_compile"),
+                )
+            )
 
 
 if __name__ == "__main__":

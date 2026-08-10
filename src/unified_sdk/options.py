@@ -9,7 +9,9 @@ _VISION_BUILD_LEGACY_KEYS = frozenset(
     {"precision", "workspace_mib", "strict_types", "int8_calibrator"}
 )
 _VISION_RUNTIME_LEGACY_KEYS = frozenset({"use_execute_v3", "allow_dynamic_shape"})
-_LLM_BUILD_LEGACY_KEYS = frozenset({"build_mode", "tokenizer_path", "dtype", "trust_remote_code"})
+_LLM_BUILD_LEGACY_KEYS = frozenset(
+    {"build_mode", "tokenizer_path", "tensor_parallel_size", "max_model_len", "dtype", "trust_remote_code"}
+)
 _LLM_RUNTIME_LEGACY_KEYS = frozenset(
     {"tokenizer_path", "tensor_parallel_size", "max_model_len", "dtype", "trust_remote_code"}
 )
@@ -132,6 +134,8 @@ class TensorRTVisionRuntimeOptions:
 class TensorRTLLMBuildOptions:
     build_mode: Literal["fetch", "llm_api_compile"] = "fetch"
     tokenizer_path: str | Path | None = None
+    tensor_parallel_size: int = 1
+    max_model_len: int = 512
     dtype: str | None = None
     trust_remote_code: bool = False
 
@@ -139,9 +143,17 @@ class TensorRTLLMBuildOptions:
         build_mode = str(self.build_mode).strip().lower()
         if build_mode not in {"fetch", "llm_api_compile"}:
             raise ValueError("TensorRTLLMBuildOptions.build_mode must be 'fetch' or 'llm_api_compile'")
+        tensor_parallel_size = int(self.tensor_parallel_size)
+        if tensor_parallel_size <= 0:
+            raise ValueError("TensorRTLLMBuildOptions.tensor_parallel_size must be > 0")
+        max_model_len = int(self.max_model_len)
+        if max_model_len <= 0:
+            raise ValueError("TensorRTLLMBuildOptions.max_model_len must be > 0")
         return TensorRTLLMBuildOptions(
             build_mode=build_mode,  # type: ignore[arg-type]
             tokenizer_path=_normalize_optional_str(self.tokenizer_path),
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
             dtype=_normalize_optional_str(self.dtype),
             trust_remote_code=_parse_bool(
                 self.trust_remote_code,
@@ -154,6 +166,8 @@ class TensorRTLLMBuildOptions:
         return {
             "build_mode": normalized.build_mode,
             "tokenizer_path": str(normalized.tokenizer_path) if normalized.tokenizer_path is not None else None,
+            "tensor_parallel_size": normalized.tensor_parallel_size,
+            "max_model_len": normalized.max_model_len,
             "dtype": normalized.dtype,
             "trust_remote_code": normalized.trust_remote_code,
         }
@@ -168,6 +182,8 @@ class TensorRTLLMBuildOptions:
         return cls(
             build_mode=extra.get("build_mode", "fetch"),
             tokenizer_path=extra.get("tokenizer_path"),
+            tensor_parallel_size=extra.get("tensor_parallel_size", 1),
+            max_model_len=extra.get("max_model_len", 512),
             dtype=extra.get("dtype"),
             trust_remote_code=extra.get("trust_remote_code", False),
         ).normalized()
@@ -225,33 +241,33 @@ class TensorRTLLMRuntimeOptions:
         ).normalized()
 
 
-def resolve_tensorrt_vision_build_options(options: Any, *, extra: Dict[str, Any] | None = None) -> TensorRTVisionBuildOptions:
+def resolve_tensorrt_vision_build_options(options: Any) -> TensorRTVisionBuildOptions:
     if isinstance(options, TensorRTVisionBuildOptions):
         return options.normalized()
-    if options is not None:
-        raise TypeError("BuildConfig.backend_options must be a TensorRTVisionBuildOptions instance when provided")
-    return TensorRTVisionBuildOptions.from_legacy_extra(extra or {})
+    if options is None:
+        return TensorRTVisionBuildOptions().normalized()
+    raise TypeError("BuildConfig.backend_options must be a TensorRTVisionBuildOptions instance when provided")
 
 
-def resolve_tensorrt_vision_runtime_options(options: Any, *, extra: Dict[str, Any] | None = None) -> TensorRTVisionRuntimeOptions:
+def resolve_tensorrt_vision_runtime_options(options: Any) -> TensorRTVisionRuntimeOptions:
     if isinstance(options, TensorRTVisionRuntimeOptions):
         return options.normalized()
-    if options is not None:
-        raise TypeError("RuntimeConfig.backend_options must be a TensorRTVisionRuntimeOptions instance when provided")
-    return TensorRTVisionRuntimeOptions.from_legacy_extra(extra or {})
+    if options is None:
+        return TensorRTVisionRuntimeOptions().normalized()
+    raise TypeError("RuntimeConfig.backend_options must be a TensorRTVisionRuntimeOptions instance when provided")
 
 
-def resolve_tensorrt_llm_build_options(options: Any, *, extra: Dict[str, Any] | None = None) -> TensorRTLLMBuildOptions:
+def resolve_tensorrt_llm_build_options(options: Any) -> TensorRTLLMBuildOptions:
     if isinstance(options, TensorRTLLMBuildOptions):
         return options.normalized()
-    if options is not None:
-        raise TypeError("LLMBuildConfig.backend_options must be a TensorRTLLMBuildOptions instance when provided")
-    return TensorRTLLMBuildOptions.from_legacy_extra(extra or {})
+    if options is None:
+        return TensorRTLLMBuildOptions().normalized()
+    raise TypeError("LLMBuildConfig.backend_options must be a TensorRTLLMBuildOptions instance when provided")
 
 
-def resolve_tensorrt_llm_runtime_options(options: Any, *, extra: Dict[str, Any] | None = None) -> TensorRTLLMRuntimeOptions:
+def resolve_tensorrt_llm_runtime_options(options: Any) -> TensorRTLLMRuntimeOptions:
     if isinstance(options, TensorRTLLMRuntimeOptions):
         return options.normalized()
-    if options is not None:
-        raise TypeError("LLMRuntimeConfig.backend_options must be a TensorRTLLMRuntimeOptions instance when provided")
-    return TensorRTLLMRuntimeOptions.from_legacy_extra(extra or {})
+    if options is None:
+        return TensorRTLLMRuntimeOptions().normalized()
+    raise TypeError("LLMRuntimeConfig.backend_options must be a TensorRTLLMRuntimeOptions instance when provided")
