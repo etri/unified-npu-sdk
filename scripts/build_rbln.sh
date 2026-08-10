@@ -17,6 +17,7 @@ PYTORCH_INDEX_URL="${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 CDI_DEVICE="${RBLN_CDI_DEVICE:-}"
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
+USER_MODE="${RBLN_USER_MODE:-root}"
 CDI_SPEC_DETECTED=0
 CDI_SPEC_HINT=""
 
@@ -47,6 +48,8 @@ print_usage() {
   echo "                (default: ${PYTORCH_INDEX_URL})"
   echo "  --cdi-device  RBLN CDI device handle, e.g. rebellions.ai/npu=all"
   echo "                (default: auto-detect /var/run/cdi/rbln.yaml, else use rebellions.ai/npu=all)"
+  echo "  --user-mode   Container user mode: root | host"
+  echo "                (default: ${USER_MODE})"
   echo "  -h, --help    Show this help message"
 }
 
@@ -105,7 +108,9 @@ print_run_hint() {
   for ((i=0; i<${#DOCKER_GROUP_ARGS[@]}; i+=2)); do
     echo "  ${DOCKER_GROUP_ARGS[i]} ${DOCKER_GROUP_ARGS[i+1]} \\"
   done
-  echo "  --user ${UID_VALUE}:${GID_VALUE} \\"
+  if [ "${USER_MODE}" = "host" ]; then
+    echo "  --user ${UID_VALUE}:${GID_VALUE} \\"
+  fi
   echo "  -w /workspace/unified-sdk \\"
   echo "  -v ${WORKSPACE_DIR}:/workspace/unified-sdk \\"
   echo "  ${IMAGE_NAME}:${TAG}"
@@ -137,12 +142,23 @@ while [[ $# -gt 0 ]]; do
     --cdi-device)
       [ -z "$2" ] && { echo "[ERROR] --cdi-device requires a value"; exit 1; }
       CDI_DEVICE="$2"; shift 2 ;;
+    --user-mode)
+      [ -z "$2" ] && { echo "[ERROR] --user-mode requires a value"; exit 1; }
+      USER_MODE="$2"; shift 2 ;;
     -h|--help)
       print_usage; exit 0 ;;
     *)
       echo "[ERROR] Unknown option: $1"; print_usage; exit 1 ;;
   esac
 done
+
+case "${USER_MODE}" in
+  root|host) ;;
+  *)
+    echo "[ERROR] --user-mode must be 'root' or 'host'"
+    exit 1
+    ;;
+esac
 
 [ -z "${CONTAINER_NAME}" ] && CONTAINER_NAME="rbln-only"
 [ -z "${WORKSPACE_DIR}" ] && WORKSPACE_DIR="${PROJECT_ROOT}"
@@ -178,7 +194,8 @@ echo "  Optimum ver.   : ${OPTIMUM_RBLN_VERSION}"
 echo "  vLLM ver.      : ${VLLM_RBLN_VERSION}"
 echo "  PyTorch index  : ${PYTORCH_INDEX_URL}"
 echo "  CDI device     : ${CDI_DEVICE:-auto}"
-echo "  UID:GID        : ${UID_VALUE}:${GID_VALUE}"
+echo "  User mode      : ${USER_MODE}"
+echo "  Host UID:GID   : ${UID_VALUE}:${GID_VALUE}"
 
 cd "${PROJECT_ROOT}"
 
