@@ -196,7 +196,7 @@ class _TensorRTBuildAdapter:
             src_engine = provided.source_path.expanduser().resolve()
             if not src_engine.is_file():
                 raise FileNotFoundError(f"Engine file not found: {src_engine}")
-            engine_path = provided.destination_path.expanduser().resolve()
+            engine_path = output_path
             engine_path.parent.mkdir(parents=True, exist_ok=True)
             if src_engine != engine_path:
                 engine_path.write_bytes(src_engine.read_bytes())
@@ -207,6 +207,7 @@ class _TensorRTBuildAdapter:
                 "source": "provided",
                 "origin_engine_path": str(src_engine),
                 "engine_path": str(engine_path),
+                "requested_output_name": engine_path.name,
                 "prepared_kind": prepared_input.kind,
                 "backend_options": options.to_metadata(),
                 "capability_family": _CAPABILITY_FAMILY,

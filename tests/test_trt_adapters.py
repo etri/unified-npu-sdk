@@ -16,6 +16,8 @@ from unified_sdk.frontends import prepare_tensorrt_vision_build_input  # noqa: E
 from unified_sdk.frontends.types import PreparedTensorRTLLMBuildInput  # noqa: E402
 from unified_sdk.options import TensorRTLLMBuildOptions, TensorRTVisionBuildOptions  # noqa: E402
 from unified_sdk.types import BuildConfig, LLMBuildConfig  # noqa: E402
+from unified_sdk.runtime.tensorrt_runtime import _TensorRTRuntime  # noqa: E402
+from unified_sdk.types import RuntimeHandle  # noqa: E402
 
 
 class TensorRTAdapterTests(unittest.TestCase):
@@ -50,6 +52,7 @@ class TensorRTAdapterTests(unittest.TestCase):
             self.assertTrue(Path(result.compiled_model_path).is_file())
             self.assertEqual(Path(result.compiled_model_path).read_bytes(), b"engine")
             self.assertEqual(result.meta_data["prepared_kind"], "provided_artifact")
+            self.assertTrue(result.compiled_model_path.endswith("demo_FP16.engine"))
 
     def test_vision_build_rejects_compile_without_prepared_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -97,6 +100,24 @@ class TensorRTAdapterTests(unittest.TestCase):
                     backend_options=TensorRTLLMBuildOptions(build_mode="llm_api_compile"),
                 )
             )
+
+    def test_runtime_dynamic_shape_option_is_explicitly_not_implemented_for_rebind(self) -> None:
+        rh = RuntimeHandle(
+            backend="tensorrt",
+            engine_path="demo.engine",
+            input_name="input",
+            output_name="output",
+            input_shape=(1, 3, 224, 224),
+            ctx={
+                "context": object(),
+                "cuda": object(),
+                "allow_dynamic_shape": True,
+                "h_input": None,
+                "h_output": None,
+            },
+        )
+        with self.assertRaises(NotImplementedError):
+            _TensorRTRuntime().infer(rh, __import__("numpy").zeros((1, 3, 256, 256), dtype="float32"))
 
 
 if __name__ == "__main__":

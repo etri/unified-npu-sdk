@@ -298,6 +298,9 @@ python3 examples/run_tensorrt_build.py \
   --model-name resnet50 \
   --precision fp32
 
+# 참고: provided .engine 도 출력 산출물은 요청 precision 기준으로
+# build_output/<model-name>_<PREC>.engine 로 normalize 됩니다.
+
 # 4-c-1) ONNX → .engine 컴파일 (models/ 에서 자동 탐색)
 python3 examples/run_tensorrt_build.py \
   --model-name yolov7 \
@@ -570,6 +573,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `llm` flavor에서 `7-c`는 현재 official TensorRT-LLM release container의 PyTorch backend `LLM` 객체가 `save(engine_dir)`를 제공하지 않아 currently unsupported 입니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
+  현재 `allow_dynamic_shape=True`는 shape check 우회 옵션이 아니라 향후 runtime rebind/reallocation 확장용 예약 표면에 가깝고,
+  입력 shape를 실제로 바꾸는 smoke는 아직 지원/게이트 대상이 아닙니다.
 - **정밀도**: `fp32` / `fp16` / `int8`. `int8` 은 calibrator 가 필수이며,
   `TensorRTVisionBuildOptions(int8_calibrator=...)` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
 - **실행 경로**: TRT 8.5+/10 은 `execute_async_v3` + `set_tensor_address`, 구버전은 `execute_v2` + bindings.

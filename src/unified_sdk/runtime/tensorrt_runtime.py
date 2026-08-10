@@ -205,6 +205,11 @@ class _TensorRTRuntime:
         allow_dynamic = bool(ctx.get("allow_dynamic_shape", False))
         if (not allow_dynamic) and tuple(input_array.shape) != tuple(rh.input_shape):
             raise ValueError(f"Bad input shape: {input_array.shape}, expected {rh.input_shape}")
+        if allow_dynamic and tuple(input_array.shape) != tuple(rh.input_shape):
+            raise NotImplementedError(
+                "allow_dynamic_shape=True currently bypasses only the static shape gate. "
+                "End-to-end runtime rebind/reallocation for changed input shapes is not implemented in trt-only yet."
+            )
 
         ctx["h_input"][...] = input_array.astype(ctx["h_input"].dtype, copy=False)
         try:
