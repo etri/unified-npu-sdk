@@ -90,6 +90,12 @@ detect_device_group() {
   done
 }
 
+detect_keep_groups_support() {
+  if docker run --help 2>/dev/null | grep -q "keep-groups"; then
+    DOCKER_GROUP_ARGS+=( "--group-add" "keep-groups" )
+  fi
+}
+
 print_run_hint() {
   echo "docker run -it --security-opt seccomp=unconfined \\"
   echo "  --name ${CONTAINER_NAME} \\"
@@ -190,6 +196,7 @@ DOCKER_BUILDKIT=1 docker build \
   .
 
 detect_runtime_mounts
+detect_keep_groups_support
 detect_device_group
 
 echo "Build complete!"
@@ -207,6 +214,9 @@ fi
 echo "[INFO] Using RBLN CDI device handle: ${CDI_DEVICE}"
 if [ "${CDI_SPEC_DETECTED}" -eq 1 ] && [ -n "${CDI_SPEC_HINT}" ]; then
   echo "[INFO] Detected CDI configuration via: ${CDI_SPEC_HINT}"
+fi
+if [ "${#DOCKER_GROUP_ARGS[@]}" -gt 0 ]; then
+  echo "[INFO] Propagating container group options: ${DOCKER_GROUP_ARGS[*]}"
 fi
 echo ""
 
