@@ -294,6 +294,7 @@ python3 examples/run_tensorrt_build.py \
 python3 examples/run_tensorrt_build.py --list-model-zoo
 
 # 4-b) custom fetching smoke (provided .engine)
+#      예: 표준 fetch 결과물을 다시 넣어볼 때는 ./build_output/resnet50_FP32.engine
 python3 examples/run_tensorrt_build.py \
   --engine /path/to/resnet50_FP32.engine \
   --model-name resnet50 \
