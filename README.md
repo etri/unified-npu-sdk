@@ -392,7 +392,7 @@ python3 examples/run_tensorrt_llm_infer.py \
 # 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
 #        같은 TinyLlama local HF path 를 재사용하고, matching TensorRT-LLM source repo의 convert_checkpoint.py 를 사용합니다.
 #        예시는 LLaMA/TinyLlama 계열 기준입니다.
-export TENSORRT_LLM_SRC=/workspace/TensorRT-LLM
+export TENSORRT_LLM_SRC=/path/to/TensorRT-LLM
 python3 ${TENSORRT_LLM_SRC}/examples/llama/convert_checkpoint.py \
   --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output_dir ./models/tinyllama_trtllm_ckpt \
