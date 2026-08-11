@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import Any, Tuple
 import numpy as np
 
+from unified_sdk.options import resolve_warboy_runtime_options
 from unified_sdk.runtime.registry import register
-from unified_sdk.types import RuntimeConfig, RuntimeHandle
+from unified_sdk.types import InferOutput, RuntimeConfig, RuntimeHandle
 
 
 _CAPABILITY_FAMILY = "vision.cli-compiled-runtime"
@@ -25,7 +26,7 @@ _VENDOR_API_MAP = {
 _VENDOR_TO_UNIFIED_API_MAP = {
     "furiosa.runtime.sync.create_runner(str(enf_path), device=...)": "create_runtime(cfg)",
     "runner.run([input_array])": "infer(rh, input_array)",
-    "runner output tensor/list": "infer(...) return np.ndarray",
+    "runner output tensor/list": "infer(...) return np.ndarray | list[np.ndarray]",
     "runner.close() / runner.__exit__(...)": "destroy_runtime(rh)",
 }
 
@@ -60,20 +61,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     return shape
 
 
-def _parse_bool(value: Any, field_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    if value in (0, 1):
-        return bool(value)
-    raise ValueError(f"RuntimeConfig.extra['{field_name}'] must be a boolean-like value, got {value!r}")
-
-
 def _one_to_numpy(value: Any) -> np.ndarray:
     # furiosa 출력 텐서는 .numpy() 를 제공하거나 numpy 로 변환 가능하다.
     if isinstance(value, np.ndarray):
@@ -85,7 +72,7 @@ def _one_to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _to_numpy(output: Any) -> np.ndarray:
+def _to_numpy(output: Any) -> InferOutput:
     if isinstance(output, (list, tuple)):
         if len(output) == 1:
             return _one_to_numpy(output[0])
@@ -116,11 +103,10 @@ class _WarboyRuntime:
             raise ValueError(f"Expected a .enf model file, got: {p}")
 
         input_name = _require_non_empty_string(cfg.input_name, "input_name")
-        output_name = _require_non_empty_string(cfg.output_name, "output_name")
+        output_name = _require_non_empty_string(cfg.output_name, "output_name") if cfg.output_name is not None else None
         input_shape = _validate_shape(tuple(cfg.input_shape), "input_shape")
-
-        extra = dict(cfg.extra or {})
-        device = extra.get("device")  # 예: "warboy(0)*2" 또는 None (기본)
+        options = resolve_warboy_runtime_options(cfg.backend_options)
+        device = options.device  # 예: "warboy(0)*2" 또는 None (기본)
 
         try:
             from furiosa.runtime import sync
@@ -150,20 +136,20 @@ class _WarboyRuntime:
             ctx={
                 "runner": runner,
                 "device": device,
-                "extra": extra,
+                "backend_options": options.to_metadata(),
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
             },
         )
 
-    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> np.ndarray:
+    def infer(self, rh: RuntimeHandle, input_array: np.ndarray) -> InferOutput:
         if not rh.ctx or "runner" not in rh.ctx:
             raise RuntimeError("Warboy RuntimeHandle is closed or invalid")
 
         runner = rh.ctx["runner"]
-        extra = rh.ctx.get("extra", {})
-        allow_dynamic = _parse_bool(extra.get("allow_dynamic_shape", False), "allow_dynamic_shape")
+        options = rh.ctx.get("backend_options", {})
+        allow_dynamic = bool(options.get("allow_dynamic_shape", False))
 
         input_shape = tuple(getattr(input_array, "shape", ()))
         if (not allow_dynamic) and input_shape != tuple(rh.input_shape):

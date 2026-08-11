@@ -5,6 +5,7 @@ __version__ = "0.1.0"
 from .build import (
     build_unified,
     build_unified_LLM,
+    fetch_unified_LLM,
     describe_build_api_mapping,
     describe_build_api_mapping_LLM,
 )
@@ -23,6 +24,7 @@ from .runtime import (
 __all__ = [
     "build_unified",
     "build_unified_LLM",
+    "fetch_unified_LLM",
     "describe_build_api_mapping",
     "describe_build_api_mapping_LLM",
     "create_runtime",
