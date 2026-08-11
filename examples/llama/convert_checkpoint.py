@@ -80,18 +80,52 @@ def _find_vendor_convert_script(repo_root: Path) -> Path:
 def _import_llama_class():
     candidates = (
         ("tensorrt_llm.models", "LLaMAForCausalLM"),
+        ("tensorrt_llm.models", "LlamaForCausalLM"),
         ("tensorrt_llm.models.llama", "LLaMAForCausalLM"),
+        ("tensorrt_llm.models.llama", "LlamaForCausalLM"),
         ("tensorrt_llm.models.llama.model", "LLaMAForCausalLM"),
+        ("tensorrt_llm.models.llama.model", "LlamaForCausalLM"),
+        ("tensorrt_llm._torch.models", "LLaMAForCausalLM"),
+        ("tensorrt_llm._torch.models", "LlamaForCausalLM"),
+        ("tensorrt_llm._torch.models.modeling_llama", "LLaMAForCausalLM"),
+        ("tensorrt_llm._torch.models.modeling_llama", "LlamaForCausalLM"),
     )
+    attempted: list[str] = []
     for module_name, attr_name in candidates:
         try:
             module = importlib.import_module(module_name)
-        except Exception:
+        except Exception as exc:
+            attempted.append(f"{module_name}.{attr_name} (import failed: {exc})")
             continue
         cls = getattr(module, attr_name, None)
         if cls is not None:
             return cls
-    raise ImportError("Could not import LLaMAForCausalLM from installed tensorrt_llm package")
+        attempted.append(f"{module_name}.{attr_name} (missing)")
+
+    discovery_modules = (
+        "tensorrt_llm.models",
+        "tensorrt_llm.models.llama.model",
+        "tensorrt_llm._torch.models",
+        "tensorrt_llm._torch.models.modeling_llama",
+    )
+    for module_name in discovery_modules:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            attempted.append(f"{module_name} (discovery import failed: {exc})")
+            continue
+        for attr_name in dir(module):
+            if "llama" not in attr_name.lower():
+                continue
+            obj = getattr(module, attr_name, None)
+            if inspect.isclass(obj) and callable(getattr(obj, "from_hugging_face", None)):
+                return obj
+        attempted.append(f"{module_name} (no llama-like class with from_hugging_face)")
+
+    raise ImportError(
+        "Could not import a LLaMA/TinyLlama conversion class from installed tensorrt_llm package. "
+        f"Attempted probes: {attempted}"
+    )
 
 
 def _import_mapping_class():
