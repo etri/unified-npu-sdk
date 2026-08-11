@@ -35,6 +35,17 @@ class TensorRTExampleWrapperTests(unittest.TestCase):
                 found = module._find_vendor_convert_script(ROOT)
         self.assertEqual(found, script.resolve())
 
+    def test_convert_checkpoint_wrapper_finds_vendor_script_via_recursive_scan(self) -> None:
+        module = _load_wrapper_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vendor_root = Path(tmpdir) / "TensorRT-LLM"
+            script = vendor_root / "examples" / "archive" / "llama" / "convert_checkpoint.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            with patch.dict(os.environ, {"TENSORRT_LLM_SRC": str(vendor_root)}, clear=False):
+                found = module._find_vendor_convert_script(ROOT)
+        self.assertEqual(found, script.resolve())
+
     def test_convert_checkpoint_wrapper_uses_installed_api_when_available(self) -> None:
         module = _load_wrapper_module()
 

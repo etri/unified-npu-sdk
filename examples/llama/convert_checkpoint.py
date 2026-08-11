@@ -76,6 +76,18 @@ def _find_vendor_convert_script(repo_root: Path) -> Path:
             attempted.append(str(script))
             if script.is_file():
                 return script.resolve()
+        if root.is_dir():
+            dynamic_matches: list[Path] = []
+            for script in root.rglob("convert_checkpoint.py"):
+                lowered_parts = [part.lower() for part in script.parts]
+                if "examples" not in lowered_parts:
+                    continue
+                if not any("llama" in part for part in lowered_parts):
+                    continue
+                dynamic_matches.append(script.resolve())
+            if dynamic_matches:
+                dynamic_matches.sort(key=lambda path: str(path))
+                return dynamic_matches[0]
     raise FileNotFoundError(
         "Could not find a known TensorRT-LLM llama convert_checkpoint.py in the vendor source checkout. "
         "Checked legacy and current layouts such as "
