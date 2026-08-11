@@ -98,29 +98,18 @@ def _import_llama_class():
             attempted.append(f"{module_name}.{attr_name} (import failed: {exc})")
             continue
         cls = getattr(module, attr_name, None)
+        if cls is not None and inspect.isclass(cls):
+            from_hf = getattr(cls, "from_hugging_face", None)
+            save_checkpoint = getattr(cls, "save_checkpoint", None)
+            if callable(from_hf) or callable(save_checkpoint):
+                return cls
+            attempted.append(
+                f"{module_name}.{attr_name} (found class without required conversion methods)"
+            )
+            continue
         if cls is not None:
             return cls
         attempted.append(f"{module_name}.{attr_name} (missing)")
-
-    discovery_modules = (
-        "tensorrt_llm.models",
-        "tensorrt_llm.models.llama.model",
-        "tensorrt_llm._torch.models",
-        "tensorrt_llm._torch.models.modeling_llama",
-    )
-    for module_name in discovery_modules:
-        try:
-            module = importlib.import_module(module_name)
-        except Exception as exc:
-            attempted.append(f"{module_name} (discovery import failed: {exc})")
-            continue
-        for attr_name in dir(module):
-            if "llama" not in attr_name.lower():
-                continue
-            obj = getattr(module, attr_name, None)
-            if inspect.isclass(obj) and callable(getattr(obj, "from_hugging_face", None)):
-                return obj
-        attempted.append(f"{module_name} (no llama-like class with from_hugging_face)")
 
     raise ImportError(
         "Could not import a LLaMA/TinyLlama conversion class from installed tensorrt_llm package. "
@@ -197,6 +186,14 @@ def _convert_with_installed_api(args) -> bool:
     return True
 
 
+def _try_installed_api(args) -> tuple[bool, str | None]:
+    try:
+        used = _convert_with_installed_api(args)
+        return used, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -218,17 +215,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = _build_parser()
     args, passthrough = parser.parse_known_args()
-    vendor_script = None
-    try:
-        used_installed_api = _convert_with_installed_api(args)
-    except Exception as exc:
-        raise RuntimeError(
-            "TensorRT-LLM checkpoint prepare via installed Python API failed. "
-            "If you intended to use a vendor source checkout fallback, ensure it matches the installed release. "
-            f"Original error: {exc}"
-        ) from exc
-    if not used_installed_api:
-        vendor_script = _find_vendor_convert_script(REPO_ROOT)
+    used_installed_api, installed_api_error = _try_installed_api(args)
+    vendor_script = None if used_installed_api else _find_vendor_convert_script(REPO_ROOT)
 
     print("== TensorRT-LLM checkpoint prepare ==")
     print(f"repo_root = {REPO_ROOT}")
@@ -237,6 +225,8 @@ def main() -> int:
     if used_installed_api:
         print("conversion_api = installed tensorrt_llm Python API")
         return 0
+    if installed_api_error:
+        print(f"installed_api_unavailable = {installed_api_error}")
 
     cmd = [
         sys.executable,
