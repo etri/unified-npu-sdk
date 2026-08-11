@@ -395,8 +395,6 @@ python3 examples/run_tensorrt_llm_build.py \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
-#        성공하면 artifacts/tinyllama_trtllm 를 위 메모 경로처럼 바로 재사용할 수 있습니다.
-
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
