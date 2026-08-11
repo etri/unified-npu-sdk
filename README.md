@@ -25,15 +25,15 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
 | LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
 | Vision smoke | 표준 fetch / provided `.engine` fetch / ONNX compile / PTH->ONNX->`.engine` / infer / inspect 구현 |
-| LLM smoke | `7-a` model id fetch, `7-b` local HF path/artifact fetch, `7-c-prepare` checkpoint 준비, `7-c` custom compile, `8` infer/inspect 흐름 구현 |
+| LLM smoke | `7-a` model id fetch, `7-b` prepared HF local path fetch, `7-c` custom HF-format local path infer, `7-d` existing checkpoint 기반 보조 경로, `8` infer/inspect 흐름 구현 |
 
 ### 주요 이슈
 
 - Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
 - `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
-- LLM custom compile 의 기본 smoke 경로는 `local HF path -> checkpoint prepare -> trtllm-build CLI compile` 입니다.
-- checkpoint prepare 는 `examples/run_tensorrt_llm_prepare_checkpoint.py` helper 를 통해 **official TensorRT-LLM public repo 의 llama convert workflow** 를 감싸는 방식으로 제공합니다.
-- 로컬 prebuilt artifact fetch(`7-b`)는 compile과 독립 경로입니다.
+- 최신 TensorRT-LLM 공식 주류 smoke는 `model id` 또는 `local HF-format path`를 직접 runtime 입력으로 쓰는 경로입니다.
+- `existing TRT-LLM checkpoint -> trtllm-build` 경로는 보조/legacy 흐름으로만 유지합니다.
+- `examples/run_tensorrt_llm_prepare_checkpoint.py`는 vendor escalation 또는 legacy checkpoint 실험용 helper로 남겨두며, 기본 smoke gate에는 포함하지 않습니다.
 
 ---
 
@@ -60,7 +60,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 │   ├── run_tensorrt_infer.py       # .engine 추론 + latency 측정
 │   └── inspect_engine_io.py        # .engine 입출력 텐서 메타 확인
 │   ├── run_tensorrt_llm_build.py   # model ref/path -> TensorRT-LLM fetch/compile
-│   ├── run_tensorrt_llm_prepare_checkpoint.py # local HF path -> TRT-LLM checkpoint dir helper
+│   ├── run_tensorrt_llm_prepare_checkpoint.py # legacy/vendor checkpoint prepare helper
 │   ├── run_tensorrt_llm_infer.py   # TensorRT-LLM generate
 │   ├── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
 └── src/unified_sdk/
@@ -101,7 +101,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- checkpoint prepare helper 는 **llm 이미지에 bake-in 된 official TensorRT-LLM public repo checkout** 의 model-family별 `convert_checkpoint.py` workflow 를 사용합니다. 현재 smoke 기본 경로는 `qwen` family 이며, 기본 경로는 `/opt/TensorRT-LLM`입니다. 필요 시 `TENSORRT_LLM_SRC` 또는 `--tensorrt-llm-src`로 override 할 수 있습니다.
+- checkpoint prepare helper 는 **llm 이미지에 bake-in 된 official TensorRT-LLM public repo checkout** 의 legacy `convert_checkpoint.py` workflow 를 감싼 helper 입니다. 이는 최근 TensorRT-LLM 주류 경로가 아니라 보조/vendor workflow로 취급합니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
@@ -342,16 +342,12 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 - `fetch`, `custom_compile`, `runtime(generate)`는 phase를 구분해서 봅니다.
 - `fetch`는 artifact 생성이 아니라, `model id / local HF path / local artifact dir` 중 무엇을 runtime 입력으로 쓸지 계약을 확정하는 단계입니다.
-- `custom_compile`은 실제 TensorRT-LLM artifact dir를 만드는 단계입니다.
+- `custom_compile`은 기존 TRT-LLM checkpoint가 이미 있을 때만 의미가 있는 보조 단계입니다.
 - `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
 - `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
-- `7-b`는 `local HF path`를 직접 쓰는 경로입니다.
-- 따라서 `7-b`를 돌리기 전에는 먼저 Qwen2.5 같은 모델을 로컬 경로 아래에 준비해야 합니다.
-- `7-c-prepare`는 checkpoint 준비 단계입니다.
-  `local HF path -> local TRT-LLM checkpoint dir` 를 만들고, 공식 TensorRT-LLM public repo 의 model-family별 `convert_checkpoint.py` workflow를 helper로 감쌉니다.
-- `7-c`는 `custom_compile` 경로입니다.
-  스모크 기본 경로는 `local TRT-LLM checkpoint dir -> trtllm-build -> artifact runtime` 흐름입니다.
-- `prepare` helper 는 repo-side Python script 이지만, 기본 vendor workflow 는 `llm` 이미지 안의 `/opt/TensorRT-LLM` checkout 을 사용합니다. 따라서 이 section을 처음 쓰려면 `llm` 이미지를 한 번 다시 빌드하는 것이 좋습니다.
+- `7-b`는 **prepared HF local path**를 직접 쓰는 공식 smoke 경로입니다.
+- `7-c`는 **사용자 커스텀 모델을 HF-format 폴더 구조로 정리한 뒤** 같은 local path 계약으로 추론해보는 경로입니다.
+- `7-d`는 **pre-existing TRT-LLM checkpoint가 이미 있을 때만** 시도할 수 있는 보조/legacy 경로입니다. 최근 TensorRT-LLM 주류가 추구하는 방향은 아닙니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -386,37 +382,36 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path ./models/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
-# 메모) prebuilt TensorRT-LLM artifact dir 가 이미 있으면 local HF path 대신 바로 runtime 입력으로 사용할 수 있습니다.
-#       artifact dir 는 아래 7-c 결과물이거나, vendor가 미리 생성한 artifact dir 여도 됩니다.
+# 7-c) (LLM) 사용자 커스텀 모델을 HF-format local path 로 정리한 뒤 infer
+#       예: 아래 파일들이 있는 폴더를 준비
+#         - config.json
+#         - tokenizer.json / tokenizer_config.json / special_tokens_map.json
+#         - generation_config.json (선택)
+#         - model-*.safetensors 또는 pytorch_model*.bin
+#       그런 다음 7-b 와 같은 local path 계약으로 fetch -> generate
+python3 examples/run_tensorrt_llm_build.py \
+  --model-ref ./models/my-finetuned-qwen \
+  --build-mode fetch
+
+python3 examples/run_tensorrt_llm_infer.py \
+  --engine-path ./models/my-finetuned-qwen \
+  --prompt "What is the capital of South Korea?"
+
+# 7-d) (LLM, optional / legacy) pre-existing TRT-LLM checkpoint 가 이미 있을 때만 수행
+#       최근 TensorRT-LLM 주류 smoke 는 HF model/model folder direct-load 경로를 더 권장합니다.
+# python3 examples/run_tensorrt_llm_build.py \
+#   --model-ref ./models/qwen25_trtllm_ckpt \
+#   --build-mode custom_compile \
+#   --model-name qwen25_trtllm \
+#   --max-model-len 512
+#
 # python3 examples/run_tensorrt_llm_infer.py \
 #   --engine-path artifacts/qwen25_trtllm \
 #   --tokenizer-path Qwen/Qwen2.5-0.5B-Instruct \
 #   --prompt "What is the capital of South Korea?"
 
-# 7-c-prepare-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
-#                  같은 Qwen2.5 local HF path 를 재사용합니다.
-#                  helper 는 기본적으로 /opt/TensorRT-LLM/examples/models/core/qwen/convert_checkpoint.py 를 사용합니다.
-python3 examples/run_tensorrt_llm_prepare_checkpoint.py \
-  --model-ref ./models/Qwen2.5-0.5B-Instruct \
-  --output-dir ./models/qwen25_trtllm_ckpt \
-  --model-family qwen \
-  --dtype float16
-
-# 7-c-1) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/qwen25_trtllm_ckpt \
-  --build-mode custom_compile \
-  --model-name qwen25_trtllm \
-  --max-model-len 512
-
-# 7-c-2) (LLM) compiled artifact -> generate
-python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path artifacts/qwen25_trtllm \
-  --tokenizer-path Qwen/Qwen2.5-0.5B-Instruct \
-  --prompt "What is the capital of South Korea?"
-
 # 8) (LLM) artifact / model ref inspect
-python3 examples/inspect_tensorrt_llm_model.py artifacts/qwen25_trtllm --load
+python3 examples/inspect_tensorrt_llm_model.py ./models/my-finetuned-qwen --load
 ```
 
 `run_tensorrt_llm_infer.py`는 기본적으로 `--chat-template auto` 동작을 사용합니다.
@@ -501,10 +496,10 @@ result = build_unified_LLM(cfg)
 print(result.compiled_model_path)
 ```
 
-LLM build phase는 이렇게 읽으면 됩니다.
+LLM build/runtime phase는 이렇게 읽으면 됩니다.
 
 - `fetch`: model id, local HF path, local prebuilt TensorRT-LLM artifact dir
-- `custom_compile`: local TRT-LLM checkpoint dir -> `trtllm-build`
+- `custom_compile`: local TRT-LLM checkpoint dir -> `trtllm-build` (optional / legacy)
 
 `run_tensorrt_build.py`는 현재 세 경로를 지원합니다.
 
@@ -578,7 +573,7 @@ print(result)
 | Vision `.engine` | 생성 | `create_runtime(cfg)` | `trt.Runtime(...).deserialize_cuda_engine(...)`, `engine.create_execution_context()` |
 | Vision `.engine` | 추론 | `infer(rh, input_array)` | `execute_async_v3(...)` 또는 `execute_v2(...)` |
 | Vision `.engine` | 종료 | `destroy_runtime(rh)` | device buffer `free()` 후 ctx clear |
-| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 local TRT-LLM checkpoint dir 기준 `trtllm-build --checkpoint_dir ... --output_dir ...` |
+| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local HF-format path pass-through, 또는 existing TRT-LLM checkpoint 기준 legacy `trtllm-build --checkpoint_dir ... --output_dir ...` |
 | LLM / TensorRT-LLM | 생성 | `create_runtime_LLM(cfg)` | `tensorrt_llm.LLM(model=..., tokenizer=..., ...)` |
 | LLM / TensorRT-LLM | 생성/추론 | `generate_LLM(rh, prompt, **overrides)` | `SamplingParams(...)`, `llm.generate(...)` |
 | LLM / TensorRT-LLM | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
@@ -606,7 +601,8 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
 - `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
-- `llm` flavor에서 local HF path custom compile 은 먼저 `prepare checkpoint` helper 로 local TRT-LLM checkpoint dir 를 만든 뒤 `trtllm-build` 로 이어지고, local checkpoint dir 는 곧바로 `trtllm-build` 입력이 됩니다.
+- `llm` flavor의 기본 smoke는 `model id` / `local HF-format path` direct-load 경로입니다.
+- `run_tensorrt_llm_prepare_checkpoint.py` 와 `existing checkpoint -> trtllm-build` 흐름은 vendor/legacy 검증용 보조 경로로만 봅니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
   현재 `allow_dynamic_shape=True`는 입력 shape 변경 시 runtime rebind/reallocation까지 수행합니다.
