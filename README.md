@@ -60,7 +60,8 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 │   └── inspect_engine_io.py        # .engine 입출력 텐서 메타 확인
 │   ├── run_tensorrt_llm_build.py   # model ref/path -> TensorRT-LLM fetch/compile
 │   ├── run_tensorrt_llm_infer.py   # TensorRT-LLM generate
-│   └── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
+│   ├── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
+│   └── llama/convert_checkpoint.py # TensorRT-LLM llama/tinyllama checkpoint 준비 wrapper
 └── src/unified_sdk/
     ├── __init__.py
     ├── types.py                    # 공통 데이터 구조 (typed backend_options / prepared_input)
@@ -390,10 +391,10 @@ python3 examples/run_tensorrt_llm_infer.py \
 #   --prompt "What is the capital of South Korea?"
 
 # 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
-#        같은 TinyLlama local HF path 를 재사용하고, matching TensorRT-LLM source repo의 convert_checkpoint.py 를 사용합니다.
-#        예시는 LLaMA/TinyLlama 계열 기준입니다.
-export TENSORRT_LLM_SRC=/path/to/TensorRT-LLM
-python3 ${TENSORRT_LLM_SRC}/examples/llama/convert_checkpoint.py \
+#        같은 TinyLlama local HF path 를 재사용합니다.
+#        unified-sdk/examples wrapper 가 matching TensorRT-LLM source checkout을 자동 탐색하고,
+#        필요하면 TENSORRT_LLM_SRC 로 override 할 수 있습니다.
+python3 examples/llama/convert_checkpoint.py \
   --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output_dir ./models/tinyllama_trtllm_ckpt \
   --dtype float16
