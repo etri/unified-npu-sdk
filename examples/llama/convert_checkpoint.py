@@ -46,8 +46,6 @@ def _vendor_root_candidates(repo_root: Path) -> list[Path]:
 
     candidates.extend(
         [
-            Path("/app/tensorrt_llm"),
-            Path("/app/TensorRT-LLM"),
             repo_root.parent / "TensorRT-LLM",
             repo_root / "TensorRT-LLM",
             Path("/workspace/TensorRT-LLM"),
@@ -94,8 +92,8 @@ def _find_vendor_convert_script(repo_root: Path) -> Path:
         "Could not find a known TensorRT-LLM llama convert_checkpoint.py in the vendor source checkout. "
         "Checked legacy and current layouts such as "
         "`examples/llama/convert_checkpoint.py` and `examples/models/core/llama/convert_checkpoint.py`. "
-        "When using the official TensorRT-LLM release container, the wrapper also checks common bundled-source roots "
-        "such as `/app/tensorrt_llm`. Otherwise set TENSORRT_LLM_SRC to a matching source checkout. "
+        "Use an official TensorRT-LLM public repo checkout and set TENSORRT_LLM_SRC to that root, "
+        "or place the checkout in a common location such as `../TensorRT-LLM`. "
         f"Attempted: {attempted}"
     )
 
@@ -221,7 +219,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Unified SDK wrapper for TensorRT-LLM's LLaMA/TinyLlama convert_checkpoint.py. "
-            "It keeps the smoke flow under unified-sdk/examples while delegating to a matching vendor source checkout."
+            "It keeps the smoke flow under unified-sdk/examples while delegating to an official TensorRT-LLM public repo checkout."
         ),
         allow_abbrev=False,
     )
