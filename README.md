@@ -101,7 +101,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- `llm` flavor 이미지는 release container 위에 matching TensorRT-LLM source checkout(`v1.3.0rc22` 기본)을 함께 포함합니다. checkpoint prepare wrapper 는 installed API 를 우선 쓰고, 필요하면 이 bundled source 를 fallback 으로 사용합니다.
+- `llm` flavor 이미지는 release container 위에 matching TensorRT-LLM source checkout(`r26.05` 기본)을 함께 포함합니다. checkpoint prepare wrapper 는 installed API 를 우선 쓰고, 필요하면 이 bundled source 를 fallback 으로 사용합니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
