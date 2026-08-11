@@ -608,6 +608,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   `TensorRTVisionBuildOptions(int8_calibrator=...)` 없이 요청하면 **조용히 fp32 로 떨어지지 않고 명시적으로 실패**합니다.
 - **실행 경로**: TRT 8.5+/10 은 `execute_async_v3` + `set_tensor_address`, 구버전은 `execute_v2` + bindings.
   `TensorRTVisionRuntimeOptions(use_execute_v3=...)` 로 제어할 수 있고, 런타임이 지원 여부를 자동 감지합니다.
+  `--no-execute-v3` 는 legacy compatibility 확인용 보조 경로로 보고, final smoke 합격선은 먼저 `execute_async_v3` 기준으로 잡는 것을 권장합니다.
 - **메모리**: device 버퍼(`cuda.mem_alloc`)는 `destroy_runtime()` 에서 명시적으로 `free()` 합니다.
 - **lazy import**: `tensorrt`/`pycuda` 는 어댑터 내부에서만 import 하므로, GPU 없는 개발 환경에서도
   패키지 import 와 `--help` 가 동작합니다. `tensorrt_llm`도 LLM 어댑터 메서드 내부에서 lazy import 합니다.

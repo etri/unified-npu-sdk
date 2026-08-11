@@ -307,6 +307,56 @@ class TensorRTAdapterTests(unittest.TestCase):
         self.assertEqual(tuple(rh.ctx["h_output"].shape), (1, 1000))
         self.assertEqual(tuple(out.shape), (1, 1000))
 
+    def test_runtime_execute_v2_fallback_uses_sync_copy_path(self) -> None:
+        calls = []
+
+        class FakeDeviceBuffer:
+            def __init__(self, size: int):
+                self.size = size
+                self.freed = False
+
+            def __int__(self):
+                return self.size
+
+            def free(self):
+                self.freed = True
+
+        class FakeCuda:
+            def memcpy_htod(self, dst, src):
+                calls.append("htod")
+
+            def memcpy_dtoh(self, dst, src):
+                calls.append("dtoh")
+                dst[...] = 0
+
+        class FakeContext:
+            def execute_v2(self, bindings):
+                calls.append("execute_v2")
+                return True
+
+        rh = RuntimeHandle(
+            backend="tensorrt",
+            engine_path="demo.engine",
+            input_name="input",
+            output_name="output",
+            input_shape=(1, 3, 224, 224),
+            ctx={
+                "context": FakeContext(),
+                "cuda": FakeCuda(),
+                "allow_dynamic_shape": False,
+                "h_input": __import__("numpy").zeros((1, 3, 224, 224), dtype="float32"),
+                "h_output": __import__("numpy").zeros((1, 1000), dtype="float32"),
+                "d_input": FakeDeviceBuffer(1),
+                "d_output": FakeDeviceBuffer(2),
+                "stream": object(),
+                "bindings": [1, 2],
+                "use_v3": False,
+            },
+        )
+        out = _TensorRTRuntime().infer(rh, __import__("numpy").zeros((1, 3, 224, 224), dtype="float32"))
+        self.assertEqual(calls, ["htod", "execute_v2", "dtoh"])
+        self.assertEqual(tuple(out.shape), (1, 1000))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,29 @@ class TensorRTFrontendTests(unittest.TestCase):
             self.assertEqual(resolved.prepared_input.kind, "compile_source")
             self.assertEqual(resolved.prepared_input.compile_source.input_name, "images")
 
+    def test_resolve_provided_engine_request_tracks_requested_precision_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            models = root / "models"
+            out = root / "build_output"
+            models.mkdir()
+            out.mkdir()
+            engine = models / "demo.engine"
+            engine.write_bytes(b"engine-bytes")
+            resolved = resolve_tensorrt_vision_build_request(
+                TensorRTVisionFrontendBuildRequest(
+                    model_name="demo",
+                    models_dir=models,
+                    out_dir=out,
+                    precision="fp16",
+                    provided_engine=engine,
+                )
+            )
+            self.assertEqual(
+                resolved.prepared_input.provided_artifact.destination_path,
+                (out / "demo_FP16.engine").resolve(),
+            )
+
     def test_resolve_llm_fetch_request(self) -> None:
         resolved = resolve_tensorrt_llm_fetch_request(
             TensorRTLLMFrontendFetchRequest(

@@ -20,6 +20,7 @@ class TensorRTVisionFrontendBuildRequest:
     model_name: str
     models_dir: Path
     out_dir: Path
+    precision: Literal["fp32", "fp16", "int8"] = "fp32"
     provided_engine: Path | None = None
     onnx_path: Path | None = None
     weights_path: Path | None = None

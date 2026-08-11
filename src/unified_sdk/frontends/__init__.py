@@ -304,7 +304,7 @@ def resolve_tensorrt_vision_build_request(request: TensorRTVisionFrontendBuildRe
     if not model_name:
         raise ValueError("TensorRTVisionFrontendBuildRequest.model_name must be a non-empty string")
 
-    engine_path = _build_output_engine_path(out_dir, model_name, "fp32")
+    engine_path = _build_output_engine_path(out_dir, model_name, request.precision)
     input_name = request.input_name.strip()
     if not input_name:
         raise ValueError("TensorRTVisionFrontendBuildRequest.input_name must be a non-empty string")

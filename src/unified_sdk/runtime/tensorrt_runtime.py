@@ -126,6 +126,29 @@ def _best_effort_free(buf: Any) -> None:
             pass
 
 
+def _copy_h2d_execute_copy_d2h(ctx: Dict[str, Any]) -> None:
+    cuda = ctx["cuda"]
+    if ctx["use_v3"]:
+        cuda.memcpy_htod_async(ctx["d_input"], ctx["h_input"], ctx["stream"])
+        ctx["context"].execute_async_v3(stream_handle=ctx["stream"].handle)
+        cuda.memcpy_dtoh_async(ctx["h_output"], ctx["d_output"], ctx["stream"])
+        ctx["stream"].synchronize()
+        return
+
+    execute_async_v2 = getattr(ctx["context"], "execute_async_v2", None)
+    if callable(execute_async_v2):
+        cuda.memcpy_htod_async(ctx["d_input"], ctx["h_input"], ctx["stream"])
+        execute_async_v2(bindings=ctx["bindings"], stream_handle=ctx["stream"].handle)
+        cuda.memcpy_dtoh_async(ctx["h_output"], ctx["d_output"], ctx["stream"])
+        ctx["stream"].synchronize()
+        return
+
+    # Legacy fallback: keep the whole path synchronous so H2D / execute_v2 / D2H ordering is explicit.
+    cuda.memcpy_htod(ctx["d_input"], ctx["h_input"])
+    ctx["context"].execute_v2(ctx["bindings"])
+    cuda.memcpy_dtoh(ctx["h_output"], ctx["d_output"])
+
+
 def _rebind_dynamic_buffers(rh: RuntimeHandle, input_shape: Tuple[int, ...]) -> None:
     ctx = rh.ctx
     engine = ctx["engine"]
@@ -264,13 +287,7 @@ class _TensorRTRuntime:
 
         ctx["h_input"][...] = input_array.astype(ctx["h_input"].dtype, copy=False)
         try:
-            cuda.memcpy_htod_async(ctx["d_input"], ctx["h_input"], ctx["stream"])
-            if ctx["use_v3"]:
-                ctx["context"].execute_async_v3(stream_handle=ctx["stream"].handle)
-            else:
-                ctx["context"].execute_v2(ctx["bindings"])
-            cuda.memcpy_dtoh_async(ctx["h_output"], ctx["d_output"], ctx["stream"])
-            ctx["stream"].synchronize()
+            _copy_h2d_execute_copy_d2h(ctx)
         except Exception as exc:
             raise RuntimeError(f"TensorRT inference failed: {exc}") from exc
         return np.array(ctx["h_output"], copy=True)

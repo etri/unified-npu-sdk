@@ -105,6 +105,7 @@ if __name__ == "__main__":
         model_name=args.model_name,
         models_dir=args.models_dir,
         out_dir=args.out_dir,
+        precision=args.precision,
         provided_engine=args.engine,
         onnx_path=args.onnx,
         weights_path=args.from_pth,
