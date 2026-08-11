@@ -343,6 +343,7 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
 - `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
 - `7-b`는 `local HF path` 또는 **이미 준비된 로컬 TensorRT-LLM artifact dir**를 fetch/runtime 입력으로 쓰는 경로입니다.
+- `7-b`의 prebuilt artifact dir 는 보통 아래 `7-c custom_compile` 결과를 재사용하거나, vendor `trtllm-build`로 미리 만든 artifact dir 를 사용합니다.
 - `7-c`는 `custom_compile` 경로입니다.
   local TensorRT-LLM checkpoint dir 가 있으면 공식 `trtllm-build --checkpoint_dir ... --output_dir ...` CLI를 우선 사용하고,
   그 외 model id/local HF path 는 Python `LLM(...).save(...)` 경로를 사용합니다.
@@ -377,6 +378,7 @@ python3 examples/run_tensorrt_llm_infer.py \
 
 # 7-b-2) (LLM) local prebuilt TensorRT-LLM artifact dir -> generate
 #        이 경로는 artifacts/tinyllama_trtllm 같은 로컬 artifact dir이 실제로 준비돼 있어야 합니다.
+#        보통은 아래 7-c custom compile 결과물이나, vendor trtllm-build 결과물을 그대로 재사용합니다.
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
@@ -388,6 +390,8 @@ python3 examples/run_tensorrt_llm_build.py \
   --build-mode custom_compile \
   --model-name tinyllama_trtllm \
   --max-model-len 512
+
+#        위 명령이 성공하면 artifacts/tinyllama_trtllm 를 7-b-2 입력으로 바로 재사용할 수 있습니다.
 
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
