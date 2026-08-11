@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from unified_sdk.runtime.registry import get_llm_runtime, get_runtime
+from unified_sdk.runtime.registry import get_llm_runtime
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle, RuntimeConfig, RuntimeHandle
 
 import warnings
@@ -78,48 +78,23 @@ def destroy_runtime(rh: RuntimeHandle) -> None:
 
 
 def create_runtime_LLM(cfg: LLMRuntimeConfig) -> Any:
-    try:
-        adapter = get_llm_runtime(cfg.backend)
-        return adapter.create(cfg)
-    except ValueError:
-        if cfg.backend != "qb":
-            raise
-        adapter = get_runtime(cfg.backend)
-        return adapter.create(cfg)  # transitional extension-capability bridge for QB
+    adapter = get_llm_runtime(cfg.backend)
+    return adapter.create(cfg)
 
 
 def infer_LLM(rh: Any, input_or_prompt: Any, **kwargs: Any) -> Any:
-    try:
-        adapter = get_llm_runtime(rh.backend)
-        return adapter.infer(rh, input_or_prompt, **kwargs)
-    except ValueError:
-        if getattr(rh, "backend", None) != "qb":
-            raise
-        adapter = get_runtime(rh.backend)
-        return adapter.infer(rh, input_or_prompt, **kwargs)
+    adapter = get_llm_runtime(rh.backend)
+    return adapter.infer(rh, input_or_prompt, **kwargs)
 
 
 def generate_LLM(rh: Any, prompt: Any, **overrides: Any) -> Any:
-    try:
-        adapter = get_llm_runtime(rh.backend)
-        return adapter.infer(rh, prompt, **overrides)
-    except ValueError:
-        if getattr(rh, "backend", None) == "qb":
-            raise NotImplementedError(
-                "QB LLM runtime in main currently exposes low-level infer_LLM(...) only, not high-level text generation."
-            )
-        raise
+    adapter = get_llm_runtime(rh.backend)
+    return adapter.infer(rh, prompt, **overrides)
 
 
 def destroy_runtime_LLM(rh: Any) -> None:
-    try:
-        adapter = get_llm_runtime(rh.backend)
-        return adapter.destroy(rh)
-    except ValueError:
-        if getattr(rh, "backend", None) != "qb":
-            raise
-        adapter = get_runtime(rh.backend)
-        return adapter.destroy(rh)
+    adapter = get_llm_runtime(rh.backend)
+    return adapter.destroy(rh)
 
 
 def describe_runtime_api_mapping(target: Any) -> Dict[str, Any]:
@@ -161,6 +136,4 @@ def describe_runtime_api_mapping_LLM(target: Any) -> Dict[str, Any]:
         if _rngd is None:
             raise RuntimeError("RNGD runtime backend is unavailable in this environment.")
         return _rngd.describe_api_mapping()
-    if backend == "qb":
-        return _qb.describe_api_mapping() if _qb is not None else {"backend": "qb", "error": "backend unavailable"}
     raise ValueError(f"Unsupported LLM runtime mapping backend: {backend!r}")

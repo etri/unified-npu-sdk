@@ -73,6 +73,27 @@ class RuntimeHandle:
 
 
 @dataclass
+class CoreRuntimeConfig:
+    backend: RuntimeBackendName
+    engine_path: str | Path
+    input_name: str = "input"
+    output_name: str = "output"
+    input_shape: Tuple[int, ...] = (1,)
+    backend_options: Any = None
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CoreRuntimeHandle:
+    backend: str
+    engine_path: str
+    input_name: str = "input"
+    output_name: str = "output"
+    input_shape: Tuple[int, ...] = (1,)
+    ctx: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class BatchParam:
     sequence_length: int
     cache_size: int = 0
@@ -207,7 +228,3 @@ class LLMRuntimeHandle:
     @property
     def engine_path(self) -> str:
         return self.model_ref_or_path
-
-
-CoreRuntimeConfig = RuntimeConfig
-CoreRuntimeHandle = RuntimeHandle
