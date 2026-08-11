@@ -337,6 +337,10 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 진행 원칙:
 
+- `fetch`, `custom_compile`, `runtime(generate)`는 phase를 구분해서 봅니다.
+- `fetch`는 artifact 생성이 아니라, `model id / local HF path / local artifact dir` 중 무엇을 runtime 입력으로 쓸지 계약을 확정하는 단계입니다.
+- `custom_compile`은 실제 TensorRT-LLM artifact dir를 만드는 단계입니다.
+- `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
 - `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
 - `7-b`는 `local HF path` 또는 **이미 준비된 로컬 TensorRT-LLM artifact dir**를 fetch/runtime 입력으로 쓰는 경로입니다.
 - `7-c`는 `custom_compile` 경로입니다.

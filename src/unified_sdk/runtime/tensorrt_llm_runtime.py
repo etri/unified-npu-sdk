@@ -67,6 +67,17 @@ def _looks_like_local_path(model_ref: str) -> bool:
     return p.is_absolute() or model_ref.startswith("./") or model_ref.startswith("../") or model_ref.startswith(("artifacts/", "build_output/", "models/"))
 
 
+def _detect_runtime_entry_kind(model_ref: str) -> str:
+    p = Path(model_ref).expanduser()
+    if p.exists():
+        if p.is_dir():
+            markers = ("config.json", "executor_config.json", "engine_config.json")
+            if any((p / marker).exists() for marker in markers) or any(p.glob("*.engine")):
+                return "local_artifact_dir"
+        return "local_model_path"
+    return "model_id"
+
+
 def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, options, model_ref: str) -> Dict[str, Any]:
     llm_kwargs: Dict[str, Any] = {
         "model": model_ref,
@@ -101,6 +112,9 @@ class _TensorRTLLMRuntimeAdapter:
             ) from exc
 
         model_ref = str(cfg.model_ref_or_path)
+        runtime_entry_kind = _detect_runtime_entry_kind(model_ref)
+        runtime_mode = "artifact_runtime" if runtime_entry_kind == "local_artifact_dir" else "convenience_model_ref_runtime"
+        runtime_may_trigger_vendor_build = runtime_entry_kind != "local_artifact_dir"
         if _looks_like_local_path(model_ref):
             local_ref = Path(model_ref).expanduser()
             if not local_ref.exists():
@@ -132,6 +146,9 @@ class _TensorRTLLMRuntimeAdapter:
                 "capability_family": _CAPABILITY_FAMILY,
                 "runtime_pipeline": _RUNTIME_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
+                "runtime_entry_kind": runtime_entry_kind,
+                "runtime_mode": runtime_mode,
+                "runtime_may_trigger_vendor_build": runtime_may_trigger_vendor_build,
             },
         )
 

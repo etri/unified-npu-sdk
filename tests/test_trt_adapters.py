@@ -89,6 +89,9 @@ class TensorRTAdapterTests(unittest.TestCase):
         )
         self.assertEqual(result.compiled_model_path, "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
         self.assertEqual(result.meta_data["prepared_kind"], "runtime_model_ref")
+        self.assertEqual(result.meta_data["resolved_phase"], "fetch_contract_only")
+        self.assertFalse(result.meta_data["artifact_emitted"])
+        self.assertTrue(result.meta_data["runtime_may_trigger_vendor_build"])
         self.assertEqual(result.meta_data["backend_options"]["tensor_parallel_size"], 2)
 
     def test_llm_artifact_build_requires_prepared_input(self) -> None:
@@ -131,6 +134,9 @@ class TensorRTAdapterTests(unittest.TestCase):
             patched.assert_called_once()
             self.assertEqual(result.compiled_model_path, str(artifact_dir.resolve()))
             self.assertEqual(result.meta_data["compile_variant"], "checkpoint_dir_cli")
+            self.assertEqual(result.meta_data["resolved_phase"], "custom_compile_artifact")
+            self.assertTrue(result.meta_data["artifact_emitted"])
+            self.assertFalse(result.meta_data["runtime_may_trigger_vendor_build"])
 
     def test_llm_prepared_fetch_rejects_custom_compile_mode(self) -> None:
         with self.assertRaises(ValueError):

@@ -93,6 +93,10 @@ if __name__ == "__main__":
     print("== TensorRT-LLM build ==")
     print(f"repo_root = {REPO_ROOT}")
     print(f"source = {resolved.source_description}")
+    print(f"phase = {result.meta_data.get('resolved_phase') if result.meta_data else 'unknown'}")
     print(f"artifact = {result.compiled_model_path}")
+    if result.meta_data:
+        print(f"artifact_emitted = {result.meta_data.get('artifact_emitted')}")
+        print(f"runtime_may_trigger_vendor_build = {result.meta_data.get('runtime_may_trigger_vendor_build')}")
     if result.meta_data:
         print(f"meta = {result.meta_data}")

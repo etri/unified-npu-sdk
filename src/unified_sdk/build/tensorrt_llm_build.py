@@ -34,6 +34,19 @@ _VENDOR_TO_UNIFIED_API_MAP = {
     "TensorRT-LLM engine dir": "BuildResult.compiled_model_path",
 }
 
+_PHASE_SEMANTICS = {
+    "fetch": {
+        "resolved_phase": "fetch_contract_only",
+        "artifact_emitted": False,
+        "runtime_may_trigger_vendor_build": True,
+    },
+    "custom_compile": {
+        "resolved_phase": "custom_compile_artifact",
+        "artifact_emitted": True,
+        "runtime_may_trigger_vendor_build": False,
+    },
+}
+
 
 def describe_api_mapping() -> Dict[str, Any]:
     return {
@@ -177,6 +190,7 @@ class _TensorRTLLMBuildAdapter:
                     "capability_family": _CAPABILITY_FAMILY,
                     "build_pipeline": _BUILD_PIPELINE,
                     "vendor_api_map": _VENDOR_API_MAP,
+                    **_PHASE_SEMANTICS["fetch"],
                 },
             )
 
@@ -234,6 +248,7 @@ class _TensorRTLLMBuildAdapter:
                 "capability_family": _CAPABILITY_FAMILY,
                 "build_pipeline": _BUILD_PIPELINE,
                 "vendor_api_map": _VENDOR_API_MAP,
+                **_PHASE_SEMANTICS["custom_compile"],
             },
         )
 
