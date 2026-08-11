@@ -368,8 +368,7 @@ python3 examples/run_tensorrt_llm_infer.py \
   --prompt "What is the capital of South Korea?"
 
 # 7-b-1) (LLM) local HF path 준비
-#        먼저 공식 모델 저장소(Hugging Face 등)에서 local HF path 를 준비합니다.
-#        예시는 TinyLlama repo snapshot 을 ./models 아래로 받아두는 흐름입니다.
+#        예: TinyLlama repo snapshot 을 ./models 아래로 준비
 hf download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --local-dir ./models/TinyLlama-1.1B-Chat-v1.0
 
@@ -382,11 +381,8 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path ./models/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
-#        메모: prebuilt TensorRT-LLM artifact dir 가 이미 있으면 local HF path 대신 바로 runtime 입력으로 써도 됩니다.
-#        그 artifact dir 는
-#        - vendor 순정 경로: trtllm-build / TensorRT-LLM 표준 스크립트 결과물
-#        - uDC 경로: 아래 7-c custom compile 결과물
-#        둘 중 어느 쪽이든 가능합니다.
+# 메모) prebuilt TensorRT-LLM artifact dir 가 이미 있으면 local HF path 대신 바로 runtime 입력으로 사용할 수 있습니다.
+#       artifact dir 는 vendor trtllm-build 결과물이거나, 아래 7-c custom compile 결과물이어도 됩니다.
 # python3 examples/run_tensorrt_llm_infer.py \
 #   --engine-path artifacts/tinyllama_trtllm \
 #   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
@@ -399,7 +395,7 @@ python3 examples/run_tensorrt_llm_build.py \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
-#        위 명령이 성공하면 artifacts/tinyllama_trtllm 를 위 메모 경로처럼 바로 재사용할 수 있습니다.
+#        성공하면 artifacts/tinyllama_trtllm 를 위 메모 경로처럼 바로 재사용할 수 있습니다.
 
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
