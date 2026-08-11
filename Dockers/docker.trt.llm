@@ -10,6 +10,8 @@ ARG UID=1000
 ARG GID=1000
 ARG VIDEO_GID=44
 ARG RENDER_GID=110
+ARG TENSORRT_LLM_SOURCE_REPO=https://github.com/NVIDIA/TensorRT-LLM.git
+ARG TENSORRT_LLM_SOURCE_REF=v1.3.0rc22
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -17,12 +19,19 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     PIP_NO_INPUT=1 \
     PIP_DEFAULT_TIMEOUT=300 \
-    PYTHONPATH=/workspace/unified-sdk/src
+    PYTHONPATH=/workspace/unified-sdk/src \
+    TENSORRT_LLM_SRC=/opt/TensorRT-LLM
 
 RUN groupadd -g ${VIDEO_GID} video 2>/dev/null || true \
  && groupadd -g ${RENDER_GID} render 2>/dev/null || true \
  && groupadd -g ${GID} ${USERNAME} 2>/dev/null || true \
  && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} 2>/dev/null || true
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch ${TENSORRT_LLM_SOURCE_REF} ${TENSORRT_LLM_SOURCE_REPO} ${TENSORRT_LLM_SRC}
 
 WORKDIR /workspace/unified-sdk
 RUN mkdir -p /workspace/unified-sdk \

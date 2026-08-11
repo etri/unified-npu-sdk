@@ -49,7 +49,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Build/fetch a TensorRT-LLM artifact directory. "
-            "기본은 model id/local path fetch 이고, custom compile 은 local checkpoint dir 또는 model ref/local model path를 사용합니다."
+            "기본은 model id/local path fetch 이고, custom compile smoke 기본 경로는 "
+            "local HF path -> checkpoint prepare -> local checkpoint dir -> trtllm-build 입니다."
         )
     )
     parser.add_argument("--model-ref", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")

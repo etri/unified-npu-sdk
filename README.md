@@ -31,7 +31,8 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 
 - Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
 - `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
-- LLM custom compile 은 두 갈래입니다: `model id/local HF path -> Python LLM API compile`, `local TensorRT-LLM checkpoint dir -> trtllm-build CLI compile`.
+- LLM custom compile 의 기본 smoke 경로는 `local HF path -> checkpoint prepare -> trtllm-build CLI compile` 입니다.
+- `llm` 이미지는 matching TensorRT-LLM source checkout fallback 을 함께 포함해, checkpoint prepare wrapper 를 self-contained 하게 유지합니다.
 - 로컬 prebuilt artifact fetch(`7-b`)는 compile과 독립 경로입니다.
 
 ---
@@ -100,6 +101,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
+- `llm` flavor 이미지는 release container 위에 matching TensorRT-LLM source checkout(`v1.3.0rc22` 기본)을 함께 포함합니다. checkpoint prepare wrapper 는 installed API 를 우선 쓰고, 필요하면 이 bundled source 를 fallback 으로 사용합니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
@@ -347,7 +349,8 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c`는 `custom_compile` 경로입니다.
   스모크 기본 경로는 `local HF path -> TRT-LLM checkpoint prepare -> trtllm-build -> artifact runtime` 흐름입니다.
-  checkpoint prepare 단계는 설치된 TensorRT-LLM API surface와 모델 지원성에 영향을 받습니다.
+  `llm` 이미지는 matching TensorRT-LLM source fallback 을 포함하므로, checkpoint prepare 단계도 가능한 한 self-contained 하게 따라갈 수 있습니다.
+  다만 checkpoint prepare 단계는 여전히 설치된 TensorRT-LLM API surface와 모델 지원성의 영향을 받습니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -392,7 +395,7 @@ python3 examples/run_tensorrt_llm_infer.py \
 # 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
 #        같은 TinyLlama local HF path 를 재사용합니다.
 #        unified-sdk/examples wrapper 는 installed TensorRT-LLM conversion API를 우선 사용하고,
-#        필요하면 matching vendor source checkout fallback 도 시도합니다.
+#        필요하면 llm 이미지에 포함된 matching TensorRT-LLM source fallback 을 사용합니다.
 python3 examples/llama/convert_checkpoint.py \
   --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output_dir ./models/tinyllama_trtllm_ckpt \
@@ -500,7 +503,7 @@ print(result.compiled_model_path)
 LLM build phase는 이렇게 읽으면 됩니다.
 
 - `fetch`: model id, local HF path, local prebuilt TensorRT-LLM artifact dir
-- `custom_compile`: model id/local HF path via Python `LLM(...).save(...)`, or local TensorRT-LLM checkpoint dir via `trtllm-build`
+- `custom_compile`: local HF path -> checkpoint prepare -> local TensorRT-LLM checkpoint dir -> `trtllm-build`
 
 `run_tensorrt_build.py`는 현재 세 경로를 지원합니다.
 
@@ -574,7 +577,7 @@ print(result)
 | Vision `.engine` | 생성 | `create_runtime(cfg)` | `trt.Runtime(...).deserialize_cuda_engine(...)`, `engine.create_execution_context()` |
 | Vision `.engine` | 추론 | `infer(rh, input_array)` | `execute_async_v3(...)` 또는 `execute_v2(...)` |
 | Vision `.engine` | 종료 | `destroy_runtime(rh)` | device buffer `free()` 후 ctx clear |
-| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 `tensorrt_llm.LLM(...).save(...)` 또는 `trtllm-build --checkpoint_dir ... --output_dir ...` |
+| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local path pass-through 또는 checkpoint prepare 후 `trtllm-build --checkpoint_dir ... --output_dir ...` |
 | LLM / TensorRT-LLM | 생성 | `create_runtime_LLM(cfg)` | `tensorrt_llm.LLM(model=..., tokenizer=..., ...)` |
 | LLM / TensorRT-LLM | 생성/추론 | `generate_LLM(rh, prompt, **overrides)` | `SamplingParams(...)`, `llm.generate(...)` |
 | LLM / TensorRT-LLM | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
@@ -602,7 +605,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
 - `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
-- `llm` flavor에서 local checkpoint dir는 `trtllm-build` CLI compile 후보로, local HF path/model id는 Python `LLM(...).save(...)` compile 후보로 분리됩니다.
+- `llm` flavor에서 local HF path custom compile 은 checkpoint prepare 후 `trtllm-build` 로 이어지고, local checkpoint dir 는 곧바로 `trtllm-build` 입력이 됩니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
   셋을 같은 값으로 주면 static shape 엔진이 됩니다.
   현재 `allow_dynamic_shape=True`는 입력 shape 변경 시 runtime rebind/reallocation까지 수행합니다.
