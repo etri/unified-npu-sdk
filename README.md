@@ -84,28 +84,6 @@ LLM:
 - 위 표의 `구현`은 Unified SDK public API entry가 연결되어 있고, branch 단계에서 smoke 검증을 진행한 범위를 의미합니다.
 - backend별 지원 수준은 완전히 동일하지 않으며, 일부 항목은 `planned`, `부분 구현`, `unsupported`, `known issue` 상태를 그대로 유지합니다.
 
-### 공통 public API
-
-Vision:
-
-- `build_unified(cfg)`
-- `create_runtime(cfg)`
-- `infer(...)`
-- `destroy_runtime(rh)`
-
-LLM:
-
-- `build_unified_LLM(cfg)`
-- `create_runtime_LLM(cfg)`
-- `infer_LLM(...)`
-- `generate_LLM(...)`
-- `destroy_runtime_LLM(rh)`
-
-메모:
-
-- API 이름은 공통이지만 backend별 semantics가 완전히 동일한 것은 아닙니다.
-- 예를 들어 `qb` transformer/LLM MXQ는 generic `create_runtime_LLM` 경로가 아니라 `sequence_runtime` 확장 capability로 다룹니다.
-
 ## 프로젝트 구조
 
 ```text
