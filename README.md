@@ -279,7 +279,9 @@ python3 examples/run_tensorrt_infer.py --help
 
 ```bash
 python3 -c "import unified_sdk; print('OK')"
+python3 examples/run_tensorrt_llm_fetch.py --help
 python3 examples/run_tensorrt_llm_build.py --help
+python3 examples/run_tensorrt_llm_prepare_checkpoint.py --help
 python3 examples/run_tensorrt_llm_infer.py --help
 ```
 
@@ -389,12 +391,11 @@ python3 examples/run_tensorrt_infer.py \
 `trt llm`
 
 ```bash
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --build-mode fetch
+python3 examples/run_tensorrt_llm_fetch.py \
+  --model-ref Qwen/Qwen2.5-0.5B-Instruct
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --model-ref-or-path Qwen/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 ```
 
