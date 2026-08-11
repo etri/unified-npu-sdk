@@ -33,7 +33,6 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
 - 최신 TensorRT-LLM 공식 주류 smoke는 `model id` 또는 `local HF-format path`를 직접 runtime 입력으로 쓰는 경로입니다.
 - `existing TRT-LLM checkpoint -> trtllm-build` 경로는 보조/legacy 흐름으로만 유지합니다.
-- `examples/run_tensorrt_llm_prepare_checkpoint.py`는 vendor escalation 또는 legacy checkpoint 실험용 helper로 남겨두며, 기본 smoke gate에는 포함하지 않습니다.
 
 ---
 
@@ -340,7 +339,7 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 
 진행 원칙:
 
-- `fetch`, `custom_compile`, `runtime(generate)`는 phase를 구분해서 봅니다.
+- `fetch`와 `runtime(generate)`를 기본 경로로 보고, `custom_compile`은 보조/legacy로 분리해서 봅니다.
 - `fetch`는 artifact 생성이 아니라, `model id / local HF path / local artifact dir` 중 무엇을 runtime 입력으로 쓸지 계약을 확정하는 단계입니다.
 - `custom_compile`은 기존 TRT-LLM checkpoint가 이미 있을 때만 의미가 있는 보조 단계입니다.
 - `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
@@ -349,7 +348,8 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `7-c-prepare`는 **사용자 커스텀 모델용 HF-style local folder prepare 예시**입니다.
   `7-b`에서 준비한 public HF snapshot을 기준으로, tokenizer/config 파일과 weight 파일을 새 폴더로 복사해
   local HF-format 계약을 맞추는 과정을 보여줍니다.
-- `7-c`는 **사용자 커스텀 모델을 HF-format 폴더 구조로 정리한 뒤** 같은 local path 계약으로 추론해보는 경로입니다.
+- `7-c`는 **사용자 커스텀 모델을 HF-like folder structure로 정리한 뒤**, 그 폴더를 local path로 `fetch -> generate` 해보는 경로입니다.
+  즉 custom model **fetching / inferencing**가 목적이며, 이를 위해 HF-format folder contract를 맞춰야 합니다.
 - `7-d`는 **pre-existing TRT-LLM checkpoint가 이미 있을 때만** 시도할 수 있는 보조/legacy 경로입니다. 최근 TensorRT-LLM 주류가 추구하는 방향은 아닙니다.
 
 ```bash
@@ -396,8 +396,9 @@ cp ./models/Qwen2.5-0.5B-Instruct/generation_config.json ./models/my-finetuned-q
 cp ./models/Qwen2.5-0.5B-Instruct/*.safetensors ./models/my-finetuned-qwen/
 cp ./models/Qwen2.5-0.5B-Instruct/*.index.json ./models/my-finetuned-qwen/ 2>/dev/null || true
 
-# 7-c) (LLM) 사용자 커스텀 모델을 HF-format local path 로 정리한 뒤 infer
-#       위와 같은 폴더 계약이 맞으면 7-b 와 같은 local path 계약으로 fetch -> generate
+# 7-c) (LLM) 사용자 커스텀 모델 fetching / inferencing
+#       위와 같이 HF-like folder structure 를 맞춘 뒤,
+#       같은 local path 계약으로 fetch -> generate
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref ./models/my-finetuned-qwen \
   --build-mode fetch
@@ -424,7 +425,7 @@ python3 examples/inspect_tensorrt_llm_model.py ./models/my-finetuned-qwen --load
 ```
 
 `run_tensorrt_llm_infer.py`는 기본적으로 `--chat-template auto` 동작을 사용합니다.
-즉 TinyLlama 같은 chat/instruct 모델에 대해 tokenizer를 찾을 수 있으면 `apply_chat_template(...)`
+즉 Qwen 같은 chat/instruct 모델에 대해 tokenizer를 찾을 수 있으면 `apply_chat_template(...)`
 를 자동 시도하고, `tokenizer_ref`, `formatted_prompt`를 함께 출력해 실제 입력 프롬프트를 확인할 수 있습니다.
 
 예제 스크립트는 checkout root를 자동 탐지하므로 `/workspace/unified-sdk`,
@@ -609,7 +610,7 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
 - `trt-only`는 branch 하나를 유지하되 Docker flavor를 둘로 분리합니다. vision과 llm은 같은 Unified SDK public API 구조를 공유하지만, vendor stack mismatch를 줄이기 위해 컨테이너를 분리합니다.
 - `vision` flavor는 일반 TensorRT Python stack을 직접 설치하고, `llm` flavor는 official TensorRT-LLM release container를 기본으로 씁니다.
 - 소스 코드는 이미지에 bake하지 않고 bind mount 기준으로 동작하게 해 두었기 때문에, 코드 수정만으로는 환경 레이어를 다시 만들지 않도록 정리했습니다.
-- `llm` flavor에서 `7-b`는 실제 로컬 artifact dir가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
+- `llm` flavor에서 `7-b`/`7-c`는 실제 로컬 HF-format path가 있을 때만 동작합니다. 경로가 없으면 HF repo id로 오인하지 않도록 로컬 경로 missing 에러를 먼저 냅니다.
 - `llm` flavor의 기본 smoke는 `model id` / `local HF-format path` direct-load 경로입니다.
 - `run_tensorrt_llm_prepare_checkpoint.py` 와 `existing checkpoint -> trtllm-build` 흐름은 vendor/legacy 검증용 보조 경로로만 봅니다.
 - **Dynamic shape**: `min/opt/max_input_shape` 로 optimization profile 을 지정합니다.
