@@ -8,6 +8,8 @@ CONTAINER_NAME=""
 WORKSPACE_DIR=""
 VISION_BASE_IMAGE="${TRT_VISION_BASE_IMAGE:-nvcr.io/nvidia/tensorrt:24.03-py3}"
 LLM_BASE_IMAGE="${TRT_LLM_BASE_IMAGE:-nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22}"
+LLM_SOURCE_REPO="${TRT_LLM_SOURCE_REPO:-https://github.com/NVIDIA/TensorRT-LLM.git}"
+LLM_SOURCE_REF="${TRT_LLM_SOURCE_REF:-main}"
 BASE_IMAGE=""
 UID_VALUE=$(id -u)
 GID_VALUE=$(id -g)
@@ -27,6 +29,11 @@ print_usage() {
   echo "  -n, --name    컨테이너 이름 (기본: trt-only-<flavor>)"
   echo "  --workspace   /workspace/unified-sdk 로 마운트할 호스트 repo 경로 (기본: 현재 프로젝트 루트)"
   echo "  --base-image  빌드에 사용할 Docker base image (기본: flavor별 권장 이미지)"
+  echo ""
+  echo "환경변수:"
+  echo "  TRT_LLM_BASE_IMAGE   llm flavor base image override"
+  echo "  TRT_LLM_SOURCE_REPO  llm flavor에 bake-in 할 TensorRT-LLM public repo"
+  echo "  TRT_LLM_SOURCE_REF   llm flavor에 bake-in 할 TensorRT-LLM ref (기본: main)"
   echo "  -h, --help    도움말 출력"
 }
 
@@ -112,6 +119,10 @@ fi
 if [ -n "${RENDER_GID_VALUE}" ]; then
   echo "  Render GID     : ${RENDER_GID_VALUE}"
 fi
+if [ "${FLAVOR}" = "llm" ]; then
+  echo "  TRT-LLM repo   : ${LLM_SOURCE_REPO}"
+  echo "  TRT-LLM ref    : ${LLM_SOURCE_REF}"
+fi
 
 cd "${PROJECT_ROOT}"
 
@@ -130,6 +141,8 @@ else
     -f "${DOCKERFILE_PATH}" \
     -t "${IMAGE_NAME}:${TAG}" \
     --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    --build-arg TENSORRT_LLM_SOURCE_REPO="${LLM_SOURCE_REPO}" \
+    --build-arg TENSORRT_LLM_SOURCE_REF="${LLM_SOURCE_REF}" \
     --build-arg UID="${UID_VALUE}" \
     --build-arg GID="${GID_VALUE}" \
     --build-arg VIDEO_GID="${VIDEO_GID_VALUE:-44}" \
@@ -166,9 +179,10 @@ if [ "${FLAVOR}" = "vision" ]; then
   echo "  python3 examples/run_tensorrt_build.py --help"
   echo "  python3 examples/run_tensorrt_infer.py --help"
 else
-  echo "  TensorRT-LLM source fallback: TENSORRT_LLM_SRC (default: /app/tensorrt_llm)"
+  echo "  TensorRT-LLM source fallback: TENSORRT_LLM_SRC (default: /opt/TensorRT-LLM)"
   echo "  python3 -c \"import tensorrt_llm; print('tensorrt_llm OK')\""
   echo "  python3 examples/run_tensorrt_llm_build.py --help"
+  echo "  python3 examples/run_tensorrt_llm_prepare_checkpoint.py --help"
   echo "  python3 examples/run_tensorrt_llm_infer.py --help"
   echo "  python3 examples/inspect_tensorrt_llm_model.py --help"
 fi

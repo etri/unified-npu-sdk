@@ -75,15 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.tensorrt_llm_src:
         env["TENSORRT_LLM_SRC"] = str(Path(args.tensorrt_llm_src).expanduser().resolve())
     else:
-        default_checkout = REPO_ROOT.parent / "TensorRT-LLM"
-        if default_checkout.is_dir():
-            env["TENSORRT_LLM_SRC"] = str(default_checkout.resolve())
+        bundled_checkout = Path("/opt/TensorRT-LLM")
+        sibling_checkout = REPO_ROOT.parent / "TensorRT-LLM"
+        if bundled_checkout.is_dir():
+            env["TENSORRT_LLM_SRC"] = str(bundled_checkout.resolve())
+        elif sibling_checkout.is_dir():
+            env["TENSORRT_LLM_SRC"] = str(sibling_checkout.resolve())
 
     print("== TensorRT-LLM checkpoint prepare helper ==")
     print(f"repo_root = {REPO_ROOT}")
     print(f"model_ref = {args.model_ref}")
     print(f"output_dir = {args.output_dir}")
-    print(f"tensorrt_llm_src = {env.get('TENSORRT_LLM_SRC', '(expected: ../TensorRT-LLM public repo checkout)')}")
+    print(f"tensorrt_llm_src = {env.get('TENSORRT_LLM_SRC', '(expected: /opt/TensorRT-LLM or ../TensorRT-LLM)')}")
     return subprocess.run(cmd, env=env).returncode
 
 

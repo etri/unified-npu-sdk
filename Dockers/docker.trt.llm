@@ -10,6 +10,8 @@ ARG UID=1000
 ARG GID=1000
 ARG VIDEO_GID=44
 ARG RENDER_GID=110
+ARG TENSORRT_LLM_SOURCE_REPO=https://github.com/NVIDIA/TensorRT-LLM.git
+ARG TENSORRT_LLM_SOURCE_REF=main
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Seoul \
@@ -18,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_INPUT=1 \
     PIP_DEFAULT_TIMEOUT=300 \
     PYTHONPATH=/workspace/unified-sdk/src \
-    TENSORRT_LLM_SRC=/app/tensorrt_llm
+    TENSORRT_LLM_SRC=/opt/TensorRT-LLM
 
 RUN groupadd -g ${VIDEO_GID} video 2>/dev/null || true \
  && groupadd -g ${RENDER_GID} render 2>/dev/null || true \
@@ -28,6 +30,12 @@ RUN groupadd -g ${VIDEO_GID} video 2>/dev/null || true \
 WORKDIR /workspace/unified-sdk
 RUN mkdir -p /workspace/unified-sdk \
  && chown -R ${UID}:${GID} /workspace
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch ${TENSORRT_LLM_SOURCE_REF} ${TENSORRT_LLM_SOURCE_REPO} ${TENSORRT_LLM_SRC}
 
 COPY --chown=${UID}:${GID} Dockers/requirements.trt.llm.txt /tmp/requirements.llm.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
