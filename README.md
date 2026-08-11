@@ -345,8 +345,9 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `7-b`는 `local HF path`를 직접 쓰는 경로입니다.
 - 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c`는 `custom_compile` 경로입니다.
-  local TensorRT-LLM checkpoint dir 가 있으면 공식 `trtllm-build --checkpoint_dir ... --output_dir ...` CLI를 우선 사용하고,
-  그 외 model id/local HF path 는 Python `LLM(...).save(...)` 경로를 사용합니다.
+  스모크 기본 경로는 `local HF path -> vendor convert_checkpoint.py -> local TensorRT-LLM checkpoint dir -> trtllm-build` 흐름입니다.
+- `7-d`는 `model id/local HF path -> custom_compile` convenience 경로입니다.
+  현재 설치된 TensorRT-LLM release surface에 따라 `LLM(...).save(...)` 가 없으면 미지원일 수 있습니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -382,15 +383,24 @@ python3 examples/run_tensorrt_llm_infer.py \
   --prompt "What is the capital of South Korea?"
 
 # 메모) prebuilt TensorRT-LLM artifact dir 가 이미 있으면 local HF path 대신 바로 runtime 입력으로 사용할 수 있습니다.
-#       artifact dir 는 vendor trtllm-build 결과물이거나, 아래 7-c custom compile 결과물이어도 됩니다.
+#       artifact dir 는 아래 7-c 결과물이거나, vendor가 미리 생성한 artifact dir 여도 됩니다.
 # python3 examples/run_tensorrt_llm_infer.py \
 #   --engine-path artifacts/tinyllama_trtllm \
 #   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
 #   --prompt "What is the capital of South Korea?"
 
-# 7-c-1) (LLM) model id/local HF path -> custom compile -> generate
+# 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
+#        같은 TinyLlama local HF path 를 재사용하고, matching TensorRT-LLM source repo의 convert_checkpoint.py 를 사용합니다.
+#        예시는 LLaMA/TinyLlama 계열 기준입니다.
+export TENSORRT_LLM_SRC=/workspace/TensorRT-LLM
+python3 ${TENSORRT_LLM_SRC}/examples/llama/convert_checkpoint.py \
+  --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
+  --output_dir ./models/tinyllama_trtllm_ckpt \
+  --dtype float16
+
+# 7-c-2) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build -> generate
 python3 examples/run_tensorrt_llm_build.py \
-  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --model-ref ./models/tinyllama_trtllm_ckpt \
   --build-mode custom_compile \
   --model-name tinyllama_trtllm \
   --max-model-len 512
@@ -400,9 +410,10 @@ python3 examples/run_tensorrt_llm_infer.py \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
 
-# 7-c-2) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build -> generate
+# 7-d) (LLM, optional) model id/local HF path -> custom compile -> generate
+#       현재 release surface에 LLM(...).save(...) 가 있으면 동작하지만, 없으면 미지원으로 실패할 수 있습니다.
 python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/tinyllama_trtllm_ckpt \
+  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --build-mode custom_compile \
   --model-name tinyllama_trtllm \
   --max-model-len 512
