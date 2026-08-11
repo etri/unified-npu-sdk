@@ -145,12 +145,14 @@ class CoreLLMRuntimeConfig:
 class LLMRuntimeConfig(CoreLLMRuntimeConfig):
     backend: LLMRuntimeBackendName = "tensorrt"
     backend_options: TensorRTLLMRuntimeOptions | None = None
+    prepared_fetch_input: "PreparedTensorRTLLMFetchInput | None" = None
 
     def __init__(
         self,
         *,
         backend: LLMRuntimeBackendName = "tensorrt",
         backend_options: TensorRTLLMRuntimeOptions | None = None,
+        prepared_fetch_input: "PreparedTensorRTLLMFetchInput | None" = None,
         model_ref_or_path: str | Path | None = None,
         engine_path: str | Path | None = None,
         max_tokens: int = 64,
@@ -170,6 +172,7 @@ class LLMRuntimeConfig(CoreLLMRuntimeConfig):
         )
         self.backend = backend
         self.backend_options = backend_options
+        self.prepared_fetch_input = prepared_fetch_input
 
 
 @dataclass(kw_only=True)

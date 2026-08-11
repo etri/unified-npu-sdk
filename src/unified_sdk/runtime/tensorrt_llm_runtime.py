@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
+from unified_sdk.frontends import classify_tensorrt_llm_source
 from unified_sdk.options import resolve_tensorrt_llm_runtime_options
 from unified_sdk.runtime.registry import register_llm
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle
@@ -67,17 +68,6 @@ def _looks_like_local_path(model_ref: str) -> bool:
     return p.is_absolute() or model_ref.startswith("./") or model_ref.startswith("../") or model_ref.startswith(("artifacts/", "build_output/", "models/"))
 
 
-def _detect_runtime_entry_kind(model_ref: str) -> str:
-    p = Path(model_ref).expanduser()
-    if p.exists():
-        if p.is_dir():
-            markers = ("config.json", "executor_config.json", "engine_config.json")
-            if any((p / marker).exists() for marker in markers) or any(p.glob("*.engine")):
-                return "local_artifact_dir"
-        return "local_model_path"
-    return "model_id"
-
-
 def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, options, model_ref: str) -> Dict[str, Any]:
     llm_kwargs: Dict[str, Any] = {
         "model": model_ref,
@@ -112,7 +102,10 @@ class _TensorRTLLMRuntimeAdapter:
             ) from exc
 
         model_ref = str(cfg.model_ref_or_path)
-        runtime_entry_kind = _detect_runtime_entry_kind(model_ref)
+        if cfg.prepared_fetch_input is not None:
+            runtime_entry_kind = cfg.prepared_fetch_input.source_kind
+        else:
+            runtime_entry_kind, _ = classify_tensorrt_llm_source(model_ref)
         runtime_mode = "artifact_runtime" if runtime_entry_kind == "local_artifact_dir" else "convenience_model_ref_runtime"
         runtime_may_trigger_vendor_build = runtime_entry_kind != "local_artifact_dir"
         if _looks_like_local_path(model_ref):

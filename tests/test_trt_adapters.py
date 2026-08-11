@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -16,8 +17,9 @@ from unified_sdk.build.api import build_unified, build_unified_LLM, fetch_unifie
 from unified_sdk.frontends import prepare_tensorrt_vision_build_input  # noqa: E402
 from unified_sdk.frontends.types import PreparedTensorRTLLMBuildInput, PreparedTensorRTLLMFetchInput  # noqa: E402
 from unified_sdk.options import TensorRTLLMBuildOptions, TensorRTVisionBuildOptions  # noqa: E402
-from unified_sdk.types import BuildConfig, LLMBuildConfig, LLMFetchConfig  # noqa: E402
+from unified_sdk.types import BuildConfig, LLMBuildConfig, LLMFetchConfig, LLMRuntimeConfig  # noqa: E402
 from unified_sdk.runtime.tensorrt_runtime import _TensorRTRuntime  # noqa: E402
+from unified_sdk.runtime.tensorrt_llm_runtime import _TensorRTLLMRuntimeAdapter  # noqa: E402
 from unified_sdk.types import RuntimeHandle  # noqa: E402
 
 
@@ -178,6 +180,49 @@ class TensorRTAdapterTests(unittest.TestCase):
                         ),
                     )
                 )
+
+    def test_llm_runtime_reuses_prepared_fetch_contract_for_local_hf_path(self) -> None:
+        class FakeLLM:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def generate(self, prompt, sampling_params=None):
+                return prompt
+
+            def shutdown(self):
+                return None
+
+        import types
+
+        fake_module = types.SimpleNamespace(
+            LLM=FakeLLM,
+            SamplingParams=lambda **kwargs: SimpleNamespace(**kwargs),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(sys.modules, {"tensorrt_llm": fake_module}):
+            model_dir = Path(tmpdir) / "my-finetuned-qwen"
+            model_dir.mkdir()
+            (model_dir / "config.json").write_text("{}")
+            (model_dir / "tokenizer_config.json").write_text("{}")
+            (model_dir / "model.safetensors").write_bytes(b"weights")
+            rh = _TensorRTLLMRuntimeAdapter().create(
+                LLMRuntimeConfig(
+                    backend="tensorrt",
+                    model_ref_or_path=str(model_dir),
+                    prepared_fetch_input=PreparedTensorRTLLMFetchInput(
+                        kind="runtime_model_ref",
+                        model_ref=str(model_dir),
+                        source_kind="local_model_path",
+                        source_path=model_dir.resolve(),
+                    ),
+                )
+            )
+            try:
+                self.assertEqual(rh.ctx["runtime_entry_kind"], "local_model_path")
+                self.assertEqual(rh.ctx["runtime_mode"], "convenience_model_ref_runtime")
+                self.assertTrue(rh.ctx["runtime_may_trigger_vendor_build"])
+            finally:
+                _TensorRTLLMRuntimeAdapter().destroy(rh)
 
     def test_runtime_dynamic_shape_option_rebinds_buffers(self) -> None:
         class FakeDeviceBuffer:

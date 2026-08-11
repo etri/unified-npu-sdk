@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from unified_sdk.frontends import (  # noqa: E402
+    classify_tensorrt_llm_source,
     resolve_tensorrt_llm_fetch_request,
     resolve_tensorrt_llm_build_request,
     resolve_tensorrt_vision_build_request,
@@ -93,6 +94,36 @@ class TensorRTFrontendTests(unittest.TestCase):
             )
             self.assertEqual(resolved.kind, "runtime_model_ref")
             self.assertEqual(resolved.prepared_input.source_kind, "local_artifact_dir")
+
+    def test_resolve_llm_plain_local_hf_dir_fetch_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir) / "my-finetuned-qwen"
+            model_dir.mkdir()
+            (model_dir / "config.json").write_text("{}")
+            (model_dir / "tokenizer_config.json").write_text("{}")
+            (model_dir / "model-00001-of-00001.safetensors").write_bytes(b"weights")
+            resolved = resolve_tensorrt_llm_fetch_request(
+                TensorRTLLMFrontendFetchRequest(
+                    model_ref=model_dir,
+                )
+            )
+            self.assertEqual(resolved.kind, "runtime_model_ref")
+            self.assertEqual(resolved.prepared_input.source_kind, "local_model_path")
+
+    def test_classify_tensorrt_llm_source_distinguishes_hf_and_artifact_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            hf_dir = root / "hf-model"
+            hf_dir.mkdir()
+            (hf_dir / "config.json").write_text("{}")
+            (hf_dir / "model.safetensors").write_bytes(b"weights")
+
+            artifact_dir = root / "artifact-dir"
+            artifact_dir.mkdir()
+            (artifact_dir / "executor_config.json").write_text("{}")
+
+            self.assertEqual(classify_tensorrt_llm_source(hf_dir)[0], "local_model_path")
+            self.assertEqual(classify_tensorrt_llm_source(artifact_dir)[0], "local_artifact_dir")
 
     def test_resolve_llm_artifact_build_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

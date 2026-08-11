@@ -20,7 +20,7 @@ from .types import (
 
 
 _LOCAL_ENGINE_PREFIXES = {"artifacts", "build_output", "models", ".", ".."}
-_TRTLLM_ARTIFACT_MARKERS = ("config.json", "executor_config.json", "engine_config.json")
+_TRTLLM_ARTIFACT_MARKERS = ("executor_config.json", "engine_config.json")
 
 
 def _normalize_model_name(name: str) -> str:
@@ -228,6 +228,27 @@ def _detect_trtllm_checkpoint_dir(path: Path) -> bool:
         return False
     patterns = ("rank*.safetensors", "rank*.bin", "rank*.pt", "rank*.ckpt")
     return any(any(path.glob(pattern)) for pattern in patterns)
+
+
+def classify_tensorrt_llm_source(model_ref: str | Path) -> tuple[str, Path | None]:
+    model_ref_str = str(model_ref).strip()
+    local_path = Path(model_ref_str).expanduser()
+    source_kind = "model_id"
+    source_path = None
+    if local_path.exists():
+        source_path = local_path.resolve()
+        if _detect_trtllm_checkpoint_dir(source_path):
+            source_kind = "local_checkpoint_dir"
+        elif _detect_trtllm_artifact_dir(source_path):
+            source_kind = "local_artifact_dir"
+        else:
+            source_kind = "local_model_path"
+    elif _looks_like_local_llm_ref(model_ref_str):
+        raise FileNotFoundError(
+            f"TensorRT-LLM local path was requested but does not exist: {local_path}. "
+            "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
+        )
+    return source_kind, source_path
 
 
 def _build_output_engine_path(out_dir: Path, model_name: str, precision: str) -> Path:
@@ -459,22 +480,7 @@ def resolve_tensorrt_llm_fetch_request(request: TensorRTLLMFrontendFetchRequest)
     if not model_ref:
         raise ValueError("TensorRTLLMFrontendFetchRequest.model_ref must be a non-empty string or path")
 
-    local_path = Path(model_ref).expanduser()
-    source_kind = "model_id"
-    source_path = None
-    if local_path.exists():
-        source_path = local_path.resolve()
-        if _detect_trtllm_checkpoint_dir(source_path):
-            source_kind = "local_checkpoint_dir"
-        elif _detect_trtllm_artifact_dir(source_path):
-            source_kind = "local_artifact_dir"
-        else:
-            source_kind = "local_model_path"
-    elif _looks_like_local_llm_ref(model_ref):
-        raise FileNotFoundError(
-            f"TensorRT-LLM local path was requested but does not exist: {local_path}. "
-            "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
-        )
+    source_kind, source_path = classify_tensorrt_llm_source(model_ref)
 
     if source_kind == "local_checkpoint_dir":
         raise ValueError(
@@ -504,22 +510,7 @@ def resolve_tensorrt_llm_build_request(request: TensorRTLLMFrontendBuildRequest)
     if not model_ref:
         raise ValueError("TensorRTLLMFrontendBuildRequest.model_ref must be a non-empty string or path")
 
-    local_path = Path(model_ref).expanduser()
-    source_kind = "model_id"
-    source_path = None
-    if local_path.exists():
-        source_path = local_path.resolve()
-        if _detect_trtllm_checkpoint_dir(source_path):
-            source_kind = "local_checkpoint_dir"
-        elif _detect_trtllm_artifact_dir(source_path):
-            source_kind = "local_artifact_dir"
-        else:
-            source_kind = "local_model_path"
-    elif _looks_like_local_llm_ref(model_ref):
-        raise FileNotFoundError(
-            f"TensorRT-LLM local path was requested but does not exist: {local_path}. "
-            "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
-        )
+    source_kind, source_path = classify_tensorrt_llm_source(model_ref)
 
     artifact_dir = request.out_dir.expanduser().resolve() / request.model_name.strip()
     if source_kind == "local_artifact_dir":
@@ -561,6 +552,7 @@ __all__ = [
     "ResolvedTensorRTVisionBuildRequest",
     "TensorRTLLMFrontendBuildRequest",
     "TensorRTVisionFrontendBuildRequest",
+    "classify_tensorrt_llm_source",
     "list_torchvision_model_zoo_targets",
     "prepare_tensorrt_vision_build_input",
     "resolve_tensorrt_llm_fetch_request",

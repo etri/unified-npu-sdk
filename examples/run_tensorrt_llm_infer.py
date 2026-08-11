@@ -144,6 +144,8 @@ if __name__ == "__main__":
     args = _build_parser().parse_args()
 
     try:
+        from unified_sdk.frontends import resolve_tensorrt_llm_fetch_request
+        from unified_sdk.frontends.types import TensorRTLLMFrontendFetchRequest
         from unified_sdk.options import TensorRTLLMRuntimeOptions
         from unified_sdk.types import LLMRuntimeConfig
         from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM
@@ -151,9 +153,13 @@ if __name__ == "__main__":
         print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
         sys.exit(1)
 
+    prepared_fetch = resolve_tensorrt_llm_fetch_request(
+        TensorRTLLMFrontendFetchRequest(model_ref=args.model_ref_or_path)
+    )
     cfg = LLMRuntimeConfig(
         backend="tensorrt",
         model_ref_or_path=args.model_ref_or_path,
+        prepared_fetch_input=prepared_fetch.prepared_input,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
