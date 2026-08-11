@@ -32,7 +32,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
 - `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
 - LLM custom compile 의 기본 smoke 경로는 `local HF path -> checkpoint prepare -> trtllm-build CLI compile` 입니다.
-- checkpoint prepare 는 `examples/run_tensorrt_llm_prepare_checkpoint.py` helper 를 통해 **official TensorRT-LLM public repo workflow** 를 감싸는 방식으로 제공합니다.
+- checkpoint prepare 는 `examples/run_tensorrt_llm_prepare_checkpoint.py` helper 를 통해 **official TensorRT-LLM public repo 의 llama convert workflow** 를 감싸는 방식으로 제공합니다.
 - 로컬 prebuilt artifact fetch(`7-b`)는 compile과 독립 경로입니다.
 
 ---
@@ -102,7 +102,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- checkpoint prepare helper 는 installed API 를 우선 시도하고, 필요하면 **official TensorRT-LLM public repo checkout** 의 workflow 를 사용합니다. 필요 시 `TENSORRT_LLM_SRC`로 별도 vendor source root 를 override 할 수 있습니다.
+- checkpoint prepare helper 는 **official TensorRT-LLM public repo checkout** 에 있는 llama `convert_checkpoint.py` workflow 를 사용합니다. 기본 기대 경로는 `../TensorRT-LLM`이며, 필요 시 `TENSORRT_LLM_SRC` 또는 `--tensorrt-llm-src`로 override 할 수 있습니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
@@ -349,7 +349,7 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `7-b`는 `local HF path`를 직접 쓰는 경로입니다.
 - 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c-prepare`는 checkpoint 준비 단계입니다.
-  `local HF path -> local TRT-LLM checkpoint dir` 를 만들고, 공식 TensorRT-LLM public repo workflow를 helper로 감쌉니다.
+  `local HF path -> local TRT-LLM checkpoint dir` 를 만들고, 공식 TensorRT-LLM public repo 의 llama `convert_checkpoint.py` workflow를 helper로 감쌉니다.
 - `7-c`는 `custom_compile` 경로입니다.
   스모크 기본 경로는 `local TRT-LLM checkpoint dir -> trtllm-build -> artifact runtime` 흐름입니다.
 - `prepare` helper 자체는 repo-side Python script 이므로, helper/README 수정만으로는 `llm` 이미지를 다시 빌드할 필요가 없습니다.
@@ -400,6 +400,7 @@ git clone https://github.com/NVIDIA/TensorRT-LLM.git ../TensorRT-LLM
 
 # 7-c-prepare-2) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
 #                  같은 TinyLlama local HF path 를 재사용합니다.
+#                  helper 는 ../TensorRT-LLM/examples/models/core/llama/convert_checkpoint.py 를 기준으로 동작합니다.
 python3 examples/run_tensorrt_llm_prepare_checkpoint.py \
   --model-ref ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output-dir ./models/tinyllama_trtllm_ckpt \
