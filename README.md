@@ -63,7 +63,6 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 │   ├── run_tensorrt_llm_prepare_checkpoint.py # local HF path -> TRT-LLM checkpoint dir helper
 │   ├── run_tensorrt_llm_infer.py   # TensorRT-LLM generate
 │   ├── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
-│   └── llama/convert_checkpoint.py # TensorRT-LLM llama/tinyllama checkpoint 준비 wrapper
 └── src/unified_sdk/
     ├── __init__.py
     ├── types.py                    # 공통 데이터 구조 (typed backend_options / prepared_input)
@@ -102,7 +101,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- checkpoint prepare helper 는 **llm 이미지에 bake-in 된 official TensorRT-LLM public repo checkout** 의 llama `convert_checkpoint.py` workflow 를 사용합니다. 기본 경로는 `/opt/TensorRT-LLM`이며, 필요 시 `TENSORRT_LLM_SRC` 또는 `--tensorrt-llm-src`로 override 할 수 있습니다.
+- checkpoint prepare helper 는 **llm 이미지에 bake-in 된 official TensorRT-LLM public repo checkout** 의 model-family별 `convert_checkpoint.py` workflow 를 사용합니다. 현재 smoke 기본 경로는 `qwen` family 이며, 기본 경로는 `/opt/TensorRT-LLM`입니다. 필요 시 `TENSORRT_LLM_SRC` 또는 `--tensorrt-llm-src`로 override 할 수 있습니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
@@ -347,9 +346,9 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
 - `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
 - `7-b`는 `local HF path`를 직접 쓰는 경로입니다.
-- 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
+- 따라서 `7-b`를 돌리기 전에는 먼저 Qwen2.5 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c-prepare`는 checkpoint 준비 단계입니다.
-  `local HF path -> local TRT-LLM checkpoint dir` 를 만들고, 공식 TensorRT-LLM public repo 의 llama `convert_checkpoint.py` workflow를 helper로 감쌉니다.
+  `local HF path -> local TRT-LLM checkpoint dir` 를 만들고, 공식 TensorRT-LLM public repo 의 model-family별 `convert_checkpoint.py` workflow를 helper로 감쌉니다.
 - `7-c`는 `custom_compile` 경로입니다.
   스모크 기본 경로는 `local TRT-LLM checkpoint dir -> trtllm-build -> artifact runtime` 흐름입니다.
 - `prepare` helper 는 repo-side Python script 이지만, 기본 vendor workflow 는 `llm` 이미지 안의 `/opt/TensorRT-LLM` checkout 을 사용합니다. 따라서 이 section을 처음 쓰려면 `llm` 이미지를 한 번 다시 빌드하는 것이 좋습니다.
@@ -366,57 +365,58 @@ python3 -c "import tensorrt_llm; print('tensorrt_llm OK')"
 
 # 7-a) (LLM) model id -> generate
 python3 examples/run_tensorrt_llm_build.py \
-  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --model-ref Qwen/Qwen2.5-0.5B-Instruct \
   --build-mode fetch
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --engine-path Qwen/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
 # 7-b-1) (LLM) local HF path 준비
-#        예: TinyLlama repo snapshot 을 ./models 아래로 준비
-hf download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --local-dir ./models/TinyLlama-1.1B-Chat-v1.0
+#        예: Qwen2.5-0.5B-Instruct snapshot 을 ./models 아래로 준비
+hf download Qwen/Qwen2.5-0.5B-Instruct \
+  --local-dir ./models/Qwen2.5-0.5B-Instruct
 
 # 7-b-2) (LLM) local HF path -> fetch -> generate
 python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/TinyLlama-1.1B-Chat-v1.0 \
+  --model-ref ./models/Qwen2.5-0.5B-Instruct \
   --build-mode fetch
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path ./models/TinyLlama-1.1B-Chat-v1.0 \
+  --engine-path ./models/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
 # 메모) prebuilt TensorRT-LLM artifact dir 가 이미 있으면 local HF path 대신 바로 runtime 입력으로 사용할 수 있습니다.
 #       artifact dir 는 아래 7-c 결과물이거나, vendor가 미리 생성한 artifact dir 여도 됩니다.
 # python3 examples/run_tensorrt_llm_infer.py \
-#   --engine-path artifacts/tinyllama_trtllm \
-#   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+#   --engine-path artifacts/qwen25_trtllm \
+#   --tokenizer-path Qwen/Qwen2.5-0.5B-Instruct \
 #   --prompt "What is the capital of South Korea?"
 
 # 7-c-prepare-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
-#                  같은 TinyLlama local HF path 를 재사용합니다.
-#                  helper 는 기본적으로 /opt/TensorRT-LLM/examples/models/core/llama/convert_checkpoint.py 를 사용합니다.
+#                  같은 Qwen2.5 local HF path 를 재사용합니다.
+#                  helper 는 기본적으로 /opt/TensorRT-LLM/examples/models/core/qwen/convert_checkpoint.py 를 사용합니다.
 python3 examples/run_tensorrt_llm_prepare_checkpoint.py \
-  --model-ref ./models/TinyLlama-1.1B-Chat-v1.0 \
-  --output-dir ./models/tinyllama_trtllm_ckpt \
+  --model-ref ./models/Qwen2.5-0.5B-Instruct \
+  --output-dir ./models/qwen25_trtllm_ckpt \
+  --model-family qwen \
   --dtype float16
 
 # 7-c-1) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build
 python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/tinyllama_trtllm_ckpt \
+  --model-ref ./models/qwen25_trtllm_ckpt \
   --build-mode custom_compile \
-  --model-name tinyllama_trtllm \
+  --model-name qwen25_trtllm \
   --max-model-len 512
 
 # 7-c-2) (LLM) compiled artifact -> generate
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path artifacts/tinyllama_trtllm \
-  --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --engine-path artifacts/qwen25_trtllm \
+  --tokenizer-path Qwen/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
 # 8) (LLM) artifact / model ref inspect
-python3 examples/inspect_tensorrt_llm_model.py artifacts/tinyllama_trtllm --load
+python3 examples/inspect_tensorrt_llm_model.py artifacts/qwen25_trtllm --load
 ```
 
 `run_tensorrt_llm_infer.py`는 기본적으로 `--chat-template auto` 동작을 사용합니다.
