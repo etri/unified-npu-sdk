@@ -25,7 +25,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
 | LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
 | Vision smoke | 표준 fetch / provided `.engine` fetch / ONNX compile / PTH->ONNX->`.engine` / infer / inspect 구현 |
-| LLM smoke | `7-a` model id fetch, `7-b` prepared HF local path fetch, `7-c` custom HF-format local path infer, `7-d` existing checkpoint 기반 보조 경로, `8` infer/inspect 흐름 구현 |
+| LLM smoke | `7-a` model id fetch, `7-b` prepared HF local path fetch, `7-c-prepare` HF-style folder prepare 예시, `7-c` custom HF-format local path infer, `7-d` existing checkpoint 기반 보조 경로, `8` infer/inspect 흐름 구현 |
 
 ### 주요 이슈
 
@@ -346,6 +346,9 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `runtime(generate)`는 실행 표면입니다. 다만 TensorRT-LLM vendor runtime 특성상 `model id`나 `local HF path`를 직접 주면 내부 load/build-like 동작이 다시 보일 수 있습니다.
 - `7-a`는 `model id -> fetch -> generate` 기본 경로입니다.
 - `7-b`는 **prepared HF local path**를 직접 쓰는 공식 smoke 경로입니다.
+- `7-c-prepare`는 **사용자 커스텀 모델용 HF-style local folder prepare 예시**입니다.
+  `7-b`에서 준비한 public HF snapshot을 기준으로, tokenizer/config 파일과 weight 파일을 새 폴더로 복사해
+  local HF-format 계약을 맞추는 과정을 보여줍니다.
 - `7-c`는 **사용자 커스텀 모델을 HF-format 폴더 구조로 정리한 뒤** 같은 local path 계약으로 추론해보는 경로입니다.
 - `7-d`는 **pre-existing TRT-LLM checkpoint가 이미 있을 때만** 시도할 수 있는 보조/legacy 경로입니다. 최근 TensorRT-LLM 주류가 추구하는 방향은 아닙니다.
 
@@ -382,13 +385,19 @@ python3 examples/run_tensorrt_llm_infer.py \
   --engine-path ./models/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
+# 7-c-prepare) (LLM) HF-style local folder prepare 예시
+#              7-b 에서 받은 public HF snapshot 을 기준으로, 새 폴더를 만들고 필수 파일만 복사
+mkdir -p ./models/my-finetuned-qwen
+cp ./models/Qwen2.5-0.5B-Instruct/config.json ./models/my-finetuned-qwen/
+cp ./models/Qwen2.5-0.5B-Instruct/tokenizer.json ./models/my-finetuned-qwen/ 2>/dev/null || true
+cp ./models/Qwen2.5-0.5B-Instruct/tokenizer_config.json ./models/my-finetuned-qwen/
+cp ./models/Qwen2.5-0.5B-Instruct/special_tokens_map.json ./models/my-finetuned-qwen/ 2>/dev/null || true
+cp ./models/Qwen2.5-0.5B-Instruct/generation_config.json ./models/my-finetuned-qwen/ 2>/dev/null || true
+cp ./models/Qwen2.5-0.5B-Instruct/*.safetensors ./models/my-finetuned-qwen/
+cp ./models/Qwen2.5-0.5B-Instruct/*.index.json ./models/my-finetuned-qwen/ 2>/dev/null || true
+
 # 7-c) (LLM) 사용자 커스텀 모델을 HF-format local path 로 정리한 뒤 infer
-#       예: 아래 파일들이 있는 폴더를 준비
-#         - config.json
-#         - tokenizer.json / tokenizer_config.json / special_tokens_map.json
-#         - generation_config.json (선택)
-#         - model-*.safetensors 또는 pytorch_model*.bin
-#       그런 다음 7-b 와 같은 local path 계약으로 fetch -> generate
+#       위와 같은 폴더 계약이 맞으면 7-b 와 같은 local path 계약으로 fetch -> generate
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref ./models/my-finetuned-qwen \
   --build-mode fetch
