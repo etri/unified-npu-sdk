@@ -346,9 +346,8 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - `7-b`는 `local HF path`를 직접 쓰는 경로입니다.
 - 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c`는 `custom_compile` 경로입니다.
-  스모크 기본 경로는 `local HF path -> vendor convert_checkpoint.py -> local TensorRT-LLM checkpoint dir -> trtllm-build` 흐름입니다.
-- `7-d`는 `model id/local HF path -> custom_compile` convenience 경로입니다.
-  현재 설치된 TensorRT-LLM release surface에 따라 `LLM(...).save(...)` 가 없으면 미지원일 수 있습니다.
+  스모크 기본 경로는 `local HF path -> TRT-LLM checkpoint prepare -> trtllm-build -> artifact runtime` 흐름입니다.
+  checkpoint prepare 단계는 설치된 TensorRT-LLM API surface와 모델 지원성에 영향을 받습니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -392,32 +391,25 @@ python3 examples/run_tensorrt_llm_infer.py \
 
 # 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
 #        같은 TinyLlama local HF path 를 재사용합니다.
-#        unified-sdk/examples wrapper 가 matching TensorRT-LLM source checkout을 자동 탐색하고,
-#        필요하면 TENSORRT_LLM_SRC 로 override 할 수 있습니다.
+#        unified-sdk/examples wrapper 는 installed TensorRT-LLM conversion API를 우선 사용하고,
+#        필요하면 matching vendor source checkout fallback 도 시도합니다.
 python3 examples/llama/convert_checkpoint.py \
   --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output_dir ./models/tinyllama_trtllm_ckpt \
   --dtype float16
 
-# 7-c-2) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build -> generate
+# 7-c-2) (LLM) local TensorRT-LLM checkpoint dir -> custom compile via trtllm-build
 python3 examples/run_tensorrt_llm_build.py \
   --model-ref ./models/tinyllama_trtllm_ckpt \
   --build-mode custom_compile \
   --model-name tinyllama_trtllm \
   --max-model-len 512
 
+# 7-c-3) (LLM) compiled artifact -> generate
 python3 examples/run_tensorrt_llm_infer.py \
   --engine-path artifacts/tinyllama_trtllm \
   --tokenizer-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --prompt "What is the capital of South Korea?"
-
-# 7-d) (LLM, optional) model id/local HF path -> custom compile -> generate
-#       현재 release surface에 LLM(...).save(...) 가 있으면 동작하지만, 없으면 미지원으로 실패할 수 있습니다.
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --build-mode custom_compile \
-  --model-name tinyllama_trtllm \
-  --max-model-len 512
 
 # 8) (LLM) artifact / model ref inspect
 python3 examples/inspect_tensorrt_llm_model.py artifacts/tinyllama_trtllm --load
