@@ -12,10 +12,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from unified_sdk.frontends import (  # noqa: E402
+    resolve_tensorrt_llm_fetch_request,
     resolve_tensorrt_llm_build_request,
     resolve_tensorrt_vision_build_request,
 )
 from unified_sdk.frontends.types import (  # noqa: E402
+    TensorRTLLMFrontendFetchRequest,
     TensorRTLLMFrontendBuildRequest,
     TensorRTVisionFrontendBuildRequest,
 )
@@ -69,12 +71,9 @@ class TensorRTFrontendTests(unittest.TestCase):
             self.assertEqual(resolved.prepared_input.compile_source.input_name, "images")
 
     def test_resolve_llm_fetch_request(self) -> None:
-        resolved = resolve_tensorrt_llm_build_request(
-            TensorRTLLMFrontendBuildRequest(
+        resolved = resolve_tensorrt_llm_fetch_request(
+            TensorRTLLMFrontendFetchRequest(
                 model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-                out_dir=Path("artifacts"),
-                model_name="tinyllama",
-                build_mode="fetch",
             )
         )
         self.assertEqual(resolved.kind, "runtime_model_ref")
@@ -87,12 +86,9 @@ class TensorRTFrontendTests(unittest.TestCase):
             artifact_dir.mkdir()
             (artifact_dir / "rank0.engine").write_bytes(b"engine")
             (artifact_dir / "config.json").write_text("{}")
-            resolved = resolve_tensorrt_llm_build_request(
-                TensorRTLLMFrontendBuildRequest(
+            resolved = resolve_tensorrt_llm_fetch_request(
+                TensorRTLLMFrontendFetchRequest(
                     model_ref=artifact_dir,
-                    out_dir=Path(tmpdir) / "artifacts",
-                    model_name="tinyllama",
-                    build_mode="fetch",
                 )
             )
             self.assertEqual(resolved.kind, "runtime_model_ref")
@@ -106,7 +102,6 @@ class TensorRTFrontendTests(unittest.TestCase):
                     model_ref="meta-llama/Llama-3.2-1B-Instruct",
                     out_dir=out_dir,
                     model_name="llama",
-                    build_mode="custom_compile",
                 )
             )
             self.assertEqual(resolved.kind, "artifact_build")
@@ -124,7 +119,6 @@ class TensorRTFrontendTests(unittest.TestCase):
                     model_ref=checkpoint_dir,
                     out_dir=Path(tmpdir) / "artifacts",
                     model_name="llama",
-                    build_mode="custom_compile",
                 )
             )
             self.assertEqual(resolved.kind, "artifact_build")
@@ -138,12 +132,9 @@ class TensorRTFrontendTests(unittest.TestCase):
             (checkpoint_dir / "config.json").write_text("{}")
             (checkpoint_dir / "rank0.safetensors").write_bytes(b"weights")
             with self.assertRaises(ValueError):
-                resolve_tensorrt_llm_build_request(
-                    TensorRTLLMFrontendBuildRequest(
+                resolve_tensorrt_llm_fetch_request(
+                    TensorRTLLMFrontendFetchRequest(
                         model_ref=checkpoint_dir,
-                        out_dir=Path(tmpdir) / "artifacts",
-                        model_name="llama",
-                        build_mode="fetch",
                     )
                 )
 
@@ -159,7 +150,6 @@ class TensorRTFrontendTests(unittest.TestCase):
                         model_ref=artifact_dir,
                         out_dir=Path(tmpdir) / "artifacts",
                         model_name="tinyllama",
-                        build_mode="custom_compile",
                     )
                 )
 

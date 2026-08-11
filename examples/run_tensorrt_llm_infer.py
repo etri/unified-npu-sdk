@@ -41,7 +41,8 @@ if str(SRC_DIR) not in sys.path:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run TensorRT-LLM generate through Unified SDK LLM API.")
-    parser.add_argument("--engine-path", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--model-ref-or-path", dest="model_ref_or_path", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--engine-path", dest="model_ref_or_path", help=argparse.SUPPRESS)
     parser.add_argument("--tokenizer-path", default=None)
     parser.add_argument("--prompt", default="What is the capital of South Korea?")
     parser.add_argument("--chat-template", choices=("auto", "on", "off"), default="auto")
@@ -58,11 +59,11 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_tokenizer_ref(engine_path: str, tokenizer_path: str | None) -> str | None:
+def _resolve_tokenizer_ref(model_ref_or_path: str, tokenizer_path: str | None) -> str | None:
     if tokenizer_path:
         return tokenizer_path
 
-    p = Path(engine_path).expanduser()
+    p = Path(model_ref_or_path).expanduser()
     if p.exists():
         if p.is_dir():
             for marker in ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"):
@@ -71,7 +72,7 @@ def _resolve_tokenizer_ref(engine_path: str, tokenizer_path: str | None) -> str 
             return None
         return None
 
-    return engine_path
+    return model_ref_or_path
 
 
 def _format_prompt(prompt: str, tokenizer_ref: str | None, trust_remote_code: bool, chat_template: str) -> str:
@@ -152,7 +153,7 @@ if __name__ == "__main__":
 
     cfg = LLMRuntimeConfig(
         backend="tensorrt",
-        model_ref_or_path=args.engine_path,
+        model_ref_or_path=args.model_ref_or_path,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
@@ -167,7 +168,7 @@ if __name__ == "__main__":
         ),
     )
     rh = create_runtime_LLM(cfg)
-    tokenizer_ref = _resolve_tokenizer_ref(args.engine_path, args.tokenizer_path)
+    tokenizer_ref = _resolve_tokenizer_ref(args.model_ref_or_path, args.tokenizer_path)
     formatted_prompt = _format_prompt(
         args.prompt,
         tokenizer_ref=tokenizer_ref,
@@ -186,7 +187,7 @@ if __name__ == "__main__":
 
         print("== TensorRT-LLM generate ==")
         print(f"repo_root = {REPO_ROOT}")
-        print(f"engine = {args.engine_path}")
+        print(f"model_ref_or_path = {args.model_ref_or_path}")
         print(f"tokenizer_ref = {tokenizer_ref}")
         print(f"runtime_mode = {rh.ctx.get('runtime_mode')}")
         print(f"runtime_entry_kind = {rh.ctx.get('runtime_entry_kind')}")

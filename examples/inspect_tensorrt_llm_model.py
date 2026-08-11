@@ -39,7 +39,7 @@ if str(SRC_DIR) not in sys.path:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect a TensorRT-LLM model ref or prebuilt artifact dir.")
-    parser.add_argument("engine_path", nargs="?", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("model_ref_or_path", nargs="?", default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--tokenizer-path", default=None)
     parser.add_argument("--max-model-len", type=int, default=512)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
@@ -60,9 +60,9 @@ if __name__ == "__main__":
         print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
         sys.exit(1)
 
-    p = Path(args.engine_path).expanduser()
+    p = Path(args.model_ref_or_path).expanduser()
     print("== TensorRT-LLM inspect ==")
-    print(f"path_arg = {args.engine_path}")
+    print(f"path_arg = {args.model_ref_or_path}")
     print(f"resolved_exists = {p.exists()}")
     print(f"is_dir = {p.is_dir()}")
     print(f"tokenizer_path = {args.tokenizer_path}")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     if args.load:
         cfg = LLMRuntimeConfig(
             backend="tensorrt",
-            model_ref_or_path=args.engine_path,
+            model_ref_or_path=args.model_ref_or_path,
             backend_options=TensorRTLLMRuntimeOptions(
                 tokenizer_path=args.tokenizer_path,
                 max_model_len=args.max_model_len,

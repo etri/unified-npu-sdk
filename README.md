@@ -23,7 +23,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 | 구분 | 현재 상태 |
 | --- | --- |
 | Vision API | `build_unified` / `create_runtime` / `infer` / `destroy_runtime` 구현 |
-| LLM API | `build_unified_LLM` / `create_runtime_LLM` / `infer_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 |
+| LLM API | `fetch_unified_LLM` / `build_unified_LLM` / `create_runtime_LLM` / `generate_LLM` / `destroy_runtime_LLM` 구현 (`infer_LLM`은 compatibility alias) |
 | Vision smoke | 표준 fetch / provided `.engine` fetch / ONNX compile / PTH->ONNX->`.engine` / infer / inspect 구현 |
 | LLM smoke | `7-a` model id fetch, `7-b` prepared HF local path fetch, `7-c-prepare` HF-style folder prepare 예시, `7-c` custom HF-format local path infer, `7-d` existing checkpoint 기반 보조 경로, `8` infer/inspect 흐름 구현 |
 
@@ -58,7 +58,8 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 │   ├── run_tensorrt_build.py       # ONNX → .engine 컴파일
 │   ├── run_tensorrt_infer.py       # .engine 추론 + latency 측정
 │   └── inspect_engine_io.py        # .engine 입출력 텐서 메타 확인
-│   ├── run_tensorrt_llm_build.py   # model ref/path -> TensorRT-LLM fetch/compile
+│   ├── run_tensorrt_llm_fetch.py   # model ref/path -> TensorRT-LLM runtime fetch contract
+│   ├── run_tensorrt_llm_build.py   # existing checkpoint -> TensorRT-LLM legacy compile
 │   ├── run_tensorrt_llm_prepare_checkpoint.py # legacy/vendor checkpoint prepare helper
 │   ├── run_tensorrt_llm_infer.py   # TensorRT-LLM generate
 │   ├── inspect_tensorrt_llm_model.py # TensorRT-LLM artifact/model ref 점검
@@ -71,7 +72,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
     │   └── types.py
     ├── build/
     │   ├── __init__.py
-    │   ├── api.py                  # build_unified / build_unified_LLM
+    │   ├── api.py                  # build_unified / fetch_unified_LLM / build_unified_LLM
     │   ├── registry.py
     │   └── tensorrt_build.py       # TensorRT 빌드 어댑터
     │   └── tensorrt_llm_build.py   # TensorRT-LLM 빌드/패스스루 어댑터
@@ -362,13 +363,12 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 nvidia-smi || true
 python3 -c "import tensorrt_llm; print('tensorrt_llm OK')"
 
-# 7-a) (LLM) model id -> generate
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref Qwen/Qwen2.5-0.5B-Instruct \
-  --build-mode fetch
+# 7-a) (LLM) model id -> fetch -> generate
+python3 examples/run_tensorrt_llm_fetch.py \
+  --model-ref Qwen/Qwen2.5-0.5B-Instruct
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path Qwen/Qwen2.5-0.5B-Instruct \
+  --model-ref-or-path Qwen/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
 # 7-b-1) (LLM) local HF path 준비
@@ -377,12 +377,11 @@ hf download Qwen/Qwen2.5-0.5B-Instruct \
   --local-dir ./models/Qwen2.5-0.5B-Instruct
 
 # 7-b-2) (LLM) local HF path -> fetch -> generate
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/Qwen2.5-0.5B-Instruct \
-  --build-mode fetch
+python3 examples/run_tensorrt_llm_fetch.py \
+  --model-ref ./models/Qwen2.5-0.5B-Instruct
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path ./models/Qwen2.5-0.5B-Instruct \
+  --model-ref-or-path ./models/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 
 # 7-c-prepare) (LLM) HF-style local folder prepare 예시
@@ -399,24 +398,22 @@ cp ./models/Qwen2.5-0.5B-Instruct/*.index.json ./models/my-finetuned-qwen/ 2>/de
 # 7-c) (LLM) 사용자 커스텀 모델 fetching / inferencing
 #       위와 같이 HF-like folder structure 를 맞춘 뒤,
 #       같은 local path 계약으로 fetch -> generate
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref ./models/my-finetuned-qwen \
-  --build-mode fetch
+python3 examples/run_tensorrt_llm_fetch.py \
+  --model-ref ./models/my-finetuned-qwen
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path ./models/my-finetuned-qwen \
+  --model-ref-or-path ./models/my-finetuned-qwen \
   --prompt "What is the capital of South Korea?"
 
 # 7-d) (LLM, optional / legacy) pre-existing TRT-LLM checkpoint 가 이미 있을 때만 수행
 #       최근 TensorRT-LLM 주류 smoke 는 HF model/model folder direct-load 경로를 더 권장합니다.
 # python3 examples/run_tensorrt_llm_build.py \
 #   --model-ref ./models/qwen25_trtllm_ckpt \
-#   --build-mode custom_compile \
 #   --model-name qwen25_trtllm \
 #   --max-model-len 512
 #
 # python3 examples/run_tensorrt_llm_infer.py \
-#   --engine-path artifacts/qwen25_trtllm \
+#   --model-ref-or-path artifacts/qwen25_trtllm \
 #   --tokenizer-path Qwen/Qwen2.5-0.5B-Instruct \
 #   --prompt "What is the capital of South Korea?"
 
@@ -472,38 +469,27 @@ result = build_unified(cfg)
 print(result.compiled_model_path)         # build_output/yolov7_FP32.engine
 ```
 
-### LLM build / fetch
+### LLM fetch / build
 
 ```python
-from unified_sdk.build.api import build_unified_LLM
-from unified_sdk.frontends import resolve_tensorrt_llm_build_request
-from unified_sdk.frontends.types import TensorRTLLMFrontendBuildRequest
-from unified_sdk.options import TensorRTLLMBuildOptions
-from unified_sdk.types import LLMBuildConfig
+from unified_sdk.build.api import fetch_unified_LLM
+from unified_sdk.frontends import resolve_tensorrt_llm_fetch_request
+from unified_sdk.frontends.types import TensorRTLLMFrontendFetchRequest
+from unified_sdk.types import LLMFetchConfig
 
-resolved = resolve_tensorrt_llm_build_request(
-    TensorRTLLMFrontendBuildRequest(
-        model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        out_dir=Path("artifacts"),
-        model_name="tinyllama_trtllm",
-        build_mode="fetch",
+resolved = resolve_tensorrt_llm_fetch_request(
+    TensorRTLLMFrontendFetchRequest(
+        model_ref="Qwen/Qwen2.5-0.5B-Instruct",
     )
 )
 
-cfg = LLMBuildConfig(
+cfg = LLMFetchConfig(
     backend="tensorrt",
-    model_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    out_dir="artifacts",
-    model_name="tinyllama_trtllm",
-    backend_options=TensorRTLLMBuildOptions(
-        build_mode="fetch",
-        max_model_len=512,
-        tensor_parallel_size=1,
-    ),
+    model_ref="Qwen/Qwen2.5-0.5B-Instruct",
     prepared_input=resolved.prepared_input,
 )
-result = build_unified_LLM(cfg)
-print(result.compiled_model_path)
+result = fetch_unified_LLM(cfg)
+print(result.model_ref_or_path)
 ```
 
 LLM build/runtime phase는 이렇게 읽으면 됩니다.
@@ -558,7 +544,7 @@ from unified_sdk.types import LLMRuntimeConfig
 
 cfg = LLMRuntimeConfig(
     backend="tensorrt",
-    model_ref_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    model_ref_or_path="Qwen/Qwen2.5-0.5B-Instruct",
     max_tokens=32,
     temperature=0.0,
     top_p=1.0,
@@ -583,7 +569,8 @@ print(result)
 | Vision `.engine` | 생성 | `create_runtime(cfg)` | `trt.Runtime(...).deserialize_cuda_engine(...)`, `engine.create_execution_context()` |
 | Vision `.engine` | 추론 | `infer(rh, input_array)` | `execute_async_v3(...)` 또는 `execute_v2(...)` |
 | Vision `.engine` | 종료 | `destroy_runtime(rh)` | device buffer `free()` 후 ctx clear |
-| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | model ref/local HF-format path pass-through, 또는 existing TRT-LLM checkpoint 기준 legacy `trtllm-build --checkpoint_dir ... --output_dir ...` |
+| LLM / TensorRT-LLM | fetch | `fetch_unified_LLM(cfg)` | model ref/local HF-format path/local artifact dir pass-through |
+| LLM / TensorRT-LLM | 빌드 | `build_unified_LLM(cfg)` | existing TRT-LLM checkpoint 기준 legacy `trtllm-build --checkpoint_dir ... --output_dir ...` |
 | LLM / TensorRT-LLM | 생성 | `create_runtime_LLM(cfg)` | `tensorrt_llm.LLM(model=..., tokenizer=..., ...)` |
 | LLM / TensorRT-LLM | 생성/추론 | `generate_LLM(rh, prompt, **overrides)` | `SamplingParams(...)`, `llm.generate(...)` |
 | LLM / TensorRT-LLM | 종료 | `destroy_runtime_LLM(rh)` | `llm.shutdown/close/dispose` best-effort |
@@ -626,6 +613,6 @@ Apache License 2.0. 자세한 내용은 LICENSE 파일 참조.
   패키지 import 와 `--help` 가 동작합니다. `tensorrt_llm`도 LLM 어댑터 메서드 내부에서 lazy import 합니다.
 - 예제 스크립트는 CLI 인자를 지원합니다. 자세한 옵션은 `python3 examples/run_tensorrt_build.py --help`,
   `python3 examples/run_tensorrt_infer.py --help`, `python3 examples/inspect_engine_io.py --help`,
-  `python3 examples/run_tensorrt_llm_build.py --help`, `python3 examples/run_tensorrt_llm_infer.py --help`,
-  `python3 examples/inspect_tensorrt_llm_model.py --help`로 확인하세요.
+  `python3 examples/run_tensorrt_llm_fetch.py --help`, `python3 examples/run_tensorrt_llm_build.py --help`,
+  `python3 examples/run_tensorrt_llm_infer.py --help`, `python3 examples/inspect_tensorrt_llm_model.py --help`로 확인하세요.
 - 다른 백엔드는 각 vendor 브랜치(`rbln-only`, `qb-only`, `furiosa-only`, `furiosa-llm-only`)에서 작업하세요.

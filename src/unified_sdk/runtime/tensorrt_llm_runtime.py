@@ -131,7 +131,7 @@ class _TensorRTLLMRuntimeAdapter:
 
         return LLMRuntimeHandle(
             backend=self.name,
-            engine_path=model_ref,
+            model_ref_or_path=model_ref,
             ctx={
                 "llm": llm,
                 "llm_kwargs": llm_kwargs,
@@ -168,7 +168,7 @@ class _TensorRTLLMRuntimeAdapter:
             sampling = SamplingParams(**sampling_dict)
             return llm.generate(prompt, sampling_params=sampling)
         except Exception as exc:
-            raise RuntimeError(f"TensorRT-LLM generate failed for {rh.engine_path}: {exc}") from exc
+            raise RuntimeError(f"TensorRT-LLM generate failed for {rh.model_ref_or_path}: {exc}") from exc
 
     def destroy(self, rh: LLMRuntimeHandle) -> None:
         llm = (rh.ctx or {}).get("llm")

@@ -12,11 +12,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from unified_sdk.build.api import build_unified, build_unified_LLM  # noqa: E402
+from unified_sdk.build.api import build_unified, build_unified_LLM, fetch_unified_LLM  # noqa: E402
 from unified_sdk.frontends import prepare_tensorrt_vision_build_input  # noqa: E402
-from unified_sdk.frontends.types import PreparedTensorRTLLMBuildInput  # noqa: E402
+from unified_sdk.frontends.types import PreparedTensorRTLLMBuildInput, PreparedTensorRTLLMFetchInput  # noqa: E402
 from unified_sdk.options import TensorRTLLMBuildOptions, TensorRTVisionBuildOptions  # noqa: E402
-from unified_sdk.types import BuildConfig, LLMBuildConfig  # noqa: E402
+from unified_sdk.types import BuildConfig, LLMBuildConfig, LLMFetchConfig  # noqa: E402
 from unified_sdk.runtime.tensorrt_runtime import _TensorRTRuntime  # noqa: E402
 from unified_sdk.types import RuntimeHandle  # noqa: E402
 
@@ -71,28 +71,23 @@ class TensorRTAdapterTests(unittest.TestCase):
                     )
                 )
 
-    def test_llm_build_fetch_passthrough(self) -> None:
-        result = build_unified_LLM(
-            LLMBuildConfig(
+    def test_llm_fetch_passthrough(self) -> None:
+        result = fetch_unified_LLM(
+            LLMFetchConfig(
                 backend="tensorrt",
-                model_or_path="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-                out_dir="artifacts",
-                model_name="tinyllama",
-                backend_options=TensorRTLLMBuildOptions(build_mode="fetch", tensor_parallel_size=2, max_model_len=1024),
-                prepared_input=PreparedTensorRTLLMBuildInput(
+                model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                prepared_input=PreparedTensorRTLLMFetchInput(
                     kind="runtime_model_ref",
                     model_ref="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
                     source_kind="model_id",
-                    artifact_dir=None,
                 ),
             )
         )
-        self.assertEqual(result.compiled_model_path, "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+        self.assertEqual(result.model_ref_or_path, "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
         self.assertEqual(result.meta_data["prepared_kind"], "runtime_model_ref")
         self.assertEqual(result.meta_data["resolved_phase"], "fetch_contract_only")
         self.assertFalse(result.meta_data["artifact_emitted"])
         self.assertTrue(result.meta_data["runtime_may_trigger_vendor_build"])
-        self.assertEqual(result.meta_data["backend_options"]["tensor_parallel_size"], 2)
 
     def test_llm_artifact_build_requires_prepared_input(self) -> None:
         with self.assertRaises(ValueError):
@@ -102,7 +97,7 @@ class TensorRTAdapterTests(unittest.TestCase):
                     model_or_path="repo/model",
                     out_dir="artifacts",
                     model_name="demo",
-                    backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile"),
+                    backend_options=TensorRTLLMBuildOptions(),
                 )
             )
 
@@ -119,7 +114,7 @@ class TensorRTAdapterTests(unittest.TestCase):
                         model_or_path=str(checkpoint_dir),
                         out_dir=root / "artifacts",
                         model_name="llama",
-                        backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile", max_model_len=2048),
+                        backend_options=TensorRTLLMBuildOptions(max_model_len=2048),
                         prepared_input=PreparedTensorRTLLMBuildInput(
                             kind="artifact_build",
                             model_ref=str(checkpoint_dir),
@@ -138,7 +133,7 @@ class TensorRTAdapterTests(unittest.TestCase):
             self.assertTrue(result.meta_data["artifact_emitted"])
             self.assertFalse(result.meta_data["runtime_may_trigger_vendor_build"])
 
-    def test_llm_prepared_fetch_rejects_custom_compile_mode(self) -> None:
+    def test_llm_build_rejects_fetch_contract(self) -> None:
         with self.assertRaises(ValueError):
             build_unified_LLM(
                 LLMBuildConfig(
@@ -146,9 +141,9 @@ class TensorRTAdapterTests(unittest.TestCase):
                     model_or_path="repo/model",
                     out_dir="artifacts",
                     model_name="demo",
-                    backend_options=TensorRTLLMBuildOptions(build_mode="custom_compile"),
+                    backend_options=TensorRTLLMBuildOptions(),
                     prepared_input=PreparedTensorRTLLMBuildInput(
-                        kind="runtime_model_ref",
+                        kind="runtime_model_ref",  # type: ignore[arg-type]
                         model_ref="repo/model",
                         source_kind="model_id",
                     ),
@@ -169,7 +164,6 @@ class TensorRTAdapterTests(unittest.TestCase):
                         out_dir=root / "artifacts",
                         model_name="llama",
                         backend_options=TensorRTLLMBuildOptions(
-                            build_mode="custom_compile",
                             tensor_parallel_size=2,
                             dtype="float16",
                         ),

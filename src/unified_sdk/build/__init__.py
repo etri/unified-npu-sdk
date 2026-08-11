@@ -7,7 +7,7 @@ Each backend registers its build adapter in the registry at import time.
 This TensorRT-only worktree exposes TensorRT vision and TensorRT-LLM adapters.
 """
 
-from .api import build_unified, build_unified_LLM  # Re-export high-level APIs
+from .api import build_unified, build_unified_LLM, fetch_unified_LLM  # Re-export high-level APIs
 
 # Internal adapters (auto-registration)
 from . import tensorrt_build as _tensorrt  # noqa: F401

@@ -47,16 +47,12 @@ class TensorRTOptionTests(unittest.TestCase):
 
     def test_llm_build_options_reject_unknown_legacy_extra(self) -> None:
         with self.assertRaises(ValueError):
-            TensorRTLLMBuildOptions.from_legacy_extra({"build_mode": "fetch", "foo": "bar"})
+            TensorRTLLMBuildOptions.from_legacy_extra({"foo": "bar"})
 
     def test_llm_build_options_carry_parallel_and_context_limits(self) -> None:
         options = TensorRTLLMBuildOptions(tensor_parallel_size=2, max_model_len=4096).normalized()
         self.assertEqual(options.tensor_parallel_size, 2)
         self.assertEqual(options.max_model_len, 4096)
-
-    def test_llm_build_options_accept_legacy_compile_alias(self) -> None:
-        options = TensorRTLLMBuildOptions(build_mode="llm_api_compile").normalized()
-        self.assertEqual(options.build_mode, "custom_compile")
 
     def test_runtime_resolvers_return_defaults_without_extra_surface(self) -> None:
         self.assertTrue(resolve_tensorrt_vision_runtime_options(None).use_execute_v3)

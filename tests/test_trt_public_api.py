@@ -13,26 +13,33 @@ if str(SRC) not in sys.path:
 
 from unified_sdk.build import api as build_api  # noqa: E402
 from unified_sdk.runtime import api as runtime_api  # noqa: E402
-from unified_sdk.types import BuildResult, LLMBuildConfig, LLMRuntimeConfig, LLMRuntimeHandle  # noqa: E402
+from unified_sdk.types import BuildResult, LLMBuildConfig, LLMFetchConfig, LLMFetchResult, LLMRuntimeConfig, LLMRuntimeHandle  # noqa: E402
 
 
 class TensorRTPublicApiTests(unittest.TestCase):
     def test_build_unified_llm_uses_registry_dispatch(self) -> None:
         class FakeAdapter:
+            def fetch(self, cfg):
+                return LLMFetchResult(backend="tensorrt", model_ref_or_path=str(cfg.model_ref), meta_data={"path": "ok"})
+
             def build(self, cfg):
                 return BuildResult(backend="tensorrt", compiled_model_path="artifact", meta_data={"path": "ok"})
 
         with patch("unified_sdk.build.api.get_llm_builder", return_value=FakeAdapter()) as patched:
+            fetch_result = build_api.fetch_unified_LLM(
+                LLMFetchConfig(backend="tensorrt", model_ref="repo/model")
+            )
             result = build_api.build_unified_LLM(
                 LLMBuildConfig(backend="tensorrt", model_or_path="repo/model", model_name="demo")
             )
-        patched.assert_called_once_with("tensorrt")
+        self.assertEqual(patched.call_count, 2)
         self.assertEqual(result.compiled_model_path, "artifact")
+        self.assertEqual(fetch_result.model_ref_or_path, "repo/model")
 
     def test_runtime_llm_uses_registry_dispatch(self) -> None:
         class FakeAdapter:
             def create(self, cfg):
-                return LLMRuntimeHandle(backend="tensorrt", engine_path=str(cfg.model_ref_or_path), ctx={"ok": True})
+                return LLMRuntimeHandle(backend="tensorrt", model_ref_or_path=str(cfg.model_ref_or_path), ctx={"ok": True})
 
             def infer(self, rh, prompt, **overrides):
                 return f"{prompt}:{overrides.get('max_tokens', 'none')}"

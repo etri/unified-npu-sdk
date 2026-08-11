@@ -6,10 +6,13 @@ from typing import Any, Dict
 
 from .types import (
     PreparedTensorRTCompileSource,
+    PreparedTensorRTLLMFetchInput,
     PreparedTensorRTLLMBuildInput,
     PreparedTensorRTVisionBuildInput,
     ProvidedTensorRTArtifact,
+    ResolvedTensorRTLLMFetchRequest,
     ResolvedTensorRTLLMBuildRequest,
+    TensorRTLLMFrontendFetchRequest,
     ResolvedTensorRTVisionBuildRequest,
     TensorRTLLMFrontendBuildRequest,
     TensorRTVisionFrontendBuildRequest,
@@ -451,6 +454,51 @@ def resolve_tensorrt_vision_build_request(request: TensorRTVisionFrontendBuildRe
     )
 
 
+def resolve_tensorrt_llm_fetch_request(request: TensorRTLLMFrontendFetchRequest) -> ResolvedTensorRTLLMFetchRequest:
+    model_ref = str(request.model_ref).strip()
+    if not model_ref:
+        raise ValueError("TensorRTLLMFrontendFetchRequest.model_ref must be a non-empty string or path")
+
+    local_path = Path(model_ref).expanduser()
+    source_kind = "model_id"
+    source_path = None
+    if local_path.exists():
+        source_path = local_path.resolve()
+        if _detect_trtllm_checkpoint_dir(source_path):
+            source_kind = "local_checkpoint_dir"
+        elif _detect_trtllm_artifact_dir(source_path):
+            source_kind = "local_artifact_dir"
+        else:
+            source_kind = "local_model_path"
+    elif _looks_like_local_llm_ref(model_ref):
+        raise FileNotFoundError(
+            f"TensorRT-LLM local path was requested but does not exist: {local_path}. "
+            "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
+        )
+
+    if source_kind == "local_checkpoint_dir":
+        raise ValueError(
+            "TensorRT-LLM checkpoint dir is a custom compile input, not a runtime fetch input. "
+            "Use resolve_tensorrt_llm_build_request(...) for checkpoint-dir compile."
+        )
+    if source_kind == "model_id":
+        description = f"runtime model-id fetch passthrough: {model_ref}"
+    elif source_kind == "local_artifact_dir":
+        description = f"runtime local prebuilt TensorRT-LLM artifact dir passthrough: {source_path}"
+    else:
+        description = f"runtime local model path passthrough: {source_path}"
+    return ResolvedTensorRTLLMFetchRequest(
+        source_description=description,
+        kind="runtime_model_ref",
+        prepared_input=PreparedTensorRTLLMFetchInput(
+            kind="runtime_model_ref",
+            model_ref=model_ref,
+            source_kind=source_kind,
+            source_path=source_path,
+        ),
+    )
+
+
 def resolve_tensorrt_llm_build_request(request: TensorRTLLMFrontendBuildRequest) -> ResolvedTensorRTLLMBuildRequest:
     model_ref = str(request.model_ref).strip()
     if not model_ref:
@@ -473,35 +521,11 @@ def resolve_tensorrt_llm_build_request(request: TensorRTLLMFrontendBuildRequest)
             "If you intended a Hugging Face repo id, pass an explicit repo id like 'org/model'."
         )
 
-    if request.build_mode == "fetch":
-        if source_kind == "local_checkpoint_dir":
-            raise ValueError(
-                "TensorRT-LLM checkpoint dir is a custom compile input, not a runtime fetch input. "
-                "Use build_mode='custom_compile' for checkpoint dirs."
-            )
-        if source_kind == "model_id":
-            description = f"runtime model-id fetch passthrough: {model_ref}"
-        elif source_kind == "local_artifact_dir":
-            description = f"runtime local prebuilt TensorRT-LLM artifact dir passthrough: {source_path}"
-        else:
-            description = f"runtime local model path passthrough: {source_path}"
-        return ResolvedTensorRTLLMBuildRequest(
-            source_description=description,
-            kind="runtime_model_ref",
-            prepared_input=PreparedTensorRTLLMBuildInput(
-                kind="runtime_model_ref",
-                model_ref=model_ref,
-                source_kind=source_kind,
-                source_path=source_path,
-                artifact_dir=None,
-            ),
-        )
-
     artifact_dir = request.out_dir.expanduser().resolve() / request.model_name.strip()
     if source_kind == "local_artifact_dir":
         raise ValueError(
-            "A prebuilt TensorRT-LLM artifact directory should be used with build_mode='fetch'. "
-            "custom_compile expects a model id/local HF path or a local TensorRT-LLM checkpoint dir."
+            "A prebuilt TensorRT-LLM artifact directory is a runtime fetch input, not a compile input. "
+            "Use resolve_tensorrt_llm_fetch_request(...) for local artifact/runtime passthrough."
         )
     compile_variant = "checkpoint_dir_cli" if source_kind == "local_checkpoint_dir" else "model_ref_api"
     if compile_variant == "checkpoint_dir_cli":
@@ -527,15 +551,19 @@ def resolve_tensorrt_llm_build_request(request: TensorRTLLMFrontendBuildRequest)
 
 __all__ = [
     "PreparedTensorRTCompileSource",
+    "PreparedTensorRTLLMFetchInput",
     "PreparedTensorRTLLMBuildInput",
     "PreparedTensorRTVisionBuildInput",
     "ProvidedTensorRTArtifact",
+    "ResolvedTensorRTLLMFetchRequest",
     "ResolvedTensorRTLLMBuildRequest",
+    "TensorRTLLMFrontendFetchRequest",
     "ResolvedTensorRTVisionBuildRequest",
     "TensorRTLLMFrontendBuildRequest",
     "TensorRTVisionFrontendBuildRequest",
     "list_torchvision_model_zoo_targets",
     "prepare_tensorrt_vision_build_input",
+    "resolve_tensorrt_llm_fetch_request",
     "resolve_tensorrt_llm_build_request",
     "resolve_tensorrt_vision_build_request",
 ]

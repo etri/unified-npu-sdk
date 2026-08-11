@@ -48,13 +48,12 @@ ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Build/fetch a TensorRT-LLM artifact directory. "
-            "기본은 model id/local path fetch 이고, custom compile smoke 기본 경로는 "
-            "local HF path -> checkpoint prepare -> local checkpoint dir -> trtllm-build 입니다."
+            "Build a TensorRT-LLM artifact directory. "
+            "이 스크립트는 compile-only 경로이며, model ref/local path fetch 는 "
+            "run_tensorrt_llm_fetch.py 를 사용합니다."
         )
     )
-    parser.add_argument("--model-ref", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-    parser.add_argument("--build-mode", choices=("fetch", "custom_compile"), default="fetch")
+    parser.add_argument("--model-ref", default="./models/existing_trtllm_checkpoint")
     parser.add_argument("--out-dir", type=Path, default=ARTIFACTS_DIR)
     parser.add_argument("--model-name", default="tinyllama_trtllm")
     parser.add_argument("--tokenizer-path", default=None)
@@ -72,7 +71,6 @@ if __name__ == "__main__":
             model_ref=args.model_ref,
             out_dir=args.out_dir,
             model_name=args.model_name,
-            build_mode=args.build_mode,
         )
     )
     cfg = LLMBuildConfig(
@@ -81,7 +79,6 @@ if __name__ == "__main__":
         out_dir=args.out_dir,
         model_name=args.model_name,
         backend_options=TensorRTLLMBuildOptions(
-            build_mode=args.build_mode,
             tokenizer_path=args.tokenizer_path,
             tensor_parallel_size=args.tensor_parallel_size,
             max_model_len=args.max_model_len,

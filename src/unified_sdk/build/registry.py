@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Protocol
 
-from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig
+from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig, LLMFetchConfig, LLMFetchResult
 
 
 class BuildAdapter(Protocol):
@@ -13,6 +13,8 @@ class BuildAdapter(Protocol):
 
 class LLMBuildAdapter(Protocol):
     name: str
+
+    def fetch(self, cfg: LLMFetchConfig) -> LLMFetchResult: ...
 
     def build(self, cfg: LLMBuildConfig) -> BuildResult: ...
 

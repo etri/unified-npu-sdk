@@ -12,7 +12,11 @@ from unified_sdk.options import (
 )
 
 if TYPE_CHECKING:
-    from unified_sdk.frontends.types import PreparedTensorRTLLMBuildInput, PreparedTensorRTVisionBuildInput
+    from unified_sdk.frontends.types import (
+        PreparedTensorRTLLMBuildInput,
+        PreparedTensorRTLLMFetchInput,
+        PreparedTensorRTVisionBuildInput,
+    )
 
 
 BuildBackendName = Literal["tensorrt"]
@@ -66,6 +70,25 @@ class RuntimeHandle:
 
 LLMBuildBackendName = Literal["tensorrt"]
 LLMRuntimeBackendName = Literal["tensorrt"]
+LLMFetchBackendName = Literal["tensorrt"]
+
+
+@dataclass(kw_only=True)
+class CoreLLMFetchConfig:
+    model_ref: str | Path
+
+
+@dataclass(kw_only=True)
+class LLMFetchConfig(CoreLLMFetchConfig):
+    backend: LLMFetchBackendName = "tensorrt"
+    prepared_input: "PreparedTensorRTLLMFetchInput | None" = None
+
+
+@dataclass(kw_only=True)
+class LLMFetchResult:
+    backend: str
+    model_ref_or_path: str
+    meta_data: Dict[str, Any]
 
 
 @dataclass(kw_only=True)
@@ -152,5 +175,9 @@ class LLMRuntimeConfig(CoreLLMRuntimeConfig):
 @dataclass(kw_only=True)
 class LLMRuntimeHandle:
     backend: str
-    engine_path: str
+    model_ref_or_path: str
     ctx: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def engine_path(self) -> str:
+        return self.model_ref_or_path

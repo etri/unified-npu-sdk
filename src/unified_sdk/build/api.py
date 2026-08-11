@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from unified_sdk.build.registry import get_builder, get_llm_builder
-from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig
+from unified_sdk.types import BuildConfig, BuildResult, LLMBuildConfig, LLMFetchConfig, LLMFetchResult
 
 # Adapter auto-registration
 from . import tensorrt_build as _tensorrt  # noqa: F401
@@ -12,6 +12,11 @@ from . import tensorrt_llm_build as _tensorrt_llm  # noqa: F401
 def build_unified(cfg: BuildConfig) -> BuildResult:
     builder = get_builder(cfg.backend)
     return builder.build(cfg)
+
+
+def fetch_unified_LLM(cfg: LLMFetchConfig) -> LLMFetchResult:
+    builder = get_llm_builder(cfg.backend)
+    return builder.fetch(cfg)
 
 
 def build_unified_LLM(cfg: LLMBuildConfig) -> BuildResult:

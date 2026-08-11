@@ -10,7 +10,7 @@ _VISION_BUILD_LEGACY_KEYS = frozenset(
 )
 _VISION_RUNTIME_LEGACY_KEYS = frozenset({"use_execute_v3", "allow_dynamic_shape"})
 _LLM_BUILD_LEGACY_KEYS = frozenset(
-    {"build_mode", "tokenizer_path", "tensor_parallel_size", "max_model_len", "dtype", "trust_remote_code"}
+    {"tokenizer_path", "tensor_parallel_size", "max_model_len", "dtype", "trust_remote_code"}
 )
 _LLM_RUNTIME_LEGACY_KEYS = frozenset(
     {"tokenizer_path", "tensor_parallel_size", "max_model_len", "dtype", "trust_remote_code"}
@@ -132,7 +132,6 @@ class TensorRTVisionRuntimeOptions:
 
 @dataclass(frozen=True)
 class TensorRTLLMBuildOptions:
-    build_mode: Literal["fetch", "custom_compile"] = "fetch"
     tokenizer_path: str | Path | None = None
     tensor_parallel_size: int = 1
     max_model_len: int = 512
@@ -140,11 +139,6 @@ class TensorRTLLMBuildOptions:
     trust_remote_code: bool = False
 
     def normalized(self) -> "TensorRTLLMBuildOptions":
-        build_mode = str(self.build_mode).strip().lower()
-        if build_mode == "llm_api_compile":
-            build_mode = "custom_compile"
-        if build_mode not in {"fetch", "custom_compile"}:
-            raise ValueError("TensorRTLLMBuildOptions.build_mode must be 'fetch' or 'custom_compile'")
         tensor_parallel_size = int(self.tensor_parallel_size)
         if tensor_parallel_size <= 0:
             raise ValueError("TensorRTLLMBuildOptions.tensor_parallel_size must be > 0")
@@ -152,7 +146,6 @@ class TensorRTLLMBuildOptions:
         if max_model_len <= 0:
             raise ValueError("TensorRTLLMBuildOptions.max_model_len must be > 0")
         return TensorRTLLMBuildOptions(
-            build_mode=build_mode,  # type: ignore[arg-type]
             tokenizer_path=_normalize_optional_str(self.tokenizer_path),
             tensor_parallel_size=tensor_parallel_size,
             max_model_len=max_model_len,
@@ -166,7 +159,6 @@ class TensorRTLLMBuildOptions:
     def to_metadata(self) -> Dict[str, Any]:
         normalized = self.normalized()
         return {
-            "build_mode": normalized.build_mode,
             "tokenizer_path": str(normalized.tokenizer_path) if normalized.tokenizer_path is not None else None,
             "tensor_parallel_size": normalized.tensor_parallel_size,
             "max_model_len": normalized.max_model_len,
@@ -182,7 +174,6 @@ class TensorRTLLMBuildOptions:
             option_label="TensorRTLLMBuildOptions",
         )
         return cls(
-            build_mode=extra.get("build_mode", "fetch"),
             tokenizer_path=extra.get("tokenizer_path"),
             tensor_parallel_size=extra.get("tensor_parallel_size", 1),
             max_model_len=extra.get("max_model_len", 512),
