@@ -32,7 +32,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
 - Docker 환경은 `vision` / `llm` flavor 로 분리해 유지합니다.
 - `llm` flavor 는 official TensorRT-LLM release container(PyTorch backend) 기준입니다.
 - LLM custom compile 의 기본 smoke 경로는 `local HF path -> checkpoint prepare -> trtllm-build CLI compile` 입니다.
-- `llm` 이미지는 matching TensorRT-LLM source checkout fallback 을 함께 포함해, checkpoint prepare wrapper 를 self-contained 하게 유지합니다.
+- `llm` wrapper 는 installed API 를 우선 쓰고, 필요하면 official TensorRT-LLM release container 안의 bundled source/examples fallback 을 사용합니다.
 - 로컬 prebuilt artifact fetch(`7-b`)는 compile과 독립 경로입니다.
 
 ---
@@ -101,7 +101,7 @@ TensorRT 분기는 국산 NPU 백엔드들의 **비교 기준(reference)** 역�
   - `llm`: TensorRT-LLM generate/build 전용
 - `vision` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt:24.03-py3`입니다. `vision`은 TensorRT Python import 안정성을 우선하고, 필요한 `torch` / `torchvision`만 별도로 올립니다.
 - `llm` flavor 기본 base image는 `nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc22`입니다. TensorRT-LLM은 수동 pip 조합보다 공식 release container 축이 더 안정적이어서, LLM Docker는 이쪽을 기본으로 둡니다.
-- `llm` flavor 이미지는 release container 위에 matching TensorRT-LLM source checkout(`r26.05` 기본)을 함께 포함합니다. checkpoint prepare wrapper 는 installed API 를 우선 쓰고, 필요하면 이 bundled source 를 fallback 으로 사용합니다.
+- checkpoint prepare wrapper 는 installed API 를 우선 쓰고, 필요하면 official TensorRT-LLM release container 안의 bundled source/examples 경로를 fallback 으로 사용합니다. 필요 시 `TENSORRT_LLM_SRC`로 별도 vendor source root 를 override 할 수 있습니다.
 - 2026년 7월 25일 기준 `vision` flavor는 TensorRT가 이미 포함된 base image를 사용하고, `torch==2.2.2`, `torchvision==0.17.2`만 별도 설치합니다.
 - `llm` flavor는 official TensorRT-LLM release container를 기준으로 하고, Unified SDK public LLM API는 유지한 채 내부 vendor mapping만 그 컨테이너가 제공하는 TensorRT-LLM API 축에 맞춰 씁니다.
 - 최신 TensorRT-LLM 1.x release container에서는 PyTorch backend가 기본이며, Unified SDK의 `max_model_len`은 내부 vendor 호출 시 `max_seq_len`으로 매핑합니다.
@@ -349,8 +349,7 @@ python3 examples/inspect_engine_io.py build_output/yolov7_FP32.engine
 - 따라서 `7-b`를 돌리기 전에는 먼저 TinyLlama 같은 모델을 로컬 경로 아래에 준비해야 합니다.
 - `7-c`는 `custom_compile` 경로입니다.
   스모크 기본 경로는 `local HF path -> TRT-LLM checkpoint prepare -> trtllm-build -> artifact runtime` 흐름입니다.
-  `llm` 이미지는 matching TensorRT-LLM source fallback 을 포함하므로, checkpoint prepare 단계도 가능한 한 self-contained 하게 따라갈 수 있습니다.
-  다만 checkpoint prepare 단계는 여전히 설치된 TensorRT-LLM API surface와 모델 지원성의 영향을 받습니다.
+  checkpoint prepare 단계는 installed TensorRT-LLM API surface와 모델 지원성의 영향을 받으며, 필요하면 official release container 안의 bundled source/examples fallback 을 사용합니다.
 
 ```bash
 # 1) llm 이미지 빌드
@@ -395,7 +394,7 @@ python3 examples/run_tensorrt_llm_infer.py \
 # 7-c-1) (LLM) local HF path -> TensorRT-LLM checkpoint dir 준비
 #        같은 TinyLlama local HF path 를 재사용합니다.
 #        unified-sdk/examples wrapper 는 installed TensorRT-LLM conversion API를 우선 사용하고,
-#        필요하면 llm 이미지에 포함된 matching TensorRT-LLM source fallback 을 사용합니다.
+#        필요하면 official release container 안의 bundled TensorRT-LLM source/examples fallback 을 사용합니다.
 python3 examples/llama/convert_checkpoint.py \
   --model_dir ./models/TinyLlama-1.1B-Chat-v1.0 \
   --output_dir ./models/tinyllama_trtllm_ckpt \

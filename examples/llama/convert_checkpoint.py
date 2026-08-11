@@ -46,6 +46,8 @@ def _vendor_root_candidates(repo_root: Path) -> list[Path]:
 
     candidates.extend(
         [
+            Path("/app/tensorrt_llm"),
+            Path("/app/TensorRT-LLM"),
             repo_root.parent / "TensorRT-LLM",
             repo_root / "TensorRT-LLM",
             Path("/workspace/TensorRT-LLM"),
@@ -92,8 +94,9 @@ def _find_vendor_convert_script(repo_root: Path) -> Path:
         "Could not find a known TensorRT-LLM llama convert_checkpoint.py in the vendor source checkout. "
         "Checked legacy and current layouts such as "
         "`examples/llama/convert_checkpoint.py` and `examples/models/core/llama/convert_checkpoint.py`. "
-        "Set TENSORRT_LLM_SRC to a matching TensorRT-LLM source checkout, or place the checkout in a common location "
-        f"such as {repo_root.parent / 'TensorRT-LLM'}. Attempted: {attempted}"
+        "When using the official TensorRT-LLM release container, the wrapper also checks common bundled-source roots "
+        "such as `/app/tensorrt_llm`. Otherwise set TENSORRT_LLM_SRC to a matching source checkout. "
+        f"Attempted: {attempted}"
     )
 
 
