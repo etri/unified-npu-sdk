@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
+from unified_sdk.frontends import classify_tensorrt_llm_source
+from unified_sdk.options import resolve_tensorrt_llm_runtime_options
+from unified_sdk.runtime.registry import register_llm
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle
 
 
@@ -62,113 +65,109 @@ def _best_effort_close(obj: Any) -> None:
 
 def _looks_like_local_path(model_ref: str) -> bool:
     p = Path(model_ref).expanduser()
-    if p.is_absolute():
-        return True
-    if model_ref.startswith("./") or model_ref.startswith("../"):
-        return True
-    # Treat common local artifact directories as local paths, but do not confuse HF repo ids like org/repo.
-    if model_ref.startswith("artifacts/") or model_ref.startswith("build_output/") or model_ref.startswith("models/"):
-        return True
-    return False
+    return p.is_absolute() or model_ref.startswith("./") or model_ref.startswith("../") or model_ref.startswith(("artifacts/", "build_output/", "models/"))
 
 
-def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, extra: Dict[str, Any], model_ref: str, tokenizer_path: str | None) -> Dict[str, Any]:
+def _normalize_llm_kwargs(cfg: LLMRuntimeConfig, options, model_ref: str) -> Dict[str, Any]:
     llm_kwargs: Dict[str, Any] = {
         "model": model_ref,
-        "tensor_parallel_size": cfg.tensor_parallel_size,
-        # TensorRT-LLM 1.x torch backend uses max_seq_len instead of max_model_len.
-        "max_seq_len": cfg.max_model_len,
+        "tensor_parallel_size": options.tensor_parallel_size,
+        "max_seq_len": options.max_model_len,
+        "tokenizer": str(options.tokenizer_path) if options.tokenizer_path else model_ref,
     }
-    llm_kwargs["tokenizer"] = tokenizer_path or model_ref
-    if extra.get("dtype"):
-        llm_kwargs["dtype"] = extra["dtype"]
-    if extra.get("trust_remote_code") is not None:
-        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
+    if options.dtype:
+        llm_kwargs["dtype"] = options.dtype
+    if options.trust_remote_code is not None:
+        llm_kwargs["trust_remote_code"] = bool(options.trust_remote_code)
     return llm_kwargs
 
 
-def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
-    if cfg.backend != "tensorrt":
-        raise ValueError(f"TensorRT-LLM runtime adapter received backend={cfg.backend!r}")
+class _TensorRTLLMRuntimeAdapter:
+    name = "tensorrt"
 
-    _ensure_positive_int(cfg.max_model_len, "LLMRuntimeConfig.max_model_len")
-    _ensure_positive_int(cfg.max_tokens, "LLMRuntimeConfig.max_tokens")
-    _ensure_positive_int(cfg.tensor_parallel_size, "LLMRuntimeConfig.tensor_parallel_size")
+    def create(self, cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
+        if cfg.backend != self.name:
+            raise ValueError(f"TensorRT-LLM runtime adapter received backend={cfg.backend!r}")
 
-    try:
-        from tensorrt_llm import LLM
-    except Exception as exc:
-        raise RuntimeError(
-            "tensorrt_llm is required for TensorRT-LLM runtime/generation. "
-            "Install it in the container or host env first."
-        ) from exc
+        _ensure_positive_int(cfg.max_tokens, "LLMRuntimeConfig.max_tokens")
+        options = resolve_tensorrt_llm_runtime_options(cfg.backend_options)
+        _ensure_positive_int(options.max_model_len, "TensorRTLLMRuntimeOptions.max_model_len")
+        _ensure_positive_int(options.tensor_parallel_size, "TensorRTLLMRuntimeOptions.tensor_parallel_size")
 
-    extra = dict(cfg.extra or {})
-    model_ref = str(cfg.engine_path)
-    tokenizer_path = str(cfg.tokenizer_path) if cfg.tokenizer_path else None
+        try:
+            from tensorrt_llm import LLM
+        except Exception as exc:
+            raise RuntimeError(
+                "tensorrt_llm is required for TensorRT-LLM runtime/generation. Install it in the container or host env first."
+            ) from exc
 
-    if _looks_like_local_path(model_ref):
-        local_ref = Path(model_ref).expanduser()
-        if not local_ref.exists():
-            raise FileNotFoundError(
-                "engine_path was interpreted as a local TensorRT-LLM artifact/model directory, "
-                f"but it does not exist: {local_ref}. "
-                "If you intended a Hugging Face repo id, pass an explicit repo id like "
-                "'TinyLlama/TinyLlama-1.1B-Chat-v1.0'."
-            )
+        model_ref = str(cfg.model_ref_or_path)
+        if cfg.prepared_fetch_input is not None:
+            runtime_entry_kind = cfg.prepared_fetch_input.source_kind
+        else:
+            runtime_entry_kind, _ = classify_tensorrt_llm_source(model_ref)
+        runtime_mode = "artifact_runtime" if runtime_entry_kind == "local_artifact_dir" else "convenience_model_ref_runtime"
+        runtime_may_trigger_vendor_build = runtime_entry_kind != "local_artifact_dir"
+        if _looks_like_local_path(model_ref):
+            local_ref = Path(model_ref).expanduser()
+            if not local_ref.exists():
+                raise FileNotFoundError(
+                    "engine_path was interpreted as a local TensorRT-LLM artifact/model directory, "
+                    f"but it does not exist: {local_ref}. If you intended a Hugging Face repo id, pass an explicit repo id."
+                )
 
-    llm_kwargs = _normalize_llm_kwargs(cfg, extra, model_ref, tokenizer_path)
+        llm_kwargs = _normalize_llm_kwargs(cfg, options, model_ref)
+        try:
+            llm = LLM(**llm_kwargs)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to create TensorRT-LLM runtime for {model_ref}: {exc}") from exc
 
-    try:
-        llm = LLM(**llm_kwargs)
-    except Exception as exc:
-        raise RuntimeError(f"Failed to create TensorRT-LLM runtime for {model_ref}: {exc}") from exc
-
-    return LLMRuntimeHandle(
-        backend="tensorrt",
-        engine_path=model_ref,
-        ctx={
-            "llm": llm,
-            "llm_kwargs": llm_kwargs,
-            "sampling_defaults": {
-                "max_tokens": cfg.max_tokens,
-                "temperature": cfg.temperature,
-                "top_p": cfg.top_p,
-                "top_k": cfg.top_k,
-                "min_tokens": cfg.min_tokens,
+        return LLMRuntimeHandle(
+            backend=self.name,
+            model_ref_or_path=model_ref,
+            ctx={
+                "llm": llm,
+                "llm_kwargs": llm_kwargs,
+                "sampling_defaults": {
+                    "max_tokens": cfg.max_tokens,
+                    "temperature": cfg.temperature,
+                    "top_p": cfg.top_p,
+                    "top_k": cfg.top_k,
+                    "min_tokens": cfg.min_tokens,
+                },
+                "runtime_options": options.to_metadata(),
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
+                "runtime_entry_kind": runtime_entry_kind,
+                "runtime_mode": runtime_mode,
+                "runtime_may_trigger_vendor_build": runtime_may_trigger_vendor_build,
             },
-            "capability_family": _CAPABILITY_FAMILY,
-            "runtime_pipeline": _RUNTIME_PIPELINE,
-            "vendor_api_map": _VENDOR_API_MAP,
-        },
-    )
+        )
+
+    def infer(self, rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
+        if not rh.ctx or "llm" not in rh.ctx:
+            raise RuntimeError("TensorRT-LLM RuntimeHandle is closed or invalid")
+        try:
+            from tensorrt_llm import SamplingParams
+        except Exception as exc:
+            raise RuntimeError(
+                "tensorrt_llm is required for TensorRT-LLM generation. Install it in the container or host env first."
+            ) from exc
+        llm = rh.ctx["llm"]
+        sampling_dict = dict(rh.ctx.get("sampling_defaults", {}))
+        sampling_dict.update({k: v for k, v in overrides.items() if v is not None})
+        try:
+            sampling = SamplingParams(**sampling_dict)
+            return llm.generate(prompt, sampling_params=sampling)
+        except Exception as exc:
+            raise RuntimeError(f"TensorRT-LLM generate failed for {rh.model_ref_or_path}: {exc}") from exc
+
+    def destroy(self, rh: LLMRuntimeHandle) -> None:
+        llm = (rh.ctx or {}).get("llm")
+        if llm is not None:
+            _best_effort_close(llm)
+        (rh.ctx or {}).clear()
 
 
-def generate_llm(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    if not rh.ctx or "llm" not in rh.ctx:
-        raise RuntimeError("TensorRT-LLM RuntimeHandle is closed or invalid")
-
-    try:
-        from tensorrt_llm import SamplingParams
-    except Exception as exc:
-        raise RuntimeError(
-            "tensorrt_llm is required for TensorRT-LLM generation. "
-            "Install it in the container or host env first."
-        ) from exc
-
-    llm = rh.ctx["llm"]
-    sampling_dict = dict(rh.ctx.get("sampling_defaults", {}))
-    sampling_dict.update({k: v for k, v in overrides.items() if v is not None})
-
-    try:
-        sampling = SamplingParams(**sampling_dict)
-        return llm.generate(prompt, sampling_params=sampling)
-    except Exception as exc:
-        raise RuntimeError(f"TensorRT-LLM generate failed for {rh.engine_path}: {exc}") from exc
-
-
-def destroy_llm(rh: LLMRuntimeHandle) -> None:
-    llm = (rh.ctx or {}).get("llm")
-    if llm is not None:
-        _best_effort_close(llm)
-    (rh.ctx or {}).clear()
+register_llm(_TensorRTLLMRuntimeAdapter())

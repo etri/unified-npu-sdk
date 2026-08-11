@@ -41,7 +41,8 @@ if str(SRC_DIR) not in sys.path:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run TensorRT-LLM generate through Unified SDK LLM API.")
-    parser.add_argument("--engine-path", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--model-ref-or-path", dest="model_ref_or_path", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--engine-path", dest="model_ref_or_path", help=argparse.SUPPRESS)
     parser.add_argument("--tokenizer-path", default=None)
     parser.add_argument("--prompt", default="What is the capital of South Korea?")
     parser.add_argument("--chat-template", choices=("auto", "on", "off"), default="auto")
@@ -58,11 +59,11 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_tokenizer_ref(engine_path: str, tokenizer_path: str | None) -> str | None:
+def _resolve_tokenizer_ref(model_ref_or_path: str, tokenizer_path: str | None) -> str | None:
     if tokenizer_path:
         return tokenizer_path
 
-    p = Path(engine_path).expanduser()
+    p = Path(model_ref_or_path).expanduser()
     if p.exists():
         if p.is_dir():
             for marker in ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"):
@@ -71,7 +72,7 @@ def _resolve_tokenizer_ref(engine_path: str, tokenizer_path: str | None) -> str 
             return None
         return None
 
-    return engine_path
+    return model_ref_or_path
 
 
 def _format_prompt(prompt: str, tokenizer_ref: str | None, trust_remote_code: bool, chat_template: str) -> str:
@@ -143,30 +144,37 @@ if __name__ == "__main__":
     args = _build_parser().parse_args()
 
     try:
+        from unified_sdk.frontends import resolve_tensorrt_llm_fetch_request
+        from unified_sdk.frontends.types import TensorRTLLMFrontendFetchRequest
+        from unified_sdk.options import TensorRTLLMRuntimeOptions
         from unified_sdk.types import LLMRuntimeConfig
         from unified_sdk.runtime import create_runtime_LLM, destroy_runtime_LLM, generate_LLM
     except ImportError:
         print("Error: 'unified_sdk' package not found. Install it first or run from the repository checkout.")
         sys.exit(1)
 
+    prepared_fetch = resolve_tensorrt_llm_fetch_request(
+        TensorRTLLMFrontendFetchRequest(model_ref=args.model_ref_or_path)
+    )
     cfg = LLMRuntimeConfig(
         backend="tensorrt",
-        engine_path=args.engine_path,
-        tokenizer_path=args.tokenizer_path,
-        max_model_len=args.max_model_len,
+        model_ref_or_path=args.model_ref_or_path,
+        prepared_fetch_input=prepared_fetch.prepared_input,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
         min_tokens=args.min_tokens,
-        tensor_parallel_size=args.tensor_parallel_size,
-        extra={
-            "dtype": args.dtype,
-            "trust_remote_code": args.trust_remote_code,
-        },
+        backend_options=TensorRTLLMRuntimeOptions(
+            tokenizer_path=args.tokenizer_path,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=args.max_model_len,
+            dtype=args.dtype,
+            trust_remote_code=args.trust_remote_code,
+        ),
     )
     rh = create_runtime_LLM(cfg)
-    tokenizer_ref = _resolve_tokenizer_ref(args.engine_path, args.tokenizer_path)
+    tokenizer_ref = _resolve_tokenizer_ref(args.model_ref_or_path, args.tokenizer_path)
     formatted_prompt = _format_prompt(
         args.prompt,
         tokenizer_ref=tokenizer_ref,
@@ -185,8 +193,11 @@ if __name__ == "__main__":
 
         print("== TensorRT-LLM generate ==")
         print(f"repo_root = {REPO_ROOT}")
-        print(f"engine = {args.engine_path}")
+        print(f"model_ref_or_path = {args.model_ref_or_path}")
         print(f"tokenizer_ref = {tokenizer_ref}")
+        print(f"runtime_mode = {rh.ctx.get('runtime_mode')}")
+        print(f"runtime_entry_kind = {rh.ctx.get('runtime_entry_kind')}")
+        print(f"runtime_may_trigger_vendor_build = {rh.ctx.get('runtime_may_trigger_vendor_build')}")
         print(f"prompt = {args.prompt}")
         print(f"formatted_prompt = {formatted_prompt}")
         print(f"response = {_render_output(result)}")

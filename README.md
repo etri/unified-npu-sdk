@@ -69,10 +69,11 @@ LLM:
 - `infer_LLM(...)`
 - `generate_LLM(...)`
 - `destroy_runtime_LLM(rh)`
+- `create_sequence_runtime(cfg)` / `infer_sequence(...)` / `destroy_sequence_runtime(rh)` for QB low-level sequence extension
 
 | Backend | Vision Build | Vision Infer | LLM Build | LLM Generate/Infer | 비고 |
 | --- | --- | --- | --- | --- | --- |
-| `qb` | 구현 | 구현 | planned | 부분 구현 | LLM은 low-level runtime 중심 |
+| `qb` | 구현 | 구현 | planned | extension capability | LLM은 generic text-generate가 아니라 low-level sequence runtime 중심 |
 | `rbln` | 구현 | 구현 | 구현 | 구현 | container compile known issue 메모 유지 |
 | `warboy` | 구현 | 구현 | N/A | N/A | vision 전용 |
 | `rngd` | N/A | N/A | 구현 | 구현 | 일부 `fxb build`는 vendor/toolchain 이력 있음 |
@@ -103,7 +104,7 @@ LLM:
 메모:
 
 - API 이름은 공통이지만 backend별 semantics가 완전히 동일한 것은 아닙니다.
-- 예를 들어 `qb` LLM은 high-level text generation보다 low-level cache-aware infer 성격이 강합니다.
+- 예를 들어 `qb` transformer/LLM MXQ는 generic `create_runtime_LLM` 경로가 아니라 `sequence_runtime` 확장 capability로 다룹니다.
 
 ## 프로젝트 구조
 
@@ -279,7 +280,9 @@ python3 examples/run_tensorrt_infer.py --help
 
 ```bash
 python3 -c "import unified_sdk; print('OK')"
+python3 examples/run_tensorrt_llm_fetch.py --help
 python3 examples/run_tensorrt_llm_build.py --help
+python3 examples/run_tensorrt_llm_prepare_checkpoint.py --help
 python3 examples/run_tensorrt_llm_infer.py --help
 ```
 
@@ -322,7 +325,7 @@ python3 examples/run_qb_llm_infer.py \
 
 메모:
 
-- `qb` LLM은 high-level text generate가 아니라 low-level cache-aware `infer_LLM(...)` smoke입니다.
+- `qb` transformer/LLM MXQ는 high-level text generate가 아니라 low-level cache-aware `infer_sequence(...)` smoke입니다.
 - `build_unified_LLM(cfg)`는 아직 `planned` 상태이므로, 현재는 precompiled transformer/LLM `.mxq`를 기준으로 확인합니다.
 
 `rbln`
@@ -389,12 +392,11 @@ python3 examples/run_tensorrt_infer.py \
 `trt llm`
 
 ```bash
-python3 examples/run_tensorrt_llm_build.py \
-  --model-ref TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
-  --build-mode fetch
+python3 examples/run_tensorrt_llm_fetch.py \
+  --model-ref Qwen/Qwen2.5-0.5B-Instruct
 
 python3 examples/run_tensorrt_llm_infer.py \
-  --engine-path TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --model-ref-or-path Qwen/Qwen2.5-0.5B-Instruct \
   --prompt "What is the capital of South Korea?"
 ```
 

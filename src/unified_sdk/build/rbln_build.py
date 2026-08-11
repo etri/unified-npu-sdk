@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from unified_sdk.build.registry import register
+from unified_sdk.frontends import PreparedRBLNCompileSource, PreparedRBLNVisionBuildInput, ProvidedRBLNArtifact
+from unified_sdk.options import RBLNVisionBuildOptions, resolve_rbln_vision_build_options
 from unified_sdk.types import BuildConfig, BuildResult
 
 
@@ -51,35 +53,6 @@ def _validate_shape(shape: Tuple[int, ...], field_name: str) -> Tuple[int, ...]:
     return shape
 
 
-def _validate_extra(extra: Dict[str, Any]) -> Dict[str, Any]:
-    npu = extra.get("npu")
-    if npu is not None and (not isinstance(npu, str) or not npu.strip()):
-        raise ValueError("BuildConfig.extra['npu'] must be a non-empty string when provided")
-    model_trace_method = extra.get("model_trace_method")
-    if model_trace_method is not None and model_trace_method not in (
-        "export",
-        "export_strict",
-        "jittrace",
-    ):
-        raise ValueError(
-            "BuildConfig.extra['model_trace_method'] must be one of: "
-            "'export', 'export_strict', 'jittrace'"
-        )
-    compile_frontend = extra.get("compile_frontend")
-    if compile_frontend is not None and compile_frontend not in (
-        "rebel",
-        "optimum_image_classification",
-    ):
-        raise ValueError(
-            "BuildConfig.extra['compile_frontend'] must be one of: "
-            "'rebel', 'optimum_image_classification'"
-        )
-    source_cache_dir = extra.get("source_cache_dir")
-    if source_cache_dir is not None and not isinstance(source_cache_dir, (str, Path)):
-        raise ValueError("BuildConfig.extra['source_cache_dir'] must be a string or Path when provided")
-    return extra
-
-
 def _build_output_path(out_dir: str | Path, model_name: str) -> Path:
     name = _require_non_empty_string(model_name, "model_name")
     path = Path(out_dir) / name
@@ -114,9 +87,40 @@ def _capability_metadata(extra: Dict[str, Any]) -> Dict[str, Any]:
         "compile_options": {
             "npu": extra.get("npu"),
             "model_trace_method": extra.get("model_trace_method"),
-            "compile_frontend": extra.get("compile_frontend", "rebel"),
         },
     }
+
+
+def _resolve_legacy_provided_artifact(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVisionBuildInput | None:
+    source_path = Path(cfg.model_or_path).expanduser().resolve() if isinstance(cfg.model_or_path, (str, Path)) else None
+    if source_path is None:
+        return None
+    if _looks_like_path(cfg.model_or_path, ".rbln") or source_path.is_dir():
+        if source_path.is_dir():
+            source_path = _resolve_compiled_dir(source_path)
+        return PreparedRBLNVisionBuildInput(
+            kind="provided_artifact",
+            provided_artifact=ProvidedRBLNArtifact(
+                source_path=source_path,
+                destination_path=rbln_path,
+            ),
+        )
+    return None
+
+
+def _ensure_prepared_input(cfg: BuildConfig, rbln_path: Path) -> PreparedRBLNVisionBuildInput:
+    if cfg.prepared_input is not None:
+        return cfg.prepared_input
+
+    legacy_artifact = _resolve_legacy_provided_artifact(cfg, rbln_path)
+    if legacy_artifact is not None:
+        return legacy_artifact
+
+    raise RuntimeError(
+        "RBLN vision compile now expects a prepared frontend contract for compile sources. "
+        "Call resolve_rbln_vision_build_request(...) first and pass BuildConfig(prepared_input=...). "
+        "Only provided .rbln / compiled artifact directories are still accepted as a legacy direct path."
+    )
 
 
 def describe_api_mapping() -> Dict[str, Any]:
@@ -138,20 +142,21 @@ class _RBLNBuildAdapter:
         if cfg.backend != self.name:
             raise ValueError(f"RBLN build adapter received backend={cfg.backend!r}")
 
-        extra = _validate_extra(dict(cfg.extra or {}))
+        options = resolve_rbln_vision_build_options(
+            cfg.backend_options,
+            extra=dict(cfg.extra or {}),
+        )
+        extra = options.to_metadata()
         rbln_path = _build_output_path(cfg.out_dir, cfg.model_name)
         rbln_path.parent.mkdir(parents=True, exist_ok=True)
+        prepared_input = _ensure_prepared_input(cfg, rbln_path)
 
-        if isinstance(cfg.model_or_path, (str, Path)):
-            candidate_path = Path(cfg.model_or_path).expanduser().resolve()
-        else:
-            candidate_path = None
-
-        if _looks_like_path(cfg.model_or_path, ".rbln") or (candidate_path is not None and candidate_path.is_dir()):
-            src = candidate_path
+        if prepared_input.kind == "provided_artifact":
+            artifact = prepared_input.provided_artifact
+            if artifact is None:
+                raise RuntimeError("RBLN prepared_input.kind='provided_artifact' requires provided_artifact payload")
+            src = artifact.source_path
             origin_type = "provided"
-            if src is None:
-                raise FileNotFoundError("Provided RBLN artifact path is invalid")
             if src.is_dir():
                 src = _resolve_compiled_dir(src)
                 origin_type = "compiled_dir"
@@ -166,15 +171,23 @@ class _RBLNBuildAdapter:
                     "backend": self.name,
                     "source": origin_type,
                     "origin": str(src),
+                    "frontend_resolved_kind": "compiled_dir" if origin_type == "compiled_dir" else "provided_artifact",
+                    "frontend_provenance_kind": "compiled_dir" if origin_type == "compiled_dir" else "provided_artifact",
+                    "frontend_provenance_detail": f"artifact placement from {src}",
+                    "frontend_source_path": str(src),
                     "rbln_path": str(rbln_path),
-                    "extra": extra,
+                    "backend_options": extra,
                     **_capability_metadata(extra),
                 },
             )
 
-        compile_frontend = extra.get("compile_frontend", "rebel")
-        if isinstance(cfg.model_or_path, str) and compile_frontend == "optimum_image_classification":
-            model_id = cfg.model_or_path.strip()
+        compile_source = prepared_input.compile_source
+        if compile_source is None:
+            raise RuntimeError("RBLN prepared_input.kind='compile_source' requires compile_source payload")
+
+        compile_frontend = compile_source.compile_frontend
+        if isinstance(compile_source.source, str) and compile_frontend == "optimum_image_classification":
+            model_id = compile_source.source.strip()
             if not model_id:
                 raise ValueError("BuildConfig.model_or_path must be a non-empty model id for optimum-rbln compile")
 
@@ -198,12 +211,9 @@ class _RBLNBuildAdapter:
                 "rbln_image_size": image_size,
                 "rbln_create_runtimes": False,
             }
-            source_cache_dir = extra.get("source_cache_dir")
+            source_cache_dir = compile_source.source_cache_dir
             if source_cache_dir:
                 compile_kwargs["cache_dir"] = str(Path(source_cache_dir).expanduser().resolve())
-            device = extra.get("device")
-            if device is not None:
-                compile_kwargs["rbln_device"] = device
 
             try:
                 compiled_optimum = RBLNAutoModelForImageClassification.from_pretrained(
@@ -234,44 +244,35 @@ class _RBLNBuildAdapter:
                     "origin": model_id,
                     "compiled_dir": str(compiled_dir),
                     "rbln_path": str(rbln_path),
-                    "extra": extra,
+                    "compile_frontend": compile_frontend,
+                    "source_cache_dir": str(source_cache_dir) if source_cache_dir is not None else None,
+                    "prepared_kind": prepared_input.kind,
+                    "frontend_resolved_kind": compile_source.provenance_kind,
+                    "frontend_provenance_kind": compile_source.provenance_kind,
+                    "frontend_provenance_detail": compile_source.provenance_detail,
+                    "frontend_source_label": compile_source.source_label,
+                    "frontend_source_path": (
+                        str(compile_source.source_path) if compile_source.source_path is not None else None
+                    ),
+                    "backend_options": extra,
                     **_capability_metadata(extra),
                 },
             )
 
-        model = cfg.model_or_path
-        if _looks_like_path(cfg.model_or_path, ".onnx"):
-            onnx_path = Path(cfg.model_or_path).expanduser().resolve()
-            if not onnx_path.is_file():
-                raise FileNotFoundError(f"ONNX file not found: {onnx_path}")
-            try:
-                import onnx
-                from onnx2torch import convert
-            except Exception as exc:
-                raise RuntimeError(
-                    "ONNX restore path requires `onnx` and `onnx2torch`. Install them first."
-                ) from exc
-            try:
-                model = convert(onnx.load(str(onnx_path)))
-            except Exception as exc:
-                raise RuntimeError(f"Failed to restore torch model from ONNX {onnx_path}: {exc}") from exc
-
+        model = compile_source.source
         if not hasattr(model, "eval") or not callable(model.eval):
             raise TypeError(
                 "For rbln backend, BuildConfig.model_or_path must be a torch.nn.Module-like object, "
-                "a provided .rbln path, or an experimental .onnx path."
+                "a provided .rbln path, or a frontend-prepared compile source."
             )
         model.eval()
-
-        if cfg.precision not in ("fp32", "fp16"):
-            raise ValueError(f"Unsupported RBLN precision: {cfg.precision!r}")
 
         import torch
         import rebel
 
-        dtype = torch.float16 if cfg.precision == "fp16" else torch.float32
+        dtype = torch.float16 if options.precision == "fp16" else torch.float32
         name = _require_non_empty_string(cfg.input_name, "input_name")
-        npu = extra.get("npu")
+        npu = options.npu
 
         if cfg.bucketing_shapes:
             shapes = [
@@ -286,9 +287,8 @@ class _RBLNBuildAdapter:
         compile_kwargs: Dict[str, Any] = {}
         if npu:
             compile_kwargs["npu"] = npu
-        model_trace_method = extra.get("model_trace_method")
-        if model_trace_method:
-            compile_kwargs["model_trace_method"] = model_trace_method
+        if options.model_trace_method:
+            compile_kwargs["model_trace_method"] = options.model_trace_method
 
         try:
             compiled = rebel.compile_from_torch(model, input_info, **compile_kwargs)
@@ -312,13 +312,17 @@ class _RBLNBuildAdapter:
             "rbln_path": str(rbln_path),
             "input_info": input_info,
             "npu": npu,
-            "precision": cfg.precision,
-            "source": (
-                "onnx_restore"
-                if _looks_like_path(cfg.model_or_path, ".onnx")
-                else "torch_model"
-            ),
-            "extra": extra,
+            "precision": options.precision,
+            "source": compile_source.source_label,
+            "compile_frontend": compile_frontend,
+            "source_cache_dir": str(compile_source.source_cache_dir) if compile_source.source_cache_dir is not None else None,
+            "prepared_kind": prepared_input.kind,
+            "frontend_resolved_kind": compile_source.provenance_kind,
+            "frontend_provenance_kind": compile_source.provenance_kind,
+            "frontend_provenance_detail": compile_source.provenance_detail,
+            "frontend_source_label": compile_source.source_label,
+            "frontend_source_path": str(compile_source.source_path) if compile_source.source_path is not None else None,
+            "backend_options": extra,
             **_capability_metadata(extra),
         }
         return BuildResult(

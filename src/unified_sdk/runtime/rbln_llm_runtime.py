@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
+from unified_sdk.runtime.registry import register_llm
+from unified_sdk.options import resolve_rbln_llm_runtime_options
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle
 
 
@@ -60,120 +62,135 @@ def _extract_text(output: Any) -> str:
     return str(output)
 
 
-def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
-    if cfg.backend != "rbln":
-        raise ValueError(f"RBLN LLM runtime adapter received backend={cfg.backend!r}")
+class _RBLNLLMRuntimeAdapter:
+    name = "rbln"
 
-    extra = dict(cfg.extra or {})
-    runtime_impl = str(extra.get("runtime_impl", "vllm")).strip().lower()
-    if runtime_impl != "vllm":
-        raise ValueError(
-            "Currently supported RBLN LLM runtime_impl is only 'vllm'. "
-            "Use extra={'runtime_impl': 'vllm'} or omit the option."
+    def create(self, cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
+        if cfg.backend != self.name:
+            raise ValueError(f"RBLN LLM runtime adapter received backend={cfg.backend!r}")
+
+        options = resolve_rbln_llm_runtime_options(cfg.backend_options, extra=dict(cfg.extra or {}))
+        options_meta = options.to_metadata()
+        runtime_impl = options.runtime_impl
+        if runtime_impl != "vllm":
+            raise ValueError(
+                "Currently supported RBLN LLM runtime_impl is only 'vllm'. "
+                "Use RBLNLLMRuntimeOptions(runtime_impl='vllm') or omit the option."
+            )
+
+        try:
+            from vllm import LLM
+        except Exception as exc:
+            raise RuntimeError(
+                "vllm-rbln is required for RBLN LLM runtime smoke. "
+                "Install vllm-rbln first (see docs.rbln.ai)."
+            ) from exc
+
+        engine = str(cfg.engine_path)
+        llm_kwargs: Dict[str, Any] = {
+            "model": engine,
+            "tensor_parallel_size": options.tensor_parallel_size,
+            "max_model_len": options.max_model_len,
+        }
+        llm_kwargs["block_size"] = int(options.block_size) if options.block_size is not None else int(options.max_model_len)
+        llm_kwargs["trust_remote_code"] = options.trust_remote_code
+        llm_kwargs["enforce_eager"] = options.enforce_eager
+        if options.dtype:
+            llm_kwargs["dtype"] = options.dtype
+        if options.gpu_memory_utilization is not None:
+            llm_kwargs["gpu_memory_utilization"] = float(options.gpu_memory_utilization)
+        if options.additional_config is not None:
+            llm_kwargs["additional_config"] = dict(options.additional_config)
+
+        try:
+            llm = LLM(**llm_kwargs)
+        except Exception as exc:
+            message = str(exc)
+            if "GatedRepoError" in message or "gated repo" in message.lower() or "401 Client Error" in message:
+                raise RuntimeError(
+                    "Failed to create RBLN LLM runtime because the selected Hugging Face model is gated or "
+                    "requires authentication. For the default public smoke path, try a non-gated model such as "
+                    "'Qwen/Qwen3-0.6B', or provide a valid HF_TOKEN if you need a gated model."
+                ) from exc
+            raise RuntimeError(f"Failed to create RBLN LLM runtime for {engine!r}: {exc}") from exc
+
+        sampling_defaults = {
+            "max_tokens": cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "top_p": cfg.top_p,
+            "top_k": cfg.top_k,
+            "min_tokens": cfg.min_tokens,
+        }
+
+        return LLMRuntimeHandle(
+            backend=self.name,
+            engine_path=engine,
+            ctx={
+                "llm": llm,
+                "runtime_impl": runtime_impl,
+                "sampling_defaults": sampling_defaults,
+                "backend_options": options_meta,
+                "capability_family": _CAPABILITY_FAMILY,
+                "runtime_pipeline": _RUNTIME_PIPELINE,
+                "vendor_api_map": _VENDOR_API_MAP,
+                "llm_kwargs": llm_kwargs,
+            },
         )
 
-    try:
-        from vllm import LLM
-    except Exception as exc:
-        raise RuntimeError(
-            "vllm-rbln is required for RBLN LLM runtime smoke. "
-            "Install vllm-rbln first (see docs.rbln.ai)."
-        ) from exc
+    def generate(self, rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
+        if not rh.ctx or "llm" not in rh.ctx:
+            raise RuntimeError("RBLN LLM RuntimeHandle is closed or invalid")
 
-    engine = str(cfg.engine_path)
-    llm_kwargs: Dict[str, Any] = {
-        "model": engine,
-        "tensor_parallel_size": cfg.tensor_parallel_size,
-        "max_model_len": cfg.max_model_len,
-    }
-    llm_kwargs["block_size"] = int(extra["block_size"]) if ("block_size" in extra and extra["block_size"] is not None) else int(cfg.max_model_len)
-    if "trust_remote_code" in extra:
-        llm_kwargs["trust_remote_code"] = bool(extra["trust_remote_code"])
-    if "enforce_eager" in extra:
-        llm_kwargs["enforce_eager"] = bool(extra["enforce_eager"])
-    if "dtype" in extra and extra["dtype"]:
-        llm_kwargs["dtype"] = str(extra["dtype"])
-    if "gpu_memory_utilization" in extra and extra["gpu_memory_utilization"] is not None:
-        llm_kwargs["gpu_memory_utilization"] = float(extra["gpu_memory_utilization"])
-    if "additional_config" in extra and isinstance(extra["additional_config"], dict):
-        llm_kwargs["additional_config"] = dict(extra["additional_config"])
+        llm = rh.ctx["llm"]
+        params = dict(rh.ctx.get("sampling_defaults", {}))
+        for key, value in overrides.items():
+            if key in _SAMPLING_KEYS and value is not None:
+                params[key] = value
 
-    try:
-        llm = LLM(**llm_kwargs)
-    except Exception as exc:
-        message = str(exc)
-        if "GatedRepoError" in message or "gated repo" in message.lower() or "401 Client Error" in message:
-            raise RuntimeError(
-                "Failed to create RBLN LLM runtime because the selected Hugging Face model is gated or "
-                "requires authentication. For the default public smoke path, try a non-gated model such as "
-                "'Qwen/Qwen3-0.6B', or provide a valid HF_TOKEN if you need a gated model."
-            ) from exc
-        raise RuntimeError(f"Failed to create RBLN LLM runtime for {engine!r}: {exc}") from exc
+        try:
+            from vllm import SamplingParams
+        except Exception as exc:
+            raise RuntimeError("vllm-rbln SamplingParams is not available") from exc
 
-    sampling_defaults = {
-        "max_tokens": cfg.max_tokens,
-        "temperature": cfg.temperature,
-        "top_p": cfg.top_p,
-        "top_k": cfg.top_k,
-        "min_tokens": cfg.min_tokens,
-    }
+        sampling = SamplingParams(**params)
+        single = isinstance(prompt, str)
+        prompts = [prompt] if single else list(prompt)
+        if not prompts:
+            raise ValueError("prompt must be a non-empty string or list of strings")
 
-    return LLMRuntimeHandle(
-        backend="rbln",
-        engine_path=engine,
-        ctx={
-            "llm": llm,
-            "runtime_impl": runtime_impl,
-            "sampling_defaults": sampling_defaults,
-            "extra": extra,
-            "capability_family": _CAPABILITY_FAMILY,
-            "runtime_pipeline": _RUNTIME_PIPELINE,
-            "vendor_api_map": _VENDOR_API_MAP,
-            "llm_kwargs": llm_kwargs,
-        },
-    )
+        try:
+            outputs = llm.generate(prompts, sampling)
+        except Exception as exc:
+            raise RuntimeError(f"RBLN LLM generate failed: {exc}") from exc
+
+        texts = [_extract_text(item) for item in outputs]
+        return texts[0] if single else texts
+
+    def destroy(self, rh: LLMRuntimeHandle) -> None:
+        llm = rh.ctx.get("llm") if rh.ctx else None
+        if llm is not None:
+            for attr in ("llm_engine", "engine"):
+                engine = getattr(llm, attr, None)
+                shutdown = getattr(engine, "shutdown", None)
+                if callable(shutdown):
+                    try:
+                        shutdown()
+                    except Exception:
+                        pass
+                    break
+        rh.ctx.clear()
+
+
+def create_llm(cfg: LLMRuntimeConfig) -> LLMRuntimeHandle:
+    return _RBLNLLMRuntimeAdapter().create(cfg)
 
 
 def generate_llm(rh: LLMRuntimeHandle, prompt: Any, **overrides: Any) -> Any:
-    if not rh.ctx or "llm" not in rh.ctx:
-        raise RuntimeError("RBLN LLM RuntimeHandle is closed or invalid")
-
-    llm = rh.ctx["llm"]
-    params = dict(rh.ctx.get("sampling_defaults", {}))
-    for key, value in overrides.items():
-        if key in _SAMPLING_KEYS and value is not None:
-            params[key] = value
-
-    try:
-        from vllm import SamplingParams
-    except Exception as exc:
-        raise RuntimeError("vllm-rbln SamplingParams is not available") from exc
-
-    sampling = SamplingParams(**params)
-    single = isinstance(prompt, str)
-    prompts = [prompt] if single else list(prompt)
-    if not prompts:
-        raise ValueError("prompt must be a non-empty string or list of strings")
-
-    try:
-        outputs = llm.generate(prompts, sampling)
-    except Exception as exc:
-        raise RuntimeError(f"RBLN LLM generate failed: {exc}") from exc
-
-    texts = [_extract_text(item) for item in outputs]
-    return texts[0] if single else texts
+    return _RBLNLLMRuntimeAdapter().generate(rh, prompt, **overrides)
 
 
 def destroy_llm(rh: LLMRuntimeHandle) -> None:
-    llm = rh.ctx.get("llm") if rh.ctx else None
-    if llm is not None:
-        for attr in ("llm_engine", "engine"):
-            engine = getattr(llm, attr, None)
-            shutdown = getattr(engine, "shutdown", None)
-            if callable(shutdown):
-                try:
-                    shutdown()
-                except Exception:
-                    pass
-                break
-    rh.ctx.clear()
+    _RBLNLLMRuntimeAdapter().destroy(rh)
+
+
+register_llm(_RBLNLLMRuntimeAdapter())
