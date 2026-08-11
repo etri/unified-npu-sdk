@@ -66,14 +66,22 @@ def _vendor_root_candidates(repo_root: Path) -> list[Path]:
 
 
 def _find_vendor_convert_script(repo_root: Path) -> Path:
+    attempted: list[str] = []
     for root in _vendor_root_candidates(repo_root):
-        script = root / "examples" / "llama" / "convert_checkpoint.py"
-        if script.is_file():
-            return script.resolve()
+        candidates = (
+            root / "examples" / "llama" / "convert_checkpoint.py",
+            root / "examples" / "models" / "core" / "llama" / "convert_checkpoint.py",
+        )
+        for script in candidates:
+            attempted.append(str(script))
+            if script.is_file():
+                return script.resolve()
     raise FileNotFoundError(
-        "Could not find TensorRT-LLM's examples/llama/convert_checkpoint.py. "
+        "Could not find a known TensorRT-LLM llama convert_checkpoint.py in the vendor source checkout. "
+        "Checked legacy and current layouts such as "
+        "`examples/llama/convert_checkpoint.py` and `examples/models/core/llama/convert_checkpoint.py`. "
         "Set TENSORRT_LLM_SRC to a matching TensorRT-LLM source checkout, or place the checkout in a common location "
-        f"such as {repo_root.parent / 'TensorRT-LLM'}."
+        f"such as {repo_root.parent / 'TensorRT-LLM'}. Attempted: {attempted}"
     )
 
 

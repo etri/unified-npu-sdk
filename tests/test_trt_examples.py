@@ -28,7 +28,7 @@ class TensorRTExampleWrapperTests(unittest.TestCase):
         module = _load_wrapper_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             vendor_root = Path(tmpdir) / "TensorRT-LLM"
-            script = vendor_root / "examples" / "llama" / "convert_checkpoint.py"
+            script = vendor_root / "examples" / "models" / "core" / "llama" / "convert_checkpoint.py"
             script.parent.mkdir(parents=True)
             script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
             with patch.dict(os.environ, {"TENSORRT_LLM_SRC": str(vendor_root)}, clear=False):
