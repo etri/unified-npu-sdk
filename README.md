@@ -370,7 +370,7 @@ python3 examples/run_tensorrt_llm_infer.py \
 # 7-b-1) (LLM) local HF path 준비
 #        먼저 공식 모델 저장소(Hugging Face 등)에서 local HF path 를 준비합니다.
 #        예시는 TinyLlama repo snapshot 을 ./models 아래로 받아두는 흐름입니다.
-huggingface-cli download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+hf download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
   --local-dir ./models/TinyLlama-1.1B-Chat-v1.0
 
 # 7-b-2) (LLM) local HF path -> fetch -> generate
