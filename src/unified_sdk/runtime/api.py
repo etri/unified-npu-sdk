@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from unified_sdk.runtime.registry import get_llm_runtime
+from unified_sdk.runtime.registry import get_llm_runtime, get_runtime
 from unified_sdk.types import LLMRuntimeConfig, LLMRuntimeHandle, RuntimeConfig, RuntimeHandle
 
 import warnings
