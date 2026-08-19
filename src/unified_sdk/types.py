@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Dict, Literal, Tuple, TypeAlias
+
+import numpy as np
 
 
 BuildBackendName = Literal["tensorrt", "rbln", "warboy", "rngd", "qb"]
 RuntimeBackendName = Literal["tensorrt", "rbln", "warboy", "rngd", "qb"]
 
 Precision = Literal["fp32", "fp16", "int8"]
+InferOutput: TypeAlias = np.ndarray | list[np.ndarray]
 
 
 @dataclass
