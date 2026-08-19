@@ -153,6 +153,7 @@ if __name__ == "__main__":
         print("Error: 'numpy', 'torch', and 'torchvision' are required for the QB inference example.")
         sys.exit(1)
 
+    from unified_sdk.options import QBVisionRuntimeOptions
     from unified_sdk.types import RuntimeConfig
     from unified_sdk.runtime import create_runtime, infer, destroy_runtime
 
@@ -172,11 +173,10 @@ if __name__ == "__main__":
         input_name=args.input_name,
         output_name=args.output_name,
         input_shape=args.input_shape,
-        extra={
-            "device": args.device,
-            "core_mode": args.core_mode,
-            "allow_dynamic_shape": args.allow_dynamic_shape,
-        },
+        backend_options=QBVisionRuntimeOptions(
+            core_mode=args.core_mode,
+            allow_dynamic_shape=args.allow_dynamic_shape,
+        ),
     )
 
     rh = create_runtime(cfg)

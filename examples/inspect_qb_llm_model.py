@@ -72,6 +72,7 @@ if __name__ == "__main__":
         raise SystemExit(f"Error: expected a .mxq file - {p}")
 
     try:
+        from unified_sdk.options import QBSequenceRuntimeOptions
         from unified_sdk.sequence_runtime import create_sequence_runtime, destroy_sequence_runtime
         from unified_sdk.sequence_runtime.types import SequenceRuntimeConfig
         from qbruntime import type as qb_type
@@ -84,7 +85,7 @@ if __name__ == "__main__":
         input_name="input",
         output_name="output",
         input_shape=(1,),
-        extra={"core_mode": args.core_mode, "allow_dynamic_shape": True},
+        backend_options=QBSequenceRuntimeOptions(core_mode=args.core_mode, allow_dynamic_shape=True),
     )
     rh = create_sequence_runtime(cfg)
     model = rh.ctx["model"]
