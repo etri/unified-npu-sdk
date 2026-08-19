@@ -84,12 +84,24 @@ def create_runtime_LLM(cfg: LLMRuntimeConfig) -> Any:
 
 def infer_LLM(rh: Any, input_or_prompt: Any, **kwargs: Any) -> Any:
     adapter = get_llm_runtime(rh.backend)
-    return adapter.infer(rh, input_or_prompt, **kwargs)
+    infer_fn = getattr(adapter, "infer", None)
+    if callable(infer_fn):
+        return infer_fn(rh, input_or_prompt, **kwargs)
+    generate_fn = getattr(adapter, "generate", None)
+    if callable(generate_fn):
+        return generate_fn(rh, input_or_prompt, **kwargs)
+    raise AttributeError(f"{type(adapter).__name__} does not implement infer() or generate()")
 
 
 def generate_LLM(rh: Any, prompt: Any, **overrides: Any) -> Any:
     adapter = get_llm_runtime(rh.backend)
-    return adapter.infer(rh, prompt, **overrides)
+    generate_fn = getattr(adapter, "generate", None)
+    if callable(generate_fn):
+        return generate_fn(rh, prompt, **overrides)
+    infer_fn = getattr(adapter, "infer", None)
+    if callable(infer_fn):
+        return infer_fn(rh, prompt, **overrides)
+    raise AttributeError(f"{type(adapter).__name__} does not implement generate() or infer()")
 
 
 def destroy_runtime_LLM(rh: Any) -> None:
