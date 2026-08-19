@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 from typing import Any, Dict, List
 
-from unified_sdk.build.registry import register
+from unified_sdk.build.registry import register_llm
 from unified_sdk.frontends import RNGDFrontendBuildRequest, resolve_rngd_build_request
 from unified_sdk.options import resolve_rngd_build_options
 from unified_sdk.types import BuildConfig, BuildResult
@@ -188,4 +188,4 @@ class _RNGDBuildAdapter:
         )
 
 
-register(_RNGDBuildAdapter())
+register_llm(_RNGDBuildAdapter())

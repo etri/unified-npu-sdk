@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 from unified_sdk.options import resolve_rngd_runtime_options
-from unified_sdk.runtime.registry import register
+from unified_sdk.runtime.registry import register_llm
 from unified_sdk.types import LLMRuntimeHandle, RuntimeConfig
 
 
@@ -181,4 +181,4 @@ class _RNGDRuntime:
         rh.ctx.clear()
 
 
-register(_RNGDRuntime())
+register_llm(_RNGDRuntime())
