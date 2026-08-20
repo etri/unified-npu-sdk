@@ -43,6 +43,10 @@ Unified SDK는 특정 벤더 SDK를 대체하는 새 compiler/runtime가 아니�
 | `rngd` | LLM | unified | generate 경로 구현, 일부 `fxb build`는 vendor toolchain 이슈 이력 있음 |
 | `trt` | vision / LLM | split flavor | `vision`, `llm` 분리 Docker, LLM compile 일부 unsupported |
 
+메모:
+
+- RNGD classic vision/YOLO는 현재 `main` 정식 smoke/API 대상이 아니라 future capability candidate로 분류합니다. 공개 experimental `furiosa-torch` YOLO 사례는 있으나, stable SDK의 정식 classic CV API surface가 명확해지고 재현 가능한 package/API 검증이 끝나기 전까지는 `rngd`를 LLM capability로 유지합니다.
+
 ## 주요 기능
 
 | 구분 | 설명 |
