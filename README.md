@@ -34,6 +34,7 @@ custom model 검증은 **`fxb build`로 FXB를 준비한 뒤 `LLM(..., fxb=...)`
 - `2026-07-27` 기준 vendor 답변으로, `Qwen3-8B-FP8` local custom `fxb build` 실패 원인 중 하나가 `gcc-aarch64-linux-gnu` 누락으로 특정되었습니다.
 - 현재 Docker 정의에는 `gcc-aarch64-linux-gnu`가 이미 반영되어 있으며, 재시도 전에는 `~/.cache/furiosa/compiler/` 를 비우고 다시 확인하는 절차를 권장합니다.
 - 이 브랜치는 RNGD/LLM 전용이며, Warboy vision API 와 혼용하지 않도록 public surface 를 `*_LLM` 기준으로 분리합니다.
+- RNGD classic vision/YOLO는 이 브랜치의 정식 API/smoke 대상이 아니라 future capability candidate로만 둡니다. 공개 experimental `furiosa-torch` YOLO 사례는 있지만, stable SDK 기준 API와 재현 가능한 package 검증이 완료되기 전까지 main registry나 README smoke 경로에는 포함하지 않습니다.
 
 ---
 
