@@ -121,7 +121,7 @@ main/
 
 ```bash
 git clone https://github.com/etri/unified-npu-sdk.git
-cd unified-npu-sdk/main
+cd unified-npu-sdk
 ```
 
 이미 vendor별 checkout이 따로 있는 경우에는,
