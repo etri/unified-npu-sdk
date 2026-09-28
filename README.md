@@ -39,7 +39,7 @@ Unified SDK는 특정 벤더 SDK를 대체하는 새 compiler/runtime가 아니�
 | --- | --- | --- | --- |
 | `qb` | vision + low-level LLM runtime | unified | vision 동작, LLM runtime preview, LLM build planned |
 | `rbln` | vision + LLM | unified | API 구현 완료, container compile known issue 메모 유지 |
-| `warboy` | vision | unified | build / infer / inspect 흐름 구현 |
+| `furiosa` | vision (warboy) | unified | build / infer / inspect 흐름 구현 |
 | `rngd` | LLM | unified | generate 경로 구현, 일부 `fxb build`는 vendor toolchain 이슈 이력 있음 |
 | `trt` | vision / LLM | split flavor | `vision`, `llm` 분리 Docker, LLM compile 일부 unsupported |
 
