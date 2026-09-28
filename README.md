@@ -3,7 +3,7 @@
 이 체크아웃(`furiosa-only` 브랜치)은 **FuriosaAI Warboy NPU 전용**으로 단일 백엔드만 노출합니다.
 공통 추상화(`build/`, `runtime/`)는 그대로 유지하면서, 어댑터·예제·컨테이너 구성을 Warboy 1종으로 좁힌 버전입니다.
 
-`main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되, `rbln-only`·`qb-only`와 동일한 단일-백엔드 패턴을 따릅니다.
+`main`의 멀티 백엔드 코드와 동일한 API 표면을 갖되,`trt-only`·`rbln-only`·`qb-only`와 동일한 단일-백엔드 패턴을 따릅니다.
 컴파일은 **`furiosa-compiler`**(quantized ONNX → `.enf`), 추론은 **`furiosa.runtime`**(sync)을 사용합니다.
 (RNGD/LLM 워크로드는 `furiosa-llm-only` 브랜치에서 다룹니다.)
 
